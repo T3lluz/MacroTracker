@@ -1,6 +1,7 @@
 node_modules
 credentials.json
 credentials/
+google-services.json
 .expo/
 .gradle-user-home/
 android/.gradle-user-home/
@@ -10,6 +11,7 @@ android/.gradle-user-home/
 
 # Ignore Gradle build output directory
 build
+dist/
 
 # Ignore Kotlin plugin data
 .kotlin
