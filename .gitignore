@@ -2,3 +2,5 @@ node_modules
 credentials.json
 credentials/
 .expo/
+.gradle-user-home/
+android/.gradle-user-home/
