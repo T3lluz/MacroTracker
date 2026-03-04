@@ -45,6 +45,8 @@ jobs:
 
       - name: Build APK with Gradle
         working-directory: android
+        env:
+          NODE_ENV: production
         run: ./gradlew assembleRelease
 
       - name: Resolve release metadata
