@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 
-const HARDCODED_GEMINI_API_KEY = 'AIzaSyCGWHG77glS_8mqsxofjbPkrxJPvZZGq_M';
+const HARDCODED_GEMINI_API_KEY = '';
 const MISSING_KEY_SENTINEL = 'YOUR_GEMINI_API_KEY_HERE';
 
 declare const process:
@@ -39,3 +39,37 @@ export const buildGeminiUrl = (model: string) =>
 
 export const geminiApiKeySetupHint =
     'Set EXPO_PUBLIC_GEMINI_API_KEY in your environment or update src/config/ai.ts with a valid key.';
+
+export const trimGeminiApiError = (value: string) =>
+    value
+        .replace(/\s+/g, ' ')
+        .replace(/<[^>]+>/g, '')
+        .slice(0, 220)
+        .trim();
+
+export const isGeminiApiKeyInvalidError = (errorText: string) => {
+    const loweredError = String(errorText || '').toLowerCase();
+    return (
+        loweredError.includes('api_key_invalid') ||
+        loweredError.includes('api key invalid') ||
+        loweredError.includes('api key not valid')
+    );
+};
+
+export const getGeminiApiErrorMessage = (
+    status: number | undefined,
+    errorText: string,
+    prefix: string,
+) => {
+    if (isGeminiApiKeyInvalidError(errorText) || status === 401 || status === 403) {
+        return `Gemini API key is invalid. ${geminiApiKeySetupHint}`;
+    }
+
+    if (status === 429) {
+        return 'Gemini rate limit hit. Wait a moment and try again.';
+    }
+
+    const safeStatus = typeof status === 'number' && status > 0 ? ` (${status})` : '';
+    const details = trimGeminiApiError(errorText);
+    return `${prefix}${safeStatus}${details ? `: ${details}` : ''}`;
+};

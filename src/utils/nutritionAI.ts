@@ -1,4 +1,11 @@
-import { buildGeminiUrl, GEMINI_MODELS, hasGeminiApiKey, geminiApiKeySetupHint } from '../config/ai';
+import {
+    buildGeminiUrl,
+    GEMINI_MODELS,
+    hasGeminiApiKey,
+    geminiApiKeySetupHint,
+    getGeminiApiErrorMessage,
+    isGeminiApiKeyInvalidError,
+} from '../config/ai';
 
 interface NutritionEstimate {
     foodName: string;
@@ -35,13 +42,6 @@ const extractJsonObject = (value: string) => {
     if (start === -1 || end === -1 || end <= start) return value;
     return value.slice(start, end + 1);
 };
-
-const trimApiError = (value: string) =>
-    value
-        .replace(/\s+/g, ' ')
-        .replace(/<[^>]+>/g, '')
-        .slice(0, 220)
-        .trim();
 
 const createGenerationConfig = (structuredOutput: boolean) => {
     if (!structuredOutput) {
@@ -125,6 +125,10 @@ export const estimateNutritionWithAI = async (foodQuery: string): Promise<Nutrit
 
             errorText = await response.text();
 
+            if (isGeminiApiKeyInvalidError(errorText)) {
+                throw new Error(getGeminiApiErrorMessage(response.status, errorText, 'AI request failed'));
+            }
+
             if (response.status === 404) {
                 break;
             }
@@ -134,21 +138,21 @@ export const estimateNutritionWithAI = async (foodQuery: string): Promise<Nutrit
             }
 
             if (response.status === 401 || response.status === 403) {
-                throw new Error('Gemini rejected the API key. Check key validity and API restrictions.');
+                throw new Error(getGeminiApiErrorMessage(response.status, errorText, 'AI request failed'));
             }
 
             if (response.status === 429) {
-                throw new Error('Gemini rate limit hit. Wait a moment and try again.');
+                throw new Error(getGeminiApiErrorMessage(response.status, errorText, 'AI request failed'));
             }
 
-            throw new Error(`AI request failed (${response.status}). ${trimApiError(errorText)}`);
+            throw new Error(getGeminiApiErrorMessage(response.status, errorText, 'AI request failed'));
         }
 
         if (responseData) break;
     }
 
     if (!responseData) {
-        throw new Error(`AI request failed. ${trimApiError(errorText) || 'No supported model responded.'}`);
+        throw new Error(getGeminiApiErrorMessage(undefined, errorText, 'AI request failed') || 'No supported model responded.');
     }
 
     const rawText = extractTextFromGeminiResponse(responseData);

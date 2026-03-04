@@ -23,7 +23,14 @@ import Animated, {
     FadeIn,
     FadeOut,
 } from 'react-native-reanimated';
-import { buildGeminiUrl, GEMINI_SCAN_MODELS, hasGeminiApiKey, geminiApiKeySetupHint } from '../config/ai';
+import {
+    buildGeminiUrl,
+    GEMINI_SCAN_MODELS,
+    hasGeminiApiKey,
+    geminiApiKeySetupHint,
+    getGeminiApiErrorMessage,
+    isGeminiApiKeyInvalidError,
+} from '../config/ai';
 
 // ─── Gemini Vision API ────────────────────────────────────────────────────────
 // Uses shared key/model config from src/config/ai.ts
@@ -156,13 +163,6 @@ const parseScanResultFallback = (source: string): ScanResult | null => {
     };
 };
 
-const trimApiError = (value: string) =>
-    value
-        .replace(/\s+/g, ' ')
-        .replace(/<[^>]+>/g, '')
-        .slice(0, 220)
-        .trim();
-
 const maybeComputeTotals = (partial: Partial<ScanResult>): ScanResult => {
     const caloriesPerServing = Math.max(0, toRoundedNumber(partial.caloriesPerServing, 0));
     const proteinPerServing = Math.max(0, toRoundedNumber(partial.proteinPerServing, 0));
@@ -292,6 +292,10 @@ async function analyzeImageWithGemini(base64Image: string): Promise<ScanResult> 
 
             errText = await response.text();
 
+            if (isGeminiApiKeyInvalidError(errText)) {
+                throw new Error(getGeminiApiErrorMessage(response.status, errText, 'Gemini API error'));
+            }
+
             if (response.status === 404) {
                 break;
             }
@@ -308,21 +312,21 @@ async function analyzeImageWithGemini(base64Image: string): Promise<ScanResult> 
             }
 
             if (response.status === 401 || response.status === 403) {
-                throw new Error('Gemini rejected the API key. Check key validity and API restrictions.');
+                throw new Error(getGeminiApiErrorMessage(response.status, errText, 'Gemini API error'));
             }
 
             if (response.status === 429) {
-                throw new Error('Gemini rate limit hit. Wait a moment and try again.');
+                throw new Error(getGeminiApiErrorMessage(response.status, errText, 'Gemini API error'));
             }
 
-            throw new Error(`Gemini API error ${response.status}: ${trimApiError(errText)}`);
+            throw new Error(getGeminiApiErrorMessage(response.status, errText, 'Gemini API error'));
         }
 
         if (responseData) break;
     }
 
     if (!responseData) {
-        throw new Error(`Gemini API error: ${trimApiError(errText) || 'No supported Gemini model was found.'}`);
+        throw new Error(getGeminiApiErrorMessage(undefined, errText, 'Gemini API error'));
     }
 
     const text: string = responseData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
