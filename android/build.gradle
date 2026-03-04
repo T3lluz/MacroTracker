@@ -7,8 +7,6 @@ buildscript {
         compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '34')
         targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '34')
         kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.23'
-
-        ndkVersion = "26.1.10909125"
     }
     repositories {
         google()
@@ -25,6 +23,9 @@ apply plugin: "com.facebook.react.rootproject"
 
 allprojects {
     repositories {
+        maven {
+            url(new File(rootDir, '../node_modules/expo-camera/android/maven'))
+        }
         maven {
             // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
             url(new File(['node', '--print', "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), '../android'))
