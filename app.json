@@ -1,56 +1,75 @@
 {
-    "expo": {
-        "name": "MacroTracker",
-        "slug": "macrotracker",
-        "version": "1.0.0",
-        "jsEngine": "hermes",
-        "newArchEnabled": true,
-        "orientation": "portrait",
-        "icon": "./assets/icon.png",
-        "userInterfaceStyle": "light",
-        "splash": {
-            "image": "./assets/splash.png",
-            "resizeMode": "contain",
-            "backgroundColor": "#ffffff"
-        },
-        "extra": {
-            "geminiApiKey": "YOUR_GEMINI_API_KEY_HERE"
-        },
-        "ios": {
-            "supportsTablet": true,
-            "infoPlist": {
-                "NSCameraUsageDescription": "MacroTracker uses the camera to scan nutrition labels on food products.",
-                "NSPhotoLibraryUsageDescription": "MacroTracker accesses your photo library to scan nutrition labels."
-            }
-        },
-        "android": {
-            "adaptiveIcon": {
-                "foregroundImage": "./assets/adaptive-icon.png",
-                "backgroundColor": "#ffffff"
-            },
-            "package": "com.fstal.macrotracker",
-            "permissions": [
-                "android.permission.CAMERA",
-                "android.permission.READ_EXTERNAL_STORAGE",
-                "android.permission.WRITE_EXTERNAL_STORAGE"
-            ]
-        },
-        "web": {
-            "favicon": "./assets/favicon.png"
-        },
-        "plugins": [
-            [
-                "expo-camera",
-                {
-                    "cameraPermission": "MacroTracker uses the camera to scan nutrition labels on food products."
-                }
-            ],
-            [
-                "expo-image-picker",
-                {
-                    "photosPermission": "MacroTracker accesses your photo library to scan saved nutrition label images."
-                }
-            ]
-        ]
-    }
+  "expo": {
+    "name": "MacroTracker",
+    "slug": "macrotracker",
+    "version": "1.0.0",
+    "jsEngine": "hermes",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "extra": {
+      "geminiApiKey": "YOUR_GEMINI_API_KEY_HERE",
+      "eas": {
+        "projectId": "130ff017-2b63-4581-bc90-8812a7a811e6"
+      }
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "MacroTracker uses the camera to scan nutrition labels on food products.",
+        "NSPhotoLibraryUsageDescription": "MacroTracker accesses your photo library to scan nutrition labels."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.fstal.macrotracker",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      "react-native-health-connect",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MacroTracker uses the camera to scan nutrition labels on food products."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MacroTracker accesses your photo library to scan saved nutrition label images."
+        }
+      ]
+    ],
+    "owner": "t3lluz"
+  }
 }

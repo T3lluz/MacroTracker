@@ -3,13 +3,18 @@ name: Build & Release APK
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: "Optional release tag (e.g. v1.2.3). Leave empty to auto-generate."
+        required: false
       release_name:
-        description: 'Release name (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
+        description: "Optional release name shown on GitHub Releases."
+        required: false
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -23,57 +28,79 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Setup Java SDK
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Prebuild Expo Android project
-        run: npx expo prebuild -p android --clean
+        run: npx expo prebuild -p android --clean --non-interactive
 
       - name: Build APK with Gradle
         working-directory: android
         run: ./gradlew assembleRelease
 
-      - name: Rename APK
-        run: mv android/app/build/outputs/apk/release/app-release.apk MacroTracker.apk
-
-      - name: Get release name
-        id: release_name
+      - name: Resolve release metadata
+        id: release_meta
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ github.event.inputs.release_name }}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG_NAME="${{ github.ref_name }}"
+          elif [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            TAG_NAME="${{ github.event.inputs.release_tag }}"
           else
-            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            TAG_NAME="v0.0.${{ github.run_number }}"
           fi
+
+          if [ -n "${{ github.event.inputs.release_name }}" ]; then
+            RELEASE_NAME="${{ github.event.inputs.release_name }}"
+          else
+            RELEASE_NAME="MacroTracker ${TAG_NAME}"
+          fi
+
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No release APK found." >&2
+            exit 1
+          fi
+          APK_NAME="MacroTracker-${{ steps.release_meta.outputs.tag }}.apk"
+          cp "$APK_PATH" "$APK_NAME"
+          echo "path=$APK_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ steps.apk.outputs.path }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release_name.outputs.name }}
-          name: MacroTracker ${{ steps.release_name.outputs.name }}
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          generate_release_notes: true
           body: |
-            ## 📱 MacroTracker ${{ steps.release_name.outputs.name }}
+            ## 📱 MacroTracker ${{ steps.release_meta.outputs.tag }}
 
             ### Installation
-            1. Download `MacroTracker.apk` below
+            1. Download the APK below
             2. On your Android device, enable **Install unknown apps** in Settings
             3. Open the downloaded APK and tap **Install**
 
-            ### What's included
-            - Daily calorie & protein tracking
-            - **NEW:** AI Nutrition Label Scanner (Camera & Gallery)
-            - 7-day history & stats
-            - Animated UI with dark theme
-            - Persistent local storage
-          files: MacroTracker.apk
+            Built from commit `${{ github.sha }}` via GitHub Actions.
+          files: ${{ steps.apk.outputs.path }}
           draft: false
           prerelease: false
         env:

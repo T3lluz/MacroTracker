@@ -11,15 +11,36 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 import AnimatedCard from '../components/AnimatedCard';
+import AnimatedButton from '../components/AnimatedButton';
 import ScreenTransitionView from '../components/ScreenTransitionView';
 import { colors } from '../theme/colors';
-import { getDailySummary, getLogsForDate } from '../store/storage';
-import { DailyMacroLog, DailySummary } from '../types';
+import { getLogsForDate } from '../store/storage';
+import { DailyHealthMetrics, DailyMacroLog } from '../types';
+import {
+    getHealthMetricsRange,
+    hasHealthConnectPermissions,
+    requestHealthConnectPermissions,
+    summarizeHealthRange,
+    ensureHealthConnectInitialized,
+} from '../utils/healthConnect';
 import { hapticLight } from '../utils/haptics';
 
-type MetricType = 'calories' | 'protein';
+type MetricType = 'steps' | 'caloriesBurned' | 'sleepMinutes' | 'avgHeartRate';
 
 const RANGE_OPTIONS: Array<7 | 14 | 30> = [7, 14, 30];
+
+const buildEmptyHealthHistory = (rangeDays: number): DailyHealthMetrics[] => {
+    return Array.from({ length: rangeDays }, (_, i) => {
+        const day = subDays(new Date(), rangeDays - 1 - i);
+        return {
+            date: format(day, 'yyyy-MM-dd'),
+            steps: 0,
+            caloriesBurned: 0,
+            sleepMinutes: 0,
+            avgHeartRate: 0,
+        };
+    });
+};
 
 const AnimatedBarFill = React.memo(({
     targetHeight,
@@ -48,43 +69,89 @@ const AnimatedBarFill = React.memo(({
     return <Animated.View style={[styles.barFill, animatedStyle]} />;
 });
 
+const metricLabelMap: Record<MetricType, string> = {
+    steps: 'Steps',
+    caloriesBurned: 'Calories Burned',
+    sleepMinutes: 'Sleep',
+    avgHeartRate: 'Avg Heart Rate',
+};
+
 const HistoryScreen = () => {
     const insets = useSafeAreaInsets();
     const isFocused = useIsFocused();
     const [rangeDays, setRangeDays] = useState<7 | 14 | 30>(7);
-    const [metric, setMetric] = useState<MetricType>('calories');
-    const [history, setHistory] = useState<DailySummary[]>([]);
-    const [selectedDate, setSelectedDate] = useState<string>('');
+    const [metric, setMetric] = useState<MetricType>('steps');
+    const [healthHistory, setHealthHistory] = useState<DailyHealthMetrics[]>(buildEmptyHealthHistory(7));
+    const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [selectedLogs, setSelectedLogs] = useState<DailyMacroLog[]>([]);
     const [loading, setLoading] = useState(true);
+    const [permissionsGranted, setPermissionsGranted] = useState(false);
+    const [healthStatus, setHealthStatus] = useState('Checking Health Connect status...');
 
-    const loadHistory = useCallback(async () => {
-        setLoading(true);
-        try {
-            const dates = Array.from({ length: rangeDays }, (_, i) => {
-                const day = subDays(new Date(), rangeDays - 1 - i);
-                return format(day, 'yyyy-MM-dd');
-            });
+    const syncSelectedDate = useCallback(async (days: DailyHealthMetrics[]) => {
+        const fallbackDate = days[days.length - 1]?.date ?? format(new Date(), 'yyyy-MM-dd');
 
-            const summaries = await Promise.all(dates.map((date) => getDailySummary(date)));
-            setHistory(summaries);
+        let nextDate = fallbackDate;
+        setSelectedDate((prev) => {
+            nextDate = prev && days.some((entry) => entry.date === prev) ? prev : fallbackDate;
+            return nextDate;
+        });
 
-            const nextSelectedDate = selectedDate && summaries.some((summary) => summary.date === selectedDate)
-                ? selectedDate
-                : summaries[summaries.length - 1]?.date ?? format(new Date(), 'yyyy-MM-dd');
+        const logs = await getLogsForDate(nextDate);
+        setSelectedLogs(logs);
+    }, []);
 
-            setSelectedDate(nextSelectedDate);
-            const logs = await getLogsForDate(nextSelectedDate);
-            setSelectedLogs(logs);
-        } finally {
-            setLoading(false);
-        }
-    }, [rangeDays, selectedDate]);
+    const loadHealthHistory = useCallback(
+        async (requestAccess: boolean) => {
+            setLoading(true);
+
+            try {
+                const initStatus = await ensureHealthConnectInitialized();
+                if (!initStatus.available) {
+                    const emptyHistory = buildEmptyHealthHistory(rangeDays);
+                    setPermissionsGranted(false);
+                    setHealthStatus(initStatus.message ?? 'Health Connect is unavailable.');
+                    setHealthHistory(emptyHistory);
+                    await syncSelectedDate(emptyHistory);
+                    return;
+                }
+
+                const hasPermission = requestAccess
+                    ? await requestHealthConnectPermissions()
+                    : await hasHealthConnectPermissions();
+
+                if (!hasPermission) {
+                    const emptyHistory = buildEmptyHealthHistory(rangeDays);
+                    setPermissionsGranted(false);
+                    setHealthStatus('Grant Health Connect access to view watch-derived health metrics.');
+                    setHealthHistory(emptyHistory);
+                    await syncSelectedDate(emptyHistory);
+                    return;
+                }
+
+                const metrics = await getHealthMetricsRange(rangeDays);
+                setPermissionsGranted(true);
+                setHealthStatus('Health Connect synced. Data source includes Garmin Connect if synced there.');
+                setHealthHistory(metrics);
+                await syncSelectedDate(metrics);
+            } catch (error) {
+                setPermissionsGranted(false);
+                setHealthStatus(
+                    error instanceof Error
+                        ? error.message
+                        : 'Could not read Health Connect data right now.',
+                );
+            } finally {
+                setLoading(false);
+            }
+        },
+        [rangeDays, syncSelectedDate],
+    );
 
     useFocusEffect(
         useCallback(() => {
-            loadHistory();
-        }, [loadHistory]),
+            loadHealthHistory(false);
+        }, [loadHealthHistory]),
     );
 
     const handleSelectDate = async (date: string) => {
@@ -94,197 +161,232 @@ const HistoryScreen = () => {
         setSelectedLogs(logs);
     };
 
-    const selectedSummary = history.find((summary) => summary.date === selectedDate) ?? history[history.length - 1];
+    const getMetricValue = useCallback((day: DailyHealthMetrics, metricType: MetricType) => {
+        if (metricType === 'steps') return day.steps;
+        if (metricType === 'caloriesBurned') return day.caloriesBurned;
+        if (metricType === 'sleepMinutes') return day.sleepMinutes;
+        return day.avgHeartRate;
+    }, []);
 
-    const metricValues = history.map((summary) =>
-        metric === 'calories' ? summary.totalCalories : summary.totalProtein,
-    );
+    const formatMetricValue = useCallback((metricType: MetricType, value: number) => {
+        if (metricType === 'steps') return `${value.toLocaleString()} steps`;
+        if (metricType === 'caloriesBurned') return `${value} kcal`;
+        if (metricType === 'sleepMinutes') return `${(value / 60).toFixed(1)} h`;
+        return `${value} bpm`;
+    }, []);
+
+    const metricValues = healthHistory.map((day) => getMetricValue(day, metric));
     const maxMetricValue = Math.max(...metricValues, 1);
 
-    const insight = useMemo(() => {
-        const activeDays = history.filter((day) => day.totalCalories > 0 || day.totalProtein > 0).length;
-        const hitDays = history.filter(
-            (day) => day.totalCalories <= day.calorieGoal && day.totalProtein >= day.proteinGoal,
-        ).length;
-        const avgCalories = history.length
-            ? Math.round(history.reduce((sum, day) => sum + day.totalCalories, 0) / history.length)
-            : 0;
-        const avgProtein = history.length
-            ? Math.round(history.reduce((sum, day) => sum + day.totalProtein, 0) / history.length)
-            : 0;
-
-        return {
-            activeDays,
-            hitDays,
-            avgCalories,
-            avgProtein,
-        };
-    }, [history]);
+    const summary = useMemo(() => summarizeHealthRange(healthHistory), [healthHistory]);
+    const selectedHealth = healthHistory.find((day) => day.date === selectedDate) ?? healthHistory[healthHistory.length - 1];
 
     return (
         <View style={styles.container}>
             <ScreenTransitionView style={styles.container}>
                 <ScrollView contentContainerStyle={styles.scrollContent} removeClippedSubviews>
                     <View style={styles.contentWrap}>
-                    <View style={[styles.header, { marginTop: insets.top + 8 }]}>
-                        <Text style={styles.headerTitle}>History</Text>
-                    </View>
-
-                    {loading ? (
-                        <View style={styles.loadingBox}>
-                            <ActivityIndicator size="small" color={colors.primary} />
-                            <Text style={styles.loadingText}>Loading history…</Text>
-                        </View>
-                    ) : null}
-
-                    <AnimatedCard delay={80}>
-                        <View style={styles.titleRow}>
-                            <Ionicons name="pulse-outline" size={18} color={colors.text} />
-                            <Text style={styles.cardTitle}>Insights</Text>
+                        <View style={[styles.header, { marginTop: insets.top + 8 }]}> 
+                            <Text style={styles.headerTitle}>History</Text>
                         </View>
 
-                        <View style={styles.insightRow}>
-                            <View style={styles.insightItem}>
-                                <Text style={styles.insightValue}>{insight.activeDays}</Text>
-                                <Text style={styles.insightLabel}>active days</Text>
+                        <AnimatedCard delay={70}>
+                            <View style={styles.titleRow}>
+                                <Ionicons name="watch-outline" size={18} color={colors.text} />
+                                <Text style={styles.cardTitle}>Health Connect</Text>
                             </View>
-                            <View style={styles.insightItem}>
-                                <Text style={styles.insightValue}>{insight.hitDays}</Text>
-                                <Text style={styles.insightLabel}>target-hit days</Text>
+
+                            <Text style={styles.helperText}>{healthStatus}</Text>
+
+                            {permissionsGranted ? (
+                                <AnimatedButton
+                                    title="Refresh Health Data"
+                                    onPress={() => {
+                                        hapticLight();
+                                        loadHealthHistory(false);
+                                    }}
+                                />
+                            ) : (
+                                <AnimatedButton
+                                    title="Connect Health Data"
+                                    onPress={() => {
+                                        hapticLight();
+                                        loadHealthHistory(true);
+                                    }}
+                                />
+                            )}
+                        </AnimatedCard>
+
+                        {loading ? (
+                            <View style={styles.loadingBox}>
+                                <ActivityIndicator size="small" color={colors.primary} />
+                                <Text style={styles.loadingText}>Syncing health metrics…</Text>
                             </View>
-                            <View style={styles.insightItem}>
-                                <Text style={styles.insightValue}>{insight.avgCalories}</Text>
-                                <Text style={styles.insightLabel}>avg kcal</Text>
+                        ) : null}
+
+                        <AnimatedCard delay={100}>
+                            <View style={styles.titleRow}>
+                                <Ionicons name="pulse-outline" size={18} color={colors.text} />
+                                <Text style={styles.cardTitle}>Health Stats</Text>
                             </View>
-                            <View style={styles.insightItem}>
-                                <Text style={styles.insightValue}>{insight.avgProtein}g</Text>
-                                <Text style={styles.insightLabel}>avg protein</Text>
-                            </View>
-                        </View>
-                    </AnimatedCard>
 
-                    <AnimatedCard delay={120}>
-                        <View style={styles.titleRow}>
-                            <Ionicons name="bar-chart-outline" size={18} color={colors.text} />
-                            <Text style={styles.cardTitle}>Interactive Chart</Text>
-                        </View>
-
-                        <View style={styles.filterRow}>
-                            {RANGE_OPTIONS.map((option) => {
-                                const isActive = option === rangeDays;
-                                return (
-                                    <Pressable
-                                        key={option}
-                                        onPress={() => {
-                                            hapticLight();
-                                            setRangeDays(option);
-                                        }}
-                                        style={[styles.filterChip, isActive && styles.filterChipActive]}
-                                    >
-                                        <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
-                                            {option}d
-                                        </Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
-
-                        <View style={styles.filterRow}>
-                            <Pressable
-                                onPress={() => {
-                                    hapticLight();
-                                    setMetric('calories');
-                                }}
-                                style={[styles.filterChip, metric === 'calories' && styles.filterChipActive]}
-                            >
-                                <Text
-                                    style={[
-                                        styles.filterText,
-                                        metric === 'calories' && styles.filterTextActive,
-                                    ]}
-                                >
-                                    Calories
-                                </Text>
-                            </Pressable>
-                            <Pressable
-                                onPress={() => {
-                                    hapticLight();
-                                    setMetric('protein');
-                                }}
-                                style={[styles.filterChip, metric === 'protein' && styles.filterChipActive]}
-                            >
-                                <Text
-                                    style={[
-                                        styles.filterText,
-                                        metric === 'protein' && styles.filterTextActive,
-                                    ]}
-                                >
-                                    Protein
-                                </Text>
-                            </Pressable>
-                        </View>
-
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.chartScroll}
-                        >
-                            {history.map((summary) => {
-                                const value = metric === 'calories' ? summary.totalCalories : summary.totalProtein;
-                                const height = 14 + (value / maxMetricValue) * 96;
-                                const isSelected = summary.date === selectedDate;
-                                return (
-                                    <Pressable
-                                        key={summary.date}
-                                        onPress={() => handleSelectDate(summary.date)}
-                                        style={styles.barItem}
-                                    >
-                                        <View style={styles.barTrack}>
-                                            <AnimatedBarFill
-                                                targetHeight={height}
-                                                color={isSelected ? colors.primary : colors.primaryVariant}
-                                                trigger={`${isFocused}-${metric}-${rangeDays}`}
-                                            />
-                                        </View>
-                                        <Text style={[styles.barLabel, isSelected && styles.barLabelActive]}>
-                                            {format(new Date(summary.date), 'EEEEE')}
-                                        </Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </ScrollView>
-                    </AnimatedCard>
-
-                    <AnimatedCard delay={160}>
-                        <View style={styles.titleRow}>
-                            <Ionicons name="calendar-outline" size={18} color={colors.text} />
-                            <Text style={styles.cardTitle}>Selected Day</Text>
-                        </View>
-
-                        <Text style={styles.selectedDateText}>
-                            {selectedSummary ? format(new Date(selectedSummary.date), 'EEEE, MMM d') : 'No day selected'}
-                        </Text>
-
-                        <View style={styles.selectedStatsRow}>
-                            <Text style={styles.selectedStatText}>
-                                {selectedSummary?.totalCalories ?? 0} kcal
-                            </Text>
-                            <Text style={styles.selectedStatText}>
-                                {selectedSummary?.totalProtein ?? 0}g protein
-                            </Text>
-                        </View>
-
-                        {selectedLogs.length === 0 ? (
-                            <Text style={styles.emptyText}>No logs for this day.</Text>
-                        ) : (
-                            selectedLogs.map((log) => (
-                                <View key={log.id} style={styles.logRow}>
-                                    <Text style={styles.logName}>{log.foodName}</Text>
-                                    <Text style={styles.logValue}>{log.calories} kcal • {log.protein}g</Text>
+                            <View style={styles.insightRow}>
+                                <View style={styles.insightItem}>
+                                    <Text style={styles.insightValue}>{summary.averageSteps.toLocaleString()}</Text>
+                                    <Text style={styles.insightLabel}>avg steps</Text>
                                 </View>
-                            ))
-                        )}
-                    </AnimatedCard>
+                                <View style={styles.insightItem}>
+                                    <Text style={styles.insightValue}>{summary.averageCaloriesBurned}</Text>
+                                    <Text style={styles.insightLabel}>avg active kcal</Text>
+                                </View>
+                                <View style={styles.insightItem}>
+                                    <Text style={styles.insightValue}>{(summary.averageSleepMinutes / 60).toFixed(1)}h</Text>
+                                    <Text style={styles.insightLabel}>avg sleep</Text>
+                                </View>
+                                <View style={styles.insightItem}>
+                                    <Text style={styles.insightValue}>{summary.averageHeartRate || '--'}</Text>
+                                    <Text style={styles.insightLabel}>avg HR (bpm)</Text>
+                                </View>
+                            </View>
+
+                            <Text style={styles.secondaryMetaText}>{summary.daysWithData} active data days in {rangeDays}d range</Text>
+                        </AnimatedCard>
+
+                        <AnimatedCard delay={130}>
+                            <View style={styles.titleRow}>
+                                <Ionicons name="bar-chart-outline" size={18} color={colors.text} />
+                                <Text style={styles.cardTitle}>Interactive Health Chart</Text>
+                            </View>
+
+                            <View style={styles.filterRow}>
+                                {RANGE_OPTIONS.map((option) => {
+                                    const isActive = option === rangeDays;
+                                    return (
+                                        <Pressable
+                                            key={option}
+                                            onPress={() => {
+                                                hapticLight();
+                                                setRangeDays(option);
+                                            }}
+                                            style={[styles.filterChip, isActive && styles.filterChipActive]}
+                                        >
+                                            <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                                                {option}d
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+
+                            <View style={styles.metricRow}>
+                                {(['steps', 'caloriesBurned', 'sleepMinutes', 'avgHeartRate'] as MetricType[]).map((metricOption) => {
+                                    const isActive = metric === metricOption;
+                                    return (
+                                        <Pressable
+                                            key={metricOption}
+                                            onPress={() => {
+                                                hapticLight();
+                                                setMetric(metricOption);
+                                            }}
+                                            style={[styles.metricChip, isActive && styles.metricChipActive]}
+                                        >
+                                            <Text style={[styles.metricText, isActive && styles.metricTextActive]}>
+                                                {metricLabelMap[metricOption]}
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.chartScroll}
+                            >
+                                {healthHistory.map((day) => {
+                                    const value = getMetricValue(day, metric);
+                                    const height = 14 + (value / maxMetricValue) * 96;
+                                    const isSelected = day.date === selectedDate;
+
+                                    return (
+                                        <Pressable
+                                            key={day.date}
+                                            onPress={() => handleSelectDate(day.date)}
+                                            style={styles.barItem}
+                                        >
+                                            <View style={styles.barTrack}>
+                                                <AnimatedBarFill
+                                                    targetHeight={height}
+                                                    color={isSelected ? colors.primary : colors.primaryVariant}
+                                                    trigger={`${isFocused}-${metric}-${rangeDays}`}
+                                                />
+                                            </View>
+                                            <Text style={[styles.barLabel, isSelected && styles.barLabelActive]}>
+                                                {format(new Date(day.date), 'EEEEE')}
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </ScrollView>
+                        </AnimatedCard>
+
+                        <AnimatedCard delay={160}>
+                            <View style={styles.titleRow}>
+                                <Ionicons name="calendar-outline" size={18} color={colors.text} />
+                                <Text style={styles.cardTitle}>Selected Day</Text>
+                            </View>
+
+                            <Text style={styles.selectedDateText}>
+                                {selectedHealth ? format(new Date(selectedHealth.date), 'EEEE, MMM d') : 'No day selected'}
+                            </Text>
+
+                            <View style={styles.selectedStatsGrid}>
+                                <View style={styles.selectedStatCard}>
+                                    <Text style={styles.selectedStatLabel}>Steps</Text>
+                                    <Text style={styles.selectedStatValue}>{selectedHealth?.steps.toLocaleString() ?? 0}</Text>
+                                </View>
+                                <View style={styles.selectedStatCard}>
+                                    <Text style={styles.selectedStatLabel}>Calories Burned</Text>
+                                    <Text style={styles.selectedStatValue}>{selectedHealth?.caloriesBurned ?? 0} kcal</Text>
+                                </View>
+                                <View style={styles.selectedStatCard}>
+                                    <Text style={styles.selectedStatLabel}>Sleep</Text>
+                                    <Text style={styles.selectedStatValue}>
+                                        {((selectedHealth?.sleepMinutes ?? 0) / 60).toFixed(1)} h
+                                    </Text>
+                                </View>
+                                <View style={styles.selectedStatCard}>
+                                    <Text style={styles.selectedStatLabel}>Avg Heart Rate</Text>
+                                    <Text style={styles.selectedStatValue}>
+                                        {selectedHealth?.avgHeartRate ? `${selectedHealth.avgHeartRate} bpm` : '--'}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <Text style={styles.secondaryMetaText}>
+                                {metricLabelMap[metric]}: {formatMetricValue(metric, getMetricValue(selectedHealth ?? {
+                                    date: selectedDate,
+                                    steps: 0,
+                                    caloriesBurned: 0,
+                                    sleepMinutes: 0,
+                                    avgHeartRate: 0,
+                                }, metric))}
+                            </Text>
+
+                            <View style={styles.logsWrap}>
+                                <Text style={styles.subsectionTitle}>Food logs for this day</Text>
+                                {selectedLogs.length === 0 ? (
+                                    <Text style={styles.emptyText}>No food logs for this day.</Text>
+                                ) : (
+                                    selectedLogs.map((log) => (
+                                        <View key={log.id} style={styles.logRow}>
+                                            <Text style={styles.logName}>{log.foodName}</Text>
+                                            <Text style={styles.logValue}>{log.calories} kcal • {log.protein}g</Text>
+                                        </View>
+                                    ))
+                                )}
+                            </View>
+                        </AnimatedCard>
                     </View>
                 </ScrollView>
             </ScreenTransitionView>
@@ -310,17 +412,6 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingHorizontal: 2,
     },
-    loadingBox: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginBottom: 10,
-        paddingHorizontal: 4,
-    },
-    loadingText: {
-        color: colors.textSecondary,
-        fontSize: 13,
-    },
     headerTitle: {
         fontSize: 30,
         fontWeight: '700',
@@ -336,6 +427,22 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '700',
         color: colors.text,
+    },
+    helperText: {
+        color: colors.textSecondary,
+        fontSize: 13,
+        marginBottom: 10,
+    },
+    loadingBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 10,
+        paddingHorizontal: 4,
+    },
+    loadingText: {
+        color: colors.textSecondary,
+        fontSize: 13,
     },
     insightRow: {
         flexDirection: 'row',
@@ -360,6 +467,12 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginTop: 2,
     },
+    secondaryMetaText: {
+        color: colors.textSecondary,
+        fontSize: 12,
+        marginTop: 10,
+        fontWeight: '600',
+    },
     filterRow: {
         flexDirection: 'row',
         gap: 8,
@@ -383,7 +496,33 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     filterTextActive: {
-        color: '#FFFFFF',
+        color: colors.text,
+    },
+    metricRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 10,
+    },
+    metricChip: {
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingVertical: 7,
+        paddingHorizontal: 12,
+        backgroundColor: colors.background,
+    },
+    metricChipActive: {
+        backgroundColor: colors.surface,
+        borderColor: colors.primary,
+    },
+    metricText: {
+        color: colors.textSecondary,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    metricTextActive: {
+        color: colors.text,
     },
     chartScroll: {
         gap: 8,
@@ -420,15 +559,38 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 8,
     },
-    selectedStatsRow: {
+    selectedStatsGrid: {
         flexDirection: 'row',
-        gap: 14,
-        marginBottom: 8,
+        flexWrap: 'wrap',
+        gap: 10,
+        marginBottom: 4,
     },
-    selectedStatText: {
+    selectedStatCard: {
+        width: '47%',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.background,
+        padding: 10,
+    },
+    selectedStatLabel: {
         color: colors.textSecondary,
-        fontSize: 13,
-        fontWeight: '600',
+        fontSize: 12,
+        marginBottom: 2,
+    },
+    selectedStatValue: {
+        color: colors.text,
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    logsWrap: {
+        marginTop: 12,
+    },
+    subsectionTitle: {
+        color: colors.text,
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 2,
     },
     logRow: {
         borderRadius: 10,
