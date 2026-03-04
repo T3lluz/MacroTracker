@@ -1,0 +1,105 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK with EAS
+        id: eas_build
+        run: |
+          # Start the EAS build and capture the build URL
+          BUILD_OUTPUT=$(eas build --platform android --profile preview --non-interactive --json 2>/dev/null || eas build --platform android --profile preview --non-interactive)
+          echo "Build output: $BUILD_OUTPUT"
+          
+          # Extract the artifact URL from EAS CLI JSON output
+          ARTIFACT_URL=$(echo "$BUILD_OUTPUT" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              if isinstance(data, list):
+                  print(data[0].get('artifacts', {}).get('buildUrl', ''))
+              else:
+                  print(data.get('artifacts', {}).get('buildUrl', ''))
+          except:
+              pass
+          ")
+          echo "artifact_url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
+
+      - name: Download APK
+        run: |
+          ARTIFACT_URL="${{ steps.eas_build.outputs.artifact_url }}"
+          if [ -z "$ARTIFACT_URL" ]; then
+            echo "Falling back to eas build:list to find latest APK..."
+            ARTIFACT_URL=$(eas build:list --platform android --status finished --limit 1 --json 2>/dev/null | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          if isinstance(data, list) and data:
+              print(data[0].get('artifacts', {}).get('buildUrl', ''))
+          " )
+          fi
+          echo "Downloading APK from: $ARTIFACT_URL"
+          curl -L -o MacroTracker.apk "$ARTIFACT_URL"
+
+      - name: Get release name
+        id: release_name
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.release_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_name.outputs.name }}
+          name: MacroTracker ${{ steps.release_name.outputs.name }}
+          body: |
+            ## 📱 MacroTracker ${{ steps.release_name.outputs.name }}
+
+            ### Installation
+            1. Download `MacroTracker.apk` below
+            2. On your Android device, enable **Install unknown apps** in Settings
+            3. Open the downloaded APK and tap **Install**
+
+            ### What's included
+            - Daily calorie & protein tracking
+            - 7-day history & stats
+            - Animated UI with dark theme
+            - Persistent local storage
+          files: MacroTracker.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
