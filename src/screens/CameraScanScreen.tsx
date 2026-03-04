@@ -23,93 +23,339 @@ import Animated, {
     FadeIn,
     FadeOut,
 } from 'react-native-reanimated';
+import { buildGeminiUrl, GEMINI_SCAN_MODELS, hasGeminiApiKey, geminiApiKeySetupHint } from '../config/ai';
 
 // ─── Gemini Vision API ────────────────────────────────────────────────────────
-// Set your free Gemini API key here (get one at https://aistudio.google.com/app/apikey)
-const GEMINI_API_KEY = 'AIzaSyCGWHG77glS_8mqsxofjbPkrxJPvZZGq_M';
-
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+// Uses shared key/model config from src/config/ai.ts
 
 interface ScanResult {
     foodName: string;
     caloriesPerServing: number;
     proteinPerServing: number;
     servingsPerContainer: number;
+    servingSizeGrams: number;
+    packageWeightGrams: number;
     totalCalories: number;
     totalProtein: number;
 }
 
-const PROMPT = `You are a nutrition label reader. Analyze this image of a food product's nutrition label.
-Extract the following values exactly as printed:
-1. Product/food name (from anywhere on the packaging)
-2. Calories per serving
-3. Protein per serving in grams
-4. Servings per container (or servings per bag/package)
-
-Then calculate:
-- Total calories = calories per serving × servings per container
-- Total protein = protein per serving × servings per container
-
-Respond ONLY with a JSON object in this exact format, no markdown, no explanation:
-{
-  "foodName": "string",
-  "caloriesPerServing": number,
-  "proteinPerServing": number,
-  "servingsPerContainer": number,
-  "totalCalories": number,
-  "totalProtein": number
+interface FollowUpPrompt {
+    id: 'foodName' | 'calories' | 'protein' | 'servings' | 'packageWeight' | 'servingSize';
+    label: string;
+    helperText: string;
+    required?: boolean;
 }
 
-If a value cannot be found, use 0. Never return null.`;
+const toRoundedNumber = (value: unknown, fallback = 0): number => {
+    const num = Number(value);
+    return Number.isFinite(num) ? Math.round(num) : fallback;
+};
 
-async function analyzeImageWithGemini(base64Image: string): Promise<ScanResult> {
-    const body = {
-        contents: [
-            {
-                parts: [
-                    { text: PROMPT },
-                    {
-                        inline_data: {
-                            mime_type: 'image/jpeg',
-                            data: base64Image,
-                        },
-                    },
-                ],
-            },
-        ],
-        generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 512,
-        },
-    };
+const toFiniteNumber = (value: unknown, fallback = 0): number => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+};
 
-    const response = await fetch(GEMINI_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
+const roundTo = (value: number, decimals = 2): number => {
+    const factor = 10 ** decimals;
+    return Math.round(value * factor) / factor;
+};
 
-    if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Gemini API error ${response.status}: ${err}`);
+const formatInputNumber = (value: number): string => {
+    if (!Number.isFinite(value) || value <= 0) return '';
+    const rounded = roundTo(value, 2);
+    return String(rounded);
+};
+
+const tryExtractNumber = (source: string, keys: string[]): number | undefined => {
+    for (const key of keys) {
+        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const withQuotedKey = new RegExp(`\\"${escaped}\\"\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)`, 'i');
+        const withPlainKey = new RegExp(`${escaped}\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)`, 'i');
+        const compactKey = key.replace(/\s+/g, '');
+        const withSpacesBetweenLetters = compactKey.split('').join('\\s*');
+        const fuzzyKey = new RegExp(`${withSpacesBetweenLetters}\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)`, 'i');
+
+        const match = source.match(withQuotedKey) || source.match(withPlainKey) || source.match(fuzzyKey);
+        if (match?.[1]) {
+            const value = Number(match[1]);
+            if (Number.isFinite(value)) return value;
+        }
+    }
+    return undefined;
+};
+
+const parseScanResultFallback = (source: string): ScanResult | null => {
+    const foodNameMatch =
+        source.match(/"foodName"\s*:\s*"([^"]+)"/i) ||
+        source.match(/food\s*name\s*[:=]\s*"?([^\n,\r}]+)"?/i) ||
+        source.match(/product\s*name\s*[:=]\s*"?([^\n,\r}]+)"?/i);
+
+    const caloriesPerServing = tryExtractNumber(source, [
+        'caloriesPerServing',
+        'calories per serving',
+        'calories_per_serving',
+    ]);
+    const proteinPerServing = tryExtractNumber(source, [
+        'proteinPerServing',
+        'protein per serving',
+        'protein_per_serving',
+    ]);
+    const servingsPerContainer = tryExtractNumber(source, [
+        'servingsPerContainer',
+        'servings per container',
+        'servings_per_container',
+        'servings per bag',
+    ]);
+    const servingSizeGrams = tryExtractNumber(source, [
+        'servingSizeGrams',
+        'serving size grams',
+        'serving_size_grams',
+        'serving size g',
+    ]);
+    const packageWeightGrams = tryExtractNumber(source, [
+        'packageWeightGrams',
+        'package weight grams',
+        'package_weight_grams',
+        'net weight g',
+        'net wt g',
+    ]);
+    const totalCalories = tryExtractNumber(source, ['totalCalories', 'total calories']);
+    const totalProtein = tryExtractNumber(source, ['totalProtein', 'total protein']);
+
+    if (
+        caloriesPerServing === undefined &&
+        proteinPerServing === undefined &&
+        servingsPerContainer === undefined &&
+        servingSizeGrams === undefined &&
+        packageWeightGrams === undefined &&
+        totalCalories === undefined &&
+        totalProtein === undefined
+    ) {
+        return null;
     }
 
-    const data = await response.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const safeServingSize = Math.max(0, toRoundedNumber(servingSizeGrams, 0));
+    const safePackageWeight = Math.max(0, toRoundedNumber(packageWeightGrams, 0));
+    let safeServings = Math.max(0, toFiniteNumber(servingsPerContainer, 0));
+    if (safeServings <= 0 && safeServingSize > 0 && safePackageWeight > 0) {
+        safeServings = roundTo(safePackageWeight / safeServingSize, 2);
+    }
+    const safeCaloriesPerServing = toRoundedNumber(caloriesPerServing, 0);
+    const safeProteinPerServing = toRoundedNumber(proteinPerServing, 0);
 
-    // Strip any accidental markdown fences
-    const cleaned = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(cleaned) as ScanResult;
-
-    // Validate / sanitise
     return {
-        foodName: parsed.foodName || 'Scanned Food',
-        caloriesPerServing: Math.round(Number(parsed.caloriesPerServing) || 0),
-        proteinPerServing: Math.round(Number(parsed.proteinPerServing) || 0),
-        servingsPerContainer: Math.round(Number(parsed.servingsPerContainer) || 1),
-        totalCalories: Math.round(Number(parsed.totalCalories) || 0),
-        totalProtein: Math.round(Number(parsed.totalProtein) || 0),
+        foodName: (foodNameMatch?.[1] || 'Scanned Food').trim(),
+        caloriesPerServing: safeCaloriesPerServing,
+        proteinPerServing: safeProteinPerServing,
+        servingsPerContainer: safeServings,
+        servingSizeGrams: safeServingSize,
+        packageWeightGrams: safePackageWeight,
+        totalCalories: toRoundedNumber(totalCalories, safeCaloriesPerServing * safeServings),
+        totalProtein: toRoundedNumber(totalProtein, safeProteinPerServing * safeServings),
     };
+};
+
+const trimApiError = (value: string) =>
+    value
+        .replace(/\s+/g, ' ')
+        .replace(/<[^>]+>/g, '')
+        .slice(0, 220)
+        .trim();
+
+const maybeComputeTotals = (partial: Partial<ScanResult>): ScanResult => {
+    const caloriesPerServing = Math.max(0, toRoundedNumber(partial.caloriesPerServing, 0));
+    const proteinPerServing = Math.max(0, toRoundedNumber(partial.proteinPerServing, 0));
+    const servingSizeGrams = Math.max(0, toRoundedNumber(partial.servingSizeGrams, 0));
+    const packageWeightGrams = Math.max(0, toRoundedNumber(partial.packageWeightGrams, 0));
+
+    let servingsPerContainer = Math.max(0, toFiniteNumber(partial.servingsPerContainer, 0));
+    if (servingsPerContainer <= 0 && servingSizeGrams > 0 && packageWeightGrams > 0) {
+        servingsPerContainer = roundTo(packageWeightGrams / servingSizeGrams, 2);
+    }
+
+    return {
+        foodName: (partial.foodName || 'Scanned Food').trim(),
+        caloriesPerServing,
+        proteinPerServing,
+        servingsPerContainer,
+        servingSizeGrams,
+        packageWeightGrams,
+        totalCalories: caloriesPerServing * servingsPerContainer,
+        totalProtein: proteinPerServing * servingsPerContainer,
+    };
+};
+
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: timeoutController.signal,
+        });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+const createGenerationConfig = (structuredOutput: boolean) => {
+    if (!structuredOutput) {
+        return {
+            temperature: 0.1,
+            maxOutputTokens: 220,
+        };
+    }
+
+    return {
+        temperature: 0.1,
+        maxOutputTokens: 220,
+        responseMimeType: 'application/json',
+        responseSchema: {
+            type: 'OBJECT',
+            properties: {
+                foodName: { type: 'STRING' },
+                caloriesPerServing: { type: 'NUMBER' },
+                proteinPerServing: { type: 'NUMBER' },
+                servingsPerContainer: { type: 'NUMBER' },
+                servingSizeGrams: { type: 'NUMBER' },
+                packageWeightGrams: { type: 'NUMBER' },
+            },
+            required: [
+                'foodName',
+                'caloriesPerServing',
+                'proteinPerServing',
+                'servingsPerContainer',
+                'servingSizeGrams',
+                'packageWeightGrams',
+            ],
+        },
+    };
+};
+
+const PROMPT = `Read the nutrition facts label in this image.
+Return ONLY JSON with these keys:
+{
+  "foodName": string,
+  "caloriesPerServing": number,
+  "proteinPerServing": number,
+    "servingsPerContainer": number,
+    "servingSizeGrams": number,
+    "packageWeightGrams": number
+}
+Use 0 for missing numbers. No markdown. No explanation.`;
+
+async function analyzeImageWithGemini(base64Image: string): Promise<ScanResult> {
+    const parts = [
+        { text: PROMPT },
+        {
+            inline_data: {
+                mime_type: 'image/jpeg',
+                data: base64Image,
+            },
+        },
+    ];
+
+    let responseData: any = null;
+    let errText = '';
+
+    for (const model of GEMINI_SCAN_MODELS) {
+        for (const structuredOutput of [true, false]) {
+            let response: Response;
+
+            try {
+                response = await fetchWithTimeout(
+                    buildGeminiUrl(model),
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts }],
+                            generationConfig: createGenerationConfig(structuredOutput),
+                        }),
+                    },
+                    16000,
+                );
+            } catch (error: any) {
+                if (error?.name === 'AbortError') {
+                    errText = 'timeout';
+                    break;
+                }
+                throw error;
+            }
+
+            if (response.ok) {
+                responseData = await response.json();
+                break;
+            }
+
+            errText = await response.text();
+
+            if (response.status === 404) {
+                break;
+            }
+
+            if (response.status === 400 && structuredOutput) {
+                continue;
+            }
+
+            if (response.status === 400) {
+                const loweredError = errText.toLowerCase();
+                if (/not supported|unsupported|not found|invalid argument/.test(loweredError)) {
+                    break;
+                }
+            }
+
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Gemini rejected the API key. Check key validity and API restrictions.');
+            }
+
+            if (response.status === 429) {
+                throw new Error('Gemini rate limit hit. Wait a moment and try again.');
+            }
+
+            throw new Error(`Gemini API error ${response.status}: ${trimApiError(errText)}`);
+        }
+
+        if (responseData) break;
+    }
+
+    if (!responseData) {
+        throw new Error(`Gemini API error: ${trimApiError(errText) || 'No supported Gemini model was found.'}`);
+    }
+
+    const text: string = responseData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    const finishReason = String(responseData?.candidates?.[0]?.finishReason || '');
+
+    if (finishReason === 'MAX_TOKENS') {
+        throw new Error('AI response was truncated. Retake with clearer label or retry.');
+    }
+
+    if (!cleaned) {
+        throw new Error('Gemini returned an empty response. Please retake the photo and try again.');
+    }
+
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    const jsonPayload =
+        jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart
+            ? cleaned.slice(jsonStart, jsonEnd + 1)
+            : cleaned;
+
+    let parsed: ScanResult;
+    try {
+        parsed = maybeComputeTotals(JSON.parse(jsonPayload) as Partial<ScanResult>);
+    } catch {
+        const fallbackParsed = parseScanResultFallback(cleaned);
+        if (!fallbackParsed) {
+            throw new Error('Could not parse AI response. Please retake the photo and try again.');
+        }
+        parsed = maybeComputeTotals(fallbackParsed);
+    }
+
+    return maybeComputeTotals(parsed);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -120,7 +366,12 @@ const CameraScanScreen = ({ navigation, route }: any) => {
     const [capturedBase64, setCapturedBase64] = useState<string | null>(null);
     const [scanning, setScanning] = useState(false);
     const [result, setResult] = useState<ScanResult | null>(null);
+    const [foodNameOverride, setFoodNameOverride] = useState('');
+    const [caloriesOverride, setCaloriesOverride] = useState('');
+    const [proteinOverride, setProteinOverride] = useState('');
     const [servingsOverride, setServingsOverride] = useState('');
+    const [servingSizeOverride, setServingSizeOverride] = useState('');
+    const [packageWeightOverride, setPackageWeightOverride] = useState('');
     const cameraRef = useRef<CameraView>(null);
 
     const flashAnim = useSharedValue(0);
@@ -138,8 +389,10 @@ const CameraScanScreen = ({ navigation, route }: any) => {
             });
 
             const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.7,
+                quality: 0.45,
                 base64: true,
+                exif: false,
+                skipProcessing: true,
             });
 
             if (photo) {
@@ -161,7 +414,7 @@ const CameraScanScreen = ({ navigation, route }: any) => {
         }
         const picked = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.7,
+            quality: 0.45,
             base64: true,
         });
         if (!picked.canceled && picked.assets[0]) {
@@ -175,10 +428,10 @@ const CameraScanScreen = ({ navigation, route }: any) => {
     const analyseImage = useCallback(async () => {
         if (!capturedBase64) return;
 
-        if (GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
+        if (!hasGeminiApiKey) {
             Alert.alert(
                 '⚠️ API Key Required',
-                'Please set your Gemini API key in CameraScanScreen.tsx.\n\nGet a free key at:\nhttps://aistudio.google.com/app/apikey',
+                `${geminiApiKeySetupHint}\n\nGet a free key at:\nhttps://aistudio.google.com/app/apikey`,
             );
             return;
         }
@@ -187,7 +440,12 @@ const CameraScanScreen = ({ navigation, route }: any) => {
         try {
             const scanResult = await analyzeImageWithGemini(capturedBase64);
             setResult(scanResult);
-            setServingsOverride(String(scanResult.servingsPerContainer));
+            setFoodNameOverride(scanResult.foodName === 'Scanned Food' ? '' : scanResult.foodName);
+            setCaloriesOverride(formatInputNumber(scanResult.caloriesPerServing));
+            setProteinOverride(formatInputNumber(scanResult.proteinPerServing));
+            setServingsOverride(formatInputNumber(scanResult.servingsPerContainer));
+            setServingSizeOverride(formatInputNumber(scanResult.servingSizeGrams));
+            setPackageWeightOverride(formatInputNumber(scanResult.packageWeightGrams));
             setPhase('result');
         } catch (e: any) {
             Alert.alert('Scan Failed', `Could not read the nutrition label.\n\n${e.message ?? e}`);
@@ -199,19 +457,169 @@ const CameraScanScreen = ({ navigation, route }: any) => {
     // ── Servings adjustment recalculates totals ───────────────────────────────
     const getAdjustedResult = (): ScanResult | null => {
         if (!result) return null;
-        const servings = parseFloat(servingsOverride) || result.servingsPerContainer;
-        return {
-            ...result,
-            servingsPerContainer: servings,
-            totalCalories: Math.round(result.caloriesPerServing * servings),
-            totalProtein: Math.round(result.proteinPerServing * servings),
+
+        const parseNonNegative = (value: string) => {
+            const num = Number(value);
+            return Number.isFinite(num) && num >= 0 ? num : null;
         };
+
+        const parsePositive = (value: string) => {
+            const num = Number(value);
+            return Number.isFinite(num) && num > 0 ? num : null;
+        };
+
+        const foodName = foodNameOverride.trim() || result.foodName;
+        const caloriesPerServing = parsePositive(caloriesOverride) ?? Math.max(0, result.caloriesPerServing);
+        const proteinPerServing = parseNonNegative(proteinOverride) ?? Math.max(0, result.proteinPerServing);
+
+        let servingsPerContainer = parsePositive(servingsOverride) ?? Math.max(0, result.servingsPerContainer);
+        let servingSizeGrams = parsePositive(servingSizeOverride) ?? Math.max(0, result.servingSizeGrams);
+        let packageWeightGrams = parsePositive(packageWeightOverride) ?? Math.max(0, result.packageWeightGrams);
+
+        if (servingsPerContainer <= 0 && servingSizeGrams > 0 && packageWeightGrams > 0) {
+            servingsPerContainer = roundTo(packageWeightGrams / servingSizeGrams, 2);
+        }
+        if (servingSizeGrams <= 0 && servingsPerContainer > 0 && packageWeightGrams > 0) {
+            servingSizeGrams = roundTo(packageWeightGrams / servingsPerContainer, 2);
+        }
+        if (packageWeightGrams <= 0 && servingsPerContainer > 0 && servingSizeGrams > 0) {
+            packageWeightGrams = roundTo(servingsPerContainer * servingSizeGrams, 2);
+        }
+
+        return maybeComputeTotals({
+            ...result,
+            foodName,
+            caloriesPerServing,
+            proteinPerServing,
+            servingsPerContainer,
+            servingSizeGrams,
+            packageWeightGrams,
+        });
+    };
+
+    const adj = getAdjustedResult();
+    const followUpPrompts: FollowUpPrompt[] = [];
+
+    if (adj) {
+        const hasNamedFood = adj.foodName.trim().length > 0 && adj.foodName.trim().toLowerCase() !== 'scanned food';
+        const hasPackageWeight = adj.packageWeightGrams > 0;
+        const hasServingSize = adj.servingSizeGrams > 0;
+
+        if (!hasNamedFood) {
+            followUpPrompts.push({
+                id: 'foodName',
+                label: 'Product Name',
+                helperText: 'AI could not read the product name clearly.',
+                required: true,
+            });
+        }
+        if (adj.caloriesPerServing <= 0) {
+            followUpPrompts.push({
+                id: 'calories',
+                label: 'Calories Per Serving',
+                helperText: 'Needed to calculate total calories correctly.',
+                required: true,
+            });
+        }
+        if (adj.proteinPerServing <= 0) {
+            followUpPrompts.push({
+                id: 'protein',
+                label: 'Protein Per Serving (g)',
+                helperText: 'Optional, but helpful for accurate macro totals.',
+            });
+        }
+        if (!hasPackageWeight && adj.caloriesPerServing > 0) {
+            followUpPrompts.push({
+                id: 'packageWeight',
+                label: 'Total Product Weight (g)',
+                helperText: 'Optional but recommended for better serving calculations.',
+            });
+        }
+        if (hasPackageWeight && !hasServingSize) {
+            followUpPrompts.push({
+                id: 'servingSize',
+                label: 'Serving Size (g)',
+                helperText: 'Add this to auto-calculate servings from package weight.',
+            });
+        }
+        if (adj.servingsPerContainer <= 0 && !(hasPackageWeight && hasServingSize)) {
+            followUpPrompts.push({
+                id: 'servings',
+                label: 'Servings In Package',
+                helperText: 'Enter servings, or provide both package weight and serving size.',
+                required: true,
+            });
+        }
+    }
+
+    const followUpInputProps: Record<FollowUpPrompt['id'], {
+        value: string;
+        onChangeText: (value: string) => void;
+        placeholder: string;
+        keyboardType?: 'default' | 'numeric' | 'decimal-pad';
+    }> = {
+        foodName: {
+            value: foodNameOverride,
+            onChangeText: setFoodNameOverride,
+            placeholder: 'Enter product name',
+            keyboardType: 'default',
+        },
+        calories: {
+            value: caloriesOverride,
+            onChangeText: setCaloriesOverride,
+            placeholder: 'e.g. 180',
+            keyboardType: 'decimal-pad',
+        },
+        protein: {
+            value: proteinOverride,
+            onChangeText: setProteinOverride,
+            placeholder: 'e.g. 12',
+            keyboardType: 'decimal-pad',
+        },
+        servings: {
+            value: servingsOverride,
+            onChangeText: setServingsOverride,
+            placeholder: 'e.g. 4',
+            keyboardType: 'decimal-pad',
+        },
+        packageWeight: {
+            value: packageWeightOverride,
+            onChangeText: setPackageWeightOverride,
+            placeholder: 'e.g. 340',
+            keyboardType: 'decimal-pad',
+        },
+        servingSize: {
+            value: servingSizeOverride,
+            onChangeText: setServingSizeOverride,
+            placeholder: 'e.g. 85',
+            keyboardType: 'decimal-pad',
+        },
     };
 
     // ── Log the food ──────────────────────────────────────────────────────────
     const handleLog = useCallback(() => {
         const adj = getAdjustedResult();
         if (!adj) return;
+
+        const missingRequired: string[] = [];
+        if (!adj.foodName.trim() || adj.foodName.trim().toLowerCase() === 'scanned food') {
+            missingRequired.push('product name');
+        }
+        if (adj.caloriesPerServing <= 0) {
+            missingRequired.push('calories per serving');
+        }
+        if (adj.servingsPerContainer <= 0) {
+            missingRequired.push('servings in package');
+        }
+
+        if (missingRequired.length > 0) {
+            Alert.alert(
+                'Need More Label Details',
+                `Please fill: ${missingRequired.join(', ')}.`,
+            );
+            return;
+        }
+
         // Navigate back passing data to HomeScreen
         navigation.navigate('Home', {
             scannedFood: {
@@ -220,7 +628,16 @@ const CameraScanScreen = ({ navigation, route }: any) => {
                 protein: adj.totalProtein,
             },
         });
-    }, [result, servingsOverride, navigation]);
+    }, [
+        result,
+        foodNameOverride,
+        caloriesOverride,
+        proteinOverride,
+        servingsOverride,
+        servingSizeOverride,
+        packageWeightOverride,
+        navigation,
+    ]);
 
     // ── Permission gate ───────────────────────────────────────────────────────
     if (!permission) {
@@ -350,7 +767,6 @@ const CameraScanScreen = ({ navigation, route }: any) => {
     // ─────────────────────────────────────────────────────────────────────────
     // PHASE: result
     // ─────────────────────────────────────────────────────────────────────────
-    const adj = getAdjustedResult();
     return (
         <View style={styles.container}>
             <ScrollView contentContainerStyle={styles.resultContent}>
@@ -359,22 +775,33 @@ const CameraScanScreen = ({ navigation, route }: any) => {
 
                 <Animated.View entering={FadeIn.duration(400)} style={styles.resultCard}>
                     <Text style={styles.resultTitle}>📊 Nutrition Scan Results</Text>
-                    <Text style={styles.resultFoodName}>{result!.foodName}</Text>
+                    <Text style={styles.resultFoodName}>{adj!.foodName}</Text>
 
                     {/* Per serving */}
                     <View style={styles.resultSection}>
                         <Text style={styles.resultSectionLabel}>Per Serving</Text>
                         <View style={styles.macroRow}>
                             <View style={[styles.macroPill, { backgroundColor: colors.primaryVariant }]}>
-                                <Text style={styles.macroPillValue}>{result!.caloriesPerServing}</Text>
+                                <Text style={styles.macroPillValue}>{adj!.caloriesPerServing}</Text>
                                 <Text style={styles.macroPillLabel}>kcal</Text>
                             </View>
                             <View style={[styles.macroPill, { backgroundColor: '#1a5e5a' }]}>
-                                <Text style={styles.macroPillValue}>{result!.proteinPerServing}g</Text>
+                                <Text style={styles.macroPillValue}>{adj!.proteinPerServing}g</Text>
                                 <Text style={styles.macroPillLabel}>protein</Text>
                             </View>
                         </View>
                     </View>
+
+                    {(adj!.packageWeightGrams > 0 || adj!.servingSizeGrams > 0) && (
+                        <View style={styles.packageMetaRow}>
+                            {adj!.packageWeightGrams > 0 && (
+                                <Text style={styles.packageMetaText}>Package: {adj!.packageWeightGrams}g</Text>
+                            )}
+                            {adj!.servingSizeGrams > 0 && (
+                                <Text style={styles.packageMetaText}>Serving: {adj!.servingSizeGrams}g</Text>
+                            )}
+                        </View>
+                    )}
 
                     {/* Servings override */}
                     <View style={styles.resultSection}>
@@ -408,6 +835,32 @@ const CameraScanScreen = ({ navigation, route }: any) => {
                         </View>
                     </View>
 
+                    {followUpPrompts.length > 0 && (
+                        <View style={styles.followUpCard}>
+                            <Text style={styles.followUpTitle}>Need A Few More Details</Text>
+                            {followUpPrompts.map((prompt) => {
+                                const inputProps = followUpInputProps[prompt.id];
+                                return (
+                                    <View key={prompt.id} style={styles.followUpField}>
+                                        <Text style={styles.followUpLabel}>
+                                            {prompt.label}
+                                            {prompt.required ? ' *' : ''}
+                                        </Text>
+                                        <TextInput
+                                            style={styles.followUpInput}
+                                            value={inputProps.value}
+                                            onChangeText={inputProps.onChangeText}
+                                            keyboardType={inputProps.keyboardType}
+                                            placeholder={inputProps.placeholder}
+                                            placeholderTextColor={colors.textSecondary}
+                                        />
+                                        <Text style={styles.followUpHint}>{prompt.helperText}</Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
+
                     {/* WHOLE BAG TOTAL */}
                     <View style={styles.totalBox}>
                         <Text style={styles.totalLabel}>🛍 Whole Package Totals</Text>
@@ -425,7 +878,7 @@ const CameraScanScreen = ({ navigation, route }: any) => {
                             </View>
                         </View>
                         <Text style={styles.totalFormula}>
-                            ({result!.caloriesPerServing} kcal × {parseFloat(servingsOverride) || result!.servingsPerContainer} servings)
+                            ({adj!.caloriesPerServing} kcal × {adj!.servingsPerContainer} servings)
                         </Text>
                     </View>
                 </Animated.View>
@@ -441,6 +894,12 @@ const CameraScanScreen = ({ navigation, route }: any) => {
                         setCapturedUri(null);
                         setCapturedBase64(null);
                         setResult(null);
+                        setFoodNameOverride('');
+                        setCaloriesOverride('');
+                        setProteinOverride('');
+                        setServingsOverride('');
+                        setServingSizeOverride('');
+                        setPackageWeightOverride('');
                         setPhase('camera');
                     }}
                     variant="secondary"
@@ -704,6 +1163,60 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: colors.text,
         paddingVertical: 10,
+    },
+    packageMetaRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 16,
+        flexWrap: 'wrap',
+    },
+    packageMetaText: {
+        color: colors.textSecondary,
+        fontSize: 13,
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    followUpCard: {
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 16,
+    },
+    followUpTitle: {
+        color: colors.text,
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 10,
+    },
+    followUpField: {
+        marginBottom: 12,
+    },
+    followUpLabel: {
+        color: colors.text,
+        fontSize: 13,
+        fontWeight: '600',
+        marginBottom: 6,
+    },
+    followUpInput: {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: 10,
+        color: colors.text,
+        fontSize: 16,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+    followUpHint: {
+        color: colors.textSecondary,
+        fontSize: 12,
+        marginTop: 5,
     },
     totalBox: {
         backgroundColor: `${colors.primary}18`,

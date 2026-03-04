@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { ViewStyle, StyleSheet, Dimensions } from 'react-native';
+import { ViewStyle, StyleSheet } from 'react-native';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
-    withSpring,
+    withTiming,
     withDelay,
+    Easing,
 } from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 
@@ -14,26 +15,33 @@ interface AnimatedCardProps {
     delay?: number;
 }
 
-const { width } = Dimensions.get('window');
-
 const AnimatedCard: React.FC<AnimatedCardProps> = ({ children, style, delay = 0 }) => {
-    const translateX = useSharedValue(width);
-    const opacity = useSharedValue(0);
+    const progress = useSharedValue(0);
 
     useEffect(() => {
-        translateX.value = withDelay(delay, withSpring(0, { damping: 15, stiffness: 100 }));
-        opacity.value = withDelay(delay, withSpring(1));
-    }, []);
+        progress.value = 0;
+        progress.value = withDelay(
+            delay,
+            withTiming(1, {
+                duration: 240,
+                easing: Easing.out(Easing.cubic),
+            }),
+        );
+    }, [delay]);
 
     const animatedStyle = useAnimatedStyle(() => {
         return {
-            transform: [{ translateX: translateX.value }],
-            opacity: opacity.value,
+            transform: [{ translateY: (1 - progress.value) * 12 }],
+            opacity: progress.value,
         };
     });
 
     return (
-        <Animated.View style={[styles.card, animatedStyle, style]}>
+        <Animated.View
+            renderToHardwareTextureAndroid
+            shouldRasterizeIOS
+            style={[styles.card, animatedStyle, style]}
+        >
             {children}
         </Animated.View>
     );
@@ -42,14 +50,16 @@ const AnimatedCard: React.FC<AnimatedCardProps> = ({ children, style, delay = 0 
 const styles = StyleSheet.create({
     card: {
         backgroundColor: colors.surface,
-        borderRadius: 16,
-        padding: 16,
-        marginVertical: 8,
+        borderRadius: 14,
+        padding: 14,
+        marginVertical: 6,
+        borderWidth: 1,
+        borderColor: colors.border,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 4,
+        elevation: 2,
     },
 });
 

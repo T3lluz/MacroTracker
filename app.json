@@ -3,6 +3,8 @@
         "name": "MacroTracker",
         "slug": "macrotracker",
         "version": "1.0.0",
+        "jsEngine": "hermes",
+        "newArchEnabled": true,
         "orientation": "portrait",
         "icon": "./assets/icon.png",
         "userInterfaceStyle": "light",
@@ -10,6 +12,9 @@
             "image": "./assets/splash.png",
             "resizeMode": "contain",
             "backgroundColor": "#ffffff"
+        },
+        "extra": {
+            "geminiApiKey": "YOUR_GEMINI_API_KEY_HERE"
         },
         "ios": {
             "supportsTablet": true,
