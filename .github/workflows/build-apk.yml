@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Android APK locally
     runs-on: ubuntu-latest
 
     steps:
@@ -26,50 +26,24 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Setup Java SDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Prebuild Expo Android project
+        run: npx expo prebuild -p android --clean
 
-      - name: Build APK with EAS
-        id: eas_build
-        run: |
-          # Start the EAS build and capture the build URL
-          BUILD_OUTPUT=$(eas build --platform android --profile preview --non-interactive --json 2>/dev/null || eas build --platform android --profile preview --non-interactive)
-          echo "Build output: $BUILD_OUTPUT"
-          
-          # Extract the artifact URL from EAS CLI JSON output
-          ARTIFACT_URL=$(echo "$BUILD_OUTPUT" | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              if isinstance(data, list):
-                  print(data[0].get('artifacts', {}).get('buildUrl', ''))
-              else:
-                  print(data.get('artifacts', {}).get('buildUrl', ''))
-          except:
-              pass
-          ")
-          echo "artifact_url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
+      - name: Build APK with Gradle
+        working-directory: android
+        run: ./gradlew assembleRelease
 
-      - name: Download APK
-        run: |
-          ARTIFACT_URL="${{ steps.eas_build.outputs.artifact_url }}"
-          if [ -z "$ARTIFACT_URL" ]; then
-            echo "Falling back to eas build:list to find latest APK..."
-            ARTIFACT_URL=$(eas build:list --platform android --status finished --limit 1 --json 2>/dev/null | python3 -c "
-          import sys, json
-          data = json.load(sys.stdin)
-          if isinstance(data, list) and data:
-              print(data[0].get('artifacts', {}).get('buildUrl', ''))
-          " )
-          fi
-          echo "Downloading APK from: $ARTIFACT_URL"
-          curl -L -o MacroTracker.apk "$ARTIFACT_URL"
+      - name: Rename APK
+        run: mv android/app/build/outputs/apk/release/app-release.apk MacroTracker.apk
 
       - name: Get release name
         id: release_name
@@ -95,6 +69,7 @@ jobs:
 
             ### What's included
             - Daily calorie & protein tracking
+            - **NEW:** AI Nutrition Label Scanner (Camera & Gallery)
             - 7-day history & stats
             - Animated UI with dark theme
             - Persistent local storage

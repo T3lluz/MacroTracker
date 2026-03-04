@@ -12,18 +12,40 @@
             "backgroundColor": "#ffffff"
         },
         "ios": {
-            "supportsTablet": true
+            "supportsTablet": true,
+            "infoPlist": {
+                "NSCameraUsageDescription": "MacroTracker uses the camera to scan nutrition labels on food products.",
+                "NSPhotoLibraryUsageDescription": "MacroTracker accesses your photo library to scan nutrition labels."
+            }
         },
         "android": {
             "adaptiveIcon": {
                 "foregroundImage": "./assets/adaptive-icon.png",
                 "backgroundColor": "#ffffff"
             },
-            "package": "com.fstal.macrotracker"
+            "package": "com.fstal.macrotracker",
+            "permissions": [
+                "android.permission.CAMERA",
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE"
+            ]
         },
         "web": {
             "favicon": "./assets/favicon.png"
         },
-        "plugins": []
+        "plugins": [
+            [
+                "expo-camera",
+                {
+                    "cameraPermission": "MacroTracker uses the camera to scan nutrition labels on food products."
+                }
+            ],
+            [
+                "expo-image-picker",
+                {
+                    "photosPermission": "MacroTracker accesses your photo library to scan saved nutrition label images."
+                }
+            ]
+        ]
     }
 }

@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import HomeScreen from './src/screens/HomeScreen';
 import StatsScreen from './src/screens/StatsScreen';
+import CameraScanScreen from './src/screens/CameraScanScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,9 +25,12 @@ export default function App() {
                     <Stack.Screen
                         name="Stats"
                         component={StatsScreen}
-                        options={{
-                            animation: 'slide_from_bottom'
-                        }}
+                        options={{ animation: 'slide_from_bottom' }}
+                    />
+                    <Stack.Screen
+                        name="CameraScan"
+                        component={CameraScanScreen}
+                        options={{ animation: 'slide_from_bottom' }}
                     />
                 </Stack.Navigator>
             </NavigationContainer>

@@ -18,7 +18,7 @@ import { colors } from '../theme/colors';
 import { saveLog, getDailySummary, getLogsForDate, deleteLog } from '../store/storage';
 import { DailySummary, DailyMacroLog } from '../types';
 
-const HomeScreen = ({ navigation }: any) => {
+const HomeScreen = ({ navigation, route }: any) => {
     const [foodName, setFoodName] = useState('');
     const [calories, setCalories] = useState('');
     const [protein, setProtein] = useState('');
@@ -39,6 +39,19 @@ const HomeScreen = ({ navigation }: any) => {
         useCallback(() => {
             loadData();
         }, [])
+    );
+
+    useFocusEffect(
+        useCallback(() => {
+            if (route.params?.scannedFood) {
+                const { foodName: sFood, calories: sCal, protein: sProt } = route.params.scannedFood;
+                if (sFood) setFoodName(sFood);
+                if (sCal !== undefined) setCalories(String(sCal));
+                if (sProt !== undefined) setProtein(String(sProt));
+                // Clear params so it doesn't keep replacing if we navigate back later
+                navigation.setParams({ scannedFood: undefined });
+            }
+        }, [route.params?.scannedFood])
     );
 
     const handleAddLog = async () => {
@@ -100,7 +113,15 @@ const HomeScreen = ({ navigation }: any) => {
                 </AnimatedCard>
 
                 <AnimatedCard delay={200}>
-                    <Text style={styles.cardTitle}>Add Entry</Text>
+                    <View style={styles.addEntryHeader}>
+                        <Text style={styles.cardTitle}>Add Entry</Text>
+                        <AnimatedButton
+                            title="📷 Scan Label"
+                            onPress={() => navigation.navigate('CameraScan')}
+                            style={styles.scanBtn}
+                            textStyle={styles.scanBtnText}
+                        />
+                    </View>
                     <TextInput
                         style={styles.input}
                         placeholder="Food Name (optional)"
@@ -191,6 +212,21 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: colors.text,
         marginBottom: 16,
+    },
+    addEntryHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    scanBtn: {
+        marginVertical: 0,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: colors.primaryVariant,
+    },
+    scanBtnText: {
+        fontSize: 14,
     },
     input: {
         backgroundColor: colors.background,
