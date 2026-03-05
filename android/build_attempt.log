@@ -1,0 +1,607 @@
+Picked up JAVA_TOOL_OPTIONS: -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/fstal/.gradle/wrapper/dists/gradle-8.6-all/3mbtmo166bl6vumsh5k2lkq5h/gradle-8.6/lib/native-platform-0.22-milestone-25.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+> Task :gradle-plugin:settings-plugin:checkKotlinGradlePluginConfigurationErrors
+> Task :gradle-plugin:settings-plugin:compileKotlin UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:compileJava NO-SOURCE
+> Task :gradle-plugin:settings-plugin:pluginDescriptors UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:processResources UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:classes UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:jar UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:checkKotlinGradlePluginConfigurationErrors
+> Task :gradle-plugin:react-native-gradle-plugin:compileKotlin UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:compileJava NO-SOURCE
+> Task :gradle-plugin:react-native-gradle-plugin:pluginDescriptors UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:processResources UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:classes UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:jar UP-TO-DATE
+
+> Configure project :expo
+
+Using expo modules
+  - [32mexpo-asset[0m (10.0.10)
+  - [32mexpo-camera[0m (15.0.16)
+  - [32mexpo-constants[0m (16.0.2)
+  - [32mexpo-file-system[0m (17.0.1)
+  - [32mexpo-font[0m (12.0.10)
+  - [32mexpo-haptics[0m (13.0.1)
+  - [32mexpo-image-loader[0m (4.7.0)
+  - [32mexpo-image-picker[0m (15.1.0)
+  - [32mexpo-keep-awake[0m (13.0.2)
+  - [32mexpo-modules-core[0m (1.12.26)
+  - [32mexpo-navigation-bar[0m (3.0.7)
+
+
+> Configure project :react-native-reanimated
+Android gradle plugin: 8.2.1
+Gradle: 8.6
+WARNING: We recommend using a newer Android Gradle plugin to use compileSdk = 35
+
+This Android Gradle plugin (8.2.1) was tested up to compileSdk = 34.
+
+You are strongly encouraged to update your project to use a newer
+Android Gradle plugin that has been tested with compileSdk = 35.
+
+If you are already using the latest version of the Android Gradle plugin,
+you may need to wait until a newer version with support for compileSdk = 35 is available.
+
+To suppress this warning, add/update
+    android.suppressUnsupportedCompileSdk=35
+to this project's gradle.properties.
+Checking the license for package Android SDK Platform 35 in C:\Users\fstal\Android\Sdk\licenses
+License for package Android SDK Platform 35 accepted.
+Preparing "Install Android SDK Platform 35 (revision 2)".
+"Install Android SDK Platform 35 (revision 2)" ready.
+Installing Android SDK Platform 35 in C:\Users\fstal\Android\Sdk\platforms\android-35
+"Install Android SDK Platform 35 (revision 2)" complete.
+"Install Android SDK Platform 35 (revision 2)" finished.
+
+> Task :app:buildKotlinToolingMetadata UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:generateCodegenSchemaFromJavaScript SKIPPED
+> Task :app:generateCodegenArtifactsFromSchema SKIPPED
+> Task :app:generatePackageList
+> Task :app:preBuild
+> Task :app:preReleaseBuild
+> Task :app:generateReleaseBuildConfig UP-TO-DATE
+> Task :expo:generateExpoModulesPackageListTask UP-TO-DATE
+> Task :expo:preBuild UP-TO-DATE
+> Task :expo:preReleaseBuild UP-TO-DATE
+> Task :expo:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-asset:preBuild UP-TO-DATE
+> Task :expo-asset:preReleaseBuild UP-TO-DATE
+> Task :expo-asset:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-camera:preBuild UP-TO-DATE
+> Task :expo-camera:preReleaseBuild UP-TO-DATE
+> Task :expo-camera:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-constants:createExpoConfig UP-TO-DATE
+> Task :expo-constants:preBuild UP-TO-DATE
+> Task :expo-constants:preReleaseBuild UP-TO-DATE
+> Task :expo-constants:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-file-system:preBuild UP-TO-DATE
+> Task :expo-file-system:preReleaseBuild UP-TO-DATE
+> Task :expo-file-system:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-font:preBuild UP-TO-DATE
+> Task :expo-font:preReleaseBuild UP-TO-DATE
+> Task :expo-font:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-haptics:preBuild UP-TO-DATE
+> Task :expo-haptics:preReleaseBuild UP-TO-DATE
+> Task :expo-haptics:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-image-loader:preBuild UP-TO-DATE
+> Task :expo-image-loader:preReleaseBuild UP-TO-DATE
+> Task :expo-image-loader:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-image-picker:preBuild UP-TO-DATE
+> Task :expo-image-picker:preReleaseBuild UP-TO-DATE
+> Task :expo-image-picker:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-keep-awake:preBuild UP-TO-DATE
+> Task :expo-keep-awake:preReleaseBuild UP-TO-DATE
+> Task :expo-keep-awake:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-modules-core:preBuild UP-TO-DATE
+> Task :expo-modules-core:preReleaseBuild UP-TO-DATE
+> Task :expo-modules-core:writeReleaseAarMetadata UP-TO-DATE
+> Task :expo-navigation-bar:preBuild UP-TO-DATE
+> Task :expo-navigation-bar:preReleaseBuild UP-TO-DATE
+> Task :expo-navigation-bar:writeReleaseAarMetadata UP-TO-DATE
+> Task :react-native-async-storage_async-storage:preBuild UP-TO-DATE
+> Task :react-native-async-storage_async-storage:preReleaseBuild UP-TO-DATE
+> Task :react-native-async-storage_async-storage:writeReleaseAarMetadata UP-TO-DATE
+> Task :react-native-health-connect:preBuild UP-TO-DATE
+> Task :react-native-health-connect:preReleaseBuild UP-TO-DATE
+> Task :react-native-health-connect:writeReleaseAarMetadata UP-TO-DATE
+> Task :react-native-reanimated:assertLatestReactNativeWithNewArchitectureTask SKIPPED
+> Task :react-native-reanimated:assertMinimalReactNativeVersionTask SKIPPED
+> Task :react-native-reanimated:prepareHeadersForPrefab UP-TO-DATE
+> Task :react-native-reanimated:preBuild UP-TO-DATE
+> Task :react-native-reanimated:preReleaseBuild UP-TO-DATE
+> Task :react-native-reanimated:writeReleaseAarMetadata UP-TO-DATE
+> Task :react-native-safe-area-context:preBuild UP-TO-DATE
+> Task :react-native-safe-area-context:preReleaseBuild UP-TO-DATE
+> Task :react-native-safe-area-context:writeReleaseAarMetadata UP-TO-DATE
+> Task :react-native-screens:preBuild UP-TO-DATE
+> Task :react-native-screens:preReleaseBuild UP-TO-DATE
+> Task :react-native-screens:writeReleaseAarMetadata UP-TO-DATE
+> Task :app:checkReleaseAarMetadata
+> Task :app:createBundleReleaseJsAndAssets UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :expo:generateReleaseResValues
+> Task :expo:generateReleaseResources
+> Task :expo:packageReleaseResources
+> Task :expo-asset:generateReleaseResValues
+> Task :expo-asset:generateReleaseResources
+> Task :expo-asset:packageReleaseResources
+> Task :expo-camera:generateReleaseResValues
+> Task :expo-camera:generateReleaseResources
+> Task :expo-camera:packageReleaseResources
+> Task :expo-constants:generateReleaseResValues
+> Task :expo-constants:generateReleaseResources
+> Task :expo-constants:packageReleaseResources
+> Task :expo-file-system:generateReleaseResValues
+> Task :expo-file-system:generateReleaseResources
+> Task :expo-file-system:packageReleaseResources
+> Task :expo-font:generateReleaseResValues
+> Task :expo-font:generateReleaseResources
+> Task :expo-font:packageReleaseResources
+> Task :expo-haptics:generateReleaseResValues
+> Task :expo-haptics:generateReleaseResources
+> Task :expo-haptics:packageReleaseResources
+> Task :expo-image-loader:generateReleaseResValues
+> Task :expo-image-loader:generateReleaseResources
+> Task :expo-image-loader:packageReleaseResources
+> Task :expo-image-picker:generateReleaseResValues
+> Task :expo-image-picker:generateReleaseResources
+> Task :expo-image-picker:packageReleaseResources
+> Task :expo-keep-awake:generateReleaseResValues
+> Task :expo-keep-awake:generateReleaseResources
+> Task :expo-keep-awake:packageReleaseResources
+> Task :expo-modules-core:generateReleaseResValues
+> Task :expo-modules-core:generateReleaseResources
+> Task :expo-modules-core:packageReleaseResources
+> Task :expo-navigation-bar:generateReleaseResValues
+> Task :expo-navigation-bar:generateReleaseResources
+> Task :expo-navigation-bar:packageReleaseResources
+> Task :react-native-async-storage_async-storage:generateReleaseResValues
+> Task :react-native-async-storage_async-storage:generateReleaseResources
+> Task :react-native-async-storage_async-storage:packageReleaseResources
+> Task :react-native-health-connect:generateReleaseResValues
+> Task :react-native-health-connect:generateReleaseResources
+> Task :react-native-health-connect:packageReleaseResources
+> Task :react-native-reanimated:generateReleaseResValues
+> Task :react-native-reanimated:generateReleaseResources
+> Task :react-native-reanimated:packageReleaseResources
+> Task :react-native-safe-area-context:generateReleaseResValues
+> Task :react-native-safe-area-context:generateReleaseResources
+> Task :react-native-safe-area-context:packageReleaseResources
+> Task :react-native-screens:generateReleaseResValues
+> Task :react-native-screens:generateReleaseResources
+> Task :react-native-screens:packageReleaseResources
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:packageReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :expo:extractDeepLinksRelease
+> Task :expo-asset:extractDeepLinksRelease
+> Task :app:mergeReleaseResources
+> Task :expo-camera:extractDeepLinksRelease
+> Task :expo-constants:extractDeepLinksRelease
+> Task :app:parseReleaseLocalResources
+> Task :expo-camera:processReleaseManifest
+> Task :expo:processReleaseManifest
+> Task :expo-asset:processReleaseManifest
+> Task :expo-file-system:extractDeepLinksRelease
+> Task :expo-constants:processReleaseManifest
+> Task :expo-font:extractDeepLinksRelease
+
+> Task :expo-file-system:processReleaseManifest
+C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\expo-file-system\android\src\main\AndroidManifest.xml:6:9-8:20 Warning:
+	provider#expo.modules.filesystem.FileSystemFileProvider@android:authorities was tagged at AndroidManifest.xml:6 to replace other declarations but no other declaration present
+
+> Task :expo-haptics:extractDeepLinksRelease
+> Task :expo-font:processReleaseManifest
+> Task :expo-image-loader:extractDeepLinksRelease
+> Task :expo-haptics:processReleaseManifest
+> Task :expo-image-picker:extractDeepLinksRelease
+> Task :expo-image-loader:processReleaseManifest
+> Task :expo-keep-awake:extractDeepLinksRelease
+> Task :expo-modules-core:extractDeepLinksRelease
+> Task :expo-image-picker:processReleaseManifest
+> Task :expo-keep-awake:processReleaseManifest
+> Task :expo-navigation-bar:extractDeepLinksRelease
+
+> Task :expo-modules-core:processReleaseManifest
+C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\expo-modules-core\android\src\main\AndroidManifest.xml:8:9-11:45 Warning:
+	meta-data#com.facebook.soloader.enabled@android:value was tagged at AndroidManifest.xml:8 to replace other declarations but no other declaration present
+
+> Task :react-native-async-storage_async-storage:extractDeepLinksRelease
+> Task :expo-navigation-bar:processReleaseManifest
+> Task :react-native-health-connect:extractDeepLinksRelease
+
+> Task :react-native-async-storage_async-storage:processReleaseManifest
+package="com.reactnativecommunity.asyncstorage" found in source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\@react-native-async-storage\async-storage\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.reactnativecommunity.asyncstorage" from the source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\@react-native-async-storage\async-storage\android\src\main\AndroidManifest.xml.
+
+> Task :react-native-reanimated:extractDeepLinksRelease
+
+> Task :react-native-health-connect:processReleaseManifest
+package="dev.matinzd.healthconnect" found in source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-health-connect\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="dev.matinzd.healthconnect" from the source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-health-connect\android\src\main\AndroidManifest.xml.
+
+> Task :react-native-safe-area-context:extractDeepLinksRelease
+
+> Task :react-native-reanimated:processReleaseManifest
+package="com.swmansion.reanimated" found in source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-reanimated\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.swmansion.reanimated" from the source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-reanimated\android\src\main\AndroidManifest.xml.
+
+> Task :react-native-screens:extractDeepLinksRelease
+
+> Task :react-native-safe-area-context:processReleaseManifest
+package="com.th3rdwave.safeareacontext" found in source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-safe-area-context\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.th3rdwave.safeareacontext" from the source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-safe-area-context\android\src\main\AndroidManifest.xml.
+
+> Task :react-native-screens:processReleaseManifest
+package="com.swmansion.rnscreens" found in source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-screens\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.swmansion.rnscreens" from the source AndroidManifest.xml: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\react-native-screens\android\src\main\AndroidManifest.xml.
+
+> Task :expo:compileReleaseLibraryResources
+> Task :expo:parseReleaseLocalResources
+
+> Task :app:processReleaseMainManifest
+C:\Users\fstal\Documents\MacroTracker2\MacroTracker\android\app\src\main\AndroidManifest.xml Warning:
+	provider#expo.modules.filesystem.FileSystemFileProvider@android:authorities was tagged at AndroidManifest.xml:0 to replace other declarations but no other declaration present
+
+> Task :app:processReleaseManifest
+> Task :expo-asset:compileReleaseLibraryResources
+> Task :expo-asset:parseReleaseLocalResources
+> Task :expo-camera:compileReleaseLibraryResources
+> Task :expo-camera:parseReleaseLocalResources
+> Task :expo-constants:compileReleaseLibraryResources
+> Task :app:processReleaseManifestForPackage
+> Task :expo-constants:parseReleaseLocalResources
+> Task :expo:generateReleaseRFile
+> Task :expo-camera:generateReleaseRFile
+> Task :expo-asset:generateReleaseRFile
+> Task :expo-file-system:compileReleaseLibraryResources
+> Task :expo-constants:generateReleaseRFile
+> Task :expo-file-system:parseReleaseLocalResources
+> Task :expo-font:compileReleaseLibraryResources
+> Task :expo-font:parseReleaseLocalResources
+> Task :expo-file-system:generateReleaseRFile
+> Task :expo-haptics:compileReleaseLibraryResources
+> Task :expo-font:generateReleaseRFile
+> Task :expo-haptics:parseReleaseLocalResources
+> Task :expo-image-loader:compileReleaseLibraryResources
+> Task :expo-haptics:generateReleaseRFile
+> Task :expo-image-loader:parseReleaseLocalResources
+> Task :expo-image-picker:compileReleaseLibraryResources
+> Task :expo-image-loader:generateReleaseRFile
+> Task :expo-image-picker:parseReleaseLocalResources
+> Task :expo-keep-awake:compileReleaseLibraryResources
+> Task :expo-keep-awake:parseReleaseLocalResources
+> Task :expo-image-picker:generateReleaseRFile
+> Task :expo-modules-core:compileReleaseLibraryResources
+> Task :expo-keep-awake:generateReleaseRFile
+> Task :expo-modules-core:parseReleaseLocalResources
+> Task :expo-navigation-bar:compileReleaseLibraryResources
+> Task :expo-modules-core:generateReleaseRFile
+> Task :expo-navigation-bar:parseReleaseLocalResources
+> Task :react-native-async-storage_async-storage:compileReleaseLibraryResources
+> Task :react-native-async-storage_async-storage:parseReleaseLocalResources
+> Task :expo-navigation-bar:generateReleaseRFile
+> Task :react-native-health-connect:compileReleaseLibraryResources
+> Task :react-native-async-storage_async-storage:generateReleaseRFile
+> Task :react-native-health-connect:parseReleaseLocalResources
+> Task :react-native-reanimated:compileReleaseLibraryResources
+> Task :react-native-reanimated:parseReleaseLocalResources
+> Task :react-native-health-connect:generateReleaseRFile
+> Task :react-native-safe-area-context:compileReleaseLibraryResources
+> Task :react-native-safe-area-context:parseReleaseLocalResources
+> Task :react-native-reanimated:generateReleaseRFile
+> Task :expo:checkKotlinGradlePluginConfigurationErrors
+> Task :react-native-safe-area-context:generateReleaseRFile
+> Task :react-native-screens:parseReleaseLocalResources
+> Task :react-native-screens:compileReleaseLibraryResources
+> Task :expo:generateReleaseBuildConfig
+> Task :expo-asset:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-asset:generateReleaseBuildConfig
+> Task :expo-modules-core:checkKotlinGradlePluginConfigurationErrors
+> Task :react-native-screens:generateReleaseRFile
+> Task :expo-modules-core:generateReleaseBuildConfig
+> Task :app:processReleaseResources
+> Task :expo-camera:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-modules-core:javaPreCompileRelease
+> Task :expo-asset:javaPreCompileRelease
+> Task :expo-camera:generateReleaseBuildConfig
+> Task :expo-constants:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-camera:javaPreCompileRelease
+> Task :expo-constants:generateReleaseBuildConfig
+> Task :expo-file-system:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-constants:javaPreCompileRelease
+> Task :expo-file-system:generateReleaseBuildConfig
+> Task :expo-font:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-file-system:javaPreCompileRelease
+> Task :expo-font:generateReleaseBuildConfig
+> Task :expo-haptics:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-font:javaPreCompileRelease
+> Task :expo-haptics:generateReleaseBuildConfig
+> Task :expo-image-loader:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-haptics:javaPreCompileRelease
+> Task :expo-image-loader:generateReleaseBuildConfig
+> Task :expo-image-picker:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-image-loader:javaPreCompileRelease
+> Task :expo-image-picker:generateReleaseBuildConfig
+> Task :expo-keep-awake:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-image-picker:javaPreCompileRelease
+> Task :expo-keep-awake:generateReleaseBuildConfig
+> Task :expo-navigation-bar:checkKotlinGradlePluginConfigurationErrors
+> Task :expo-keep-awake:javaPreCompileRelease
+> Task :expo-navigation-bar:generateReleaseBuildConfig
+> Task :expo-navigation-bar:javaPreCompileRelease
+> Task :expo:javaPreCompileRelease
+> Task :react-native-async-storage_async-storage:generateReleaseBuildConfig
+> Task :react-native-health-connect:checkKotlinGradlePluginConfigurationErrors
+> Task :react-native-async-storage_async-storage:javaPreCompileRelease
+> Task :react-native-health-connect:generateReleaseBuildConfig
+
+> Task :react-native-async-storage_async-storage:compileReleaseJavaWithJavac
+Picked up JAVA_TOOL_OPTIONS: -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+
+Picked up JAVA_TOOL_OPTIONS: -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+
+Picked up JAVA_TOOL_OPTIONS: -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+
+C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\@react-native-async-storage\async-storage\android\src\main\java\com\reactnativecommunity\asyncstorage\AsyncStorageModule.java:84: warning: [removal] onCatalystInstanceDestroy() in NativeModule has been deprecated and marked for removal
+  public void onCatalystInstanceDestroy() {
+              ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\@react-native-async-storage\async-storage\android\src\javaPackage\java\com\reactnativecommunity\asyncstorage\AsyncStoragePackage.java uses unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+1 warning
+
+> Task :react-native-async-storage_async-storage:bundleLibCompileToJarRelease
+> Task :expo-modules-core:compileReleaseKotlin
+> Task :react-native-health-connect:javaPreCompileRelease
+> Task :react-native-reanimated:generateReleaseBuildConfig
+> Task :react-native-reanimated:javaPreCompileRelease
+> Task :react-native-reanimated:packageNdkLibs NO-SOURCE
+
+> Task :react-native-reanimated:compileReleaseJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :react-native-safe-area-context:checkKotlinGradlePluginConfigurationErrors
+> Task :react-native-safe-area-context:generateReleaseBuildConfig
+> Task :react-native-reanimated:bundleLibCompileToJarRelease
+> Task :react-native-safe-area-context:javaPreCompileRelease
+> Task :react-native-screens:checkKotlinGradlePluginConfigurationErrors
+> Task :react-native-screens:generateReleaseBuildConfig
+> Task :react-native-screens:javaPreCompileRelease
+> Task :app:javaPreCompileRelease
+> Task :app:extractProguardFiles
+> Task :expo:mergeReleaseJniLibFolders
+> Task :expo:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo:extractDeepLinksForAarRelease
+> Task :expo:mergeReleaseShaders
+> Task :expo:compileReleaseShaders NO-SOURCE
+> Task :expo:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo:generateReleaseAssets UP-TO-DATE
+> Task :expo:packageReleaseAssets
+> Task :expo:prepareLintJarForPublish
+> Task :expo:prepareReleaseArtProfile
+> Task :expo-asset:mergeReleaseJniLibFolders
+> Task :expo-asset:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-asset:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-asset:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-asset:extractDeepLinksForAarRelease
+> Task :expo-asset:mergeReleaseShaders
+> Task :expo-asset:compileReleaseShaders NO-SOURCE
+> Task :expo-asset:generateReleaseAssets UP-TO-DATE
+> Task :expo-asset:packageReleaseAssets
+> Task :expo-asset:prepareLintJarForPublish
+> Task :expo-asset:prepareReleaseArtProfile
+> Task :expo-camera:mergeReleaseJniLibFolders
+> Task :expo-camera:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-camera:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-camera:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-camera:extractDeepLinksForAarRelease
+> Task :expo-camera:mergeReleaseShaders
+> Task :expo-camera:compileReleaseShaders NO-SOURCE
+> Task :expo-camera:generateReleaseAssets UP-TO-DATE
+> Task :expo-camera:packageReleaseAssets
+> Task :expo-camera:prepareLintJarForPublish
+> Task :expo-camera:prepareReleaseArtProfile
+> Task :expo-constants:mergeReleaseJniLibFolders
+> Task :expo-constants:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-constants:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-constants:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-constants:extractDeepLinksForAarRelease
+> Task :expo-constants:mergeReleaseShaders
+> Task :expo-constants:compileReleaseShaders NO-SOURCE
+> Task :expo-constants:generateReleaseAssets UP-TO-DATE
+> Task :expo-constants:packageReleaseAssets
+> Task :expo-constants:prepareLintJarForPublish
+> Task :expo-constants:prepareReleaseArtProfile
+> Task :expo-file-system:mergeReleaseJniLibFolders
+> Task :expo-file-system:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-file-system:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-file-system:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-file-system:extractDeepLinksForAarRelease
+> Task :expo-file-system:mergeReleaseShaders
+> Task :expo-file-system:compileReleaseShaders NO-SOURCE
+> Task :expo-file-system:generateReleaseAssets UP-TO-DATE
+> Task :expo-file-system:packageReleaseAssets
+> Task :expo-file-system:prepareLintJarForPublish
+> Task :expo-file-system:prepareReleaseArtProfile
+> Task :expo-font:mergeReleaseJniLibFolders
+> Task :expo-font:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-font:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-font:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-font:extractDeepLinksForAarRelease
+> Task :expo-font:mergeReleaseShaders
+> Task :expo-font:compileReleaseShaders NO-SOURCE
+> Task :expo-font:generateReleaseAssets UP-TO-DATE
+> Task :expo-font:packageReleaseAssets
+> Task :expo-font:prepareLintJarForPublish
+> Task :expo-font:prepareReleaseArtProfile
+> Task :expo-haptics:mergeReleaseJniLibFolders
+> Task :expo-haptics:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-haptics:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-haptics:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-haptics:extractDeepLinksForAarRelease
+> Task :expo-haptics:mergeReleaseShaders
+> Task :expo-haptics:compileReleaseShaders NO-SOURCE
+> Task :expo-haptics:generateReleaseAssets UP-TO-DATE
+> Task :expo-haptics:packageReleaseAssets
+> Task :expo-haptics:prepareLintJarForPublish
+> Task :expo-haptics:prepareReleaseArtProfile
+> Task :expo-image-loader:mergeReleaseJniLibFolders
+> Task :expo-image-loader:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-image-loader:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-image-loader:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-image-loader:extractDeepLinksForAarRelease
+> Task :expo-image-loader:mergeReleaseShaders
+> Task :expo-image-loader:compileReleaseShaders NO-SOURCE
+> Task :expo-image-loader:generateReleaseAssets UP-TO-DATE
+> Task :expo-image-loader:packageReleaseAssets
+> Task :expo-image-loader:prepareReleaseArtProfile
+> Task :expo-image-loader:prepareLintJarForPublish
+> Task :expo-image-picker:mergeReleaseJniLibFolders
+> Task :expo-image-picker:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-image-picker:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-image-picker:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-image-picker:extractDeepLinksForAarRelease
+> Task :expo-image-picker:mergeReleaseShaders
+> Task :expo-image-picker:compileReleaseShaders NO-SOURCE
+> Task :expo-image-picker:generateReleaseAssets UP-TO-DATE
+> Task :expo-image-picker:packageReleaseAssets
+> Task :expo-image-picker:prepareLintJarForPublish
+> Task :expo-image-picker:prepareReleaseArtProfile
+> Task :expo-keep-awake:mergeReleaseJniLibFolders
+> Task :expo-keep-awake:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-keep-awake:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-keep-awake:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-keep-awake:extractDeepLinksForAarRelease
+> Task :expo-keep-awake:mergeReleaseShaders
+> Task :expo-keep-awake:compileReleaseShaders NO-SOURCE
+> Task :expo-keep-awake:generateReleaseAssets UP-TO-DATE
+> Task :expo-keep-awake:packageReleaseAssets
+> Task :expo-keep-awake:prepareLintJarForPublish
+> Task :expo-keep-awake:prepareReleaseArtProfile
+> Task :expo-navigation-bar:mergeReleaseJniLibFolders
+> Task :expo-navigation-bar:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-navigation-bar:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-navigation-bar:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-navigation-bar:extractDeepLinksForAarRelease
+> Task :expo-navigation-bar:mergeReleaseShaders
+> Task :expo-navigation-bar:compileReleaseShaders NO-SOURCE
+> Task :expo-navigation-bar:generateReleaseAssets UP-TO-DATE
+> Task :expo-navigation-bar:packageReleaseAssets
+> Task :expo-navigation-bar:prepareLintJarForPublish
+> Task :expo-navigation-bar:prepareReleaseArtProfile
+
+> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]
+Checking the license for package CMake 3.22.1 in C:\Users\fstal\Android\Sdk\licenses
+License for package CMake 3.22.1 accepted.
+Preparing "Install CMake 3.22.1 v.3.22.1".
+
+> Task :react-native-safe-area-context:compileReleaseKotlin
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaContextPackage.kt:27:11 'constructor ReactModuleInfo(String!, String!, Boolean, Boolean, Boolean, Boolean, Boolean)' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaContextPackage.kt:33:27 'hasConstants: Boolean' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaView.kt:59:23 'getter for uiImplementation: UIImplementation!' is deprecated. Deprecated in Java
+
+> Task :react-native-health-connect:compileReleaseKotlin
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/HealthConnectPackage.kt:23:47 'constructor ReactModuleInfo(String!, String!, Boolean, Boolean, Boolean, Boolean, Boolean)' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/records/ReactHealthRecord.kt:34:26 'newInstance(): T!' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/records/ReactHealthRecord.kt:34:40 Unchecked cast: ReactHealthRecordImpl<*>? to ReactHealthRecordImpl<T>
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/records/ReactHealthRecord.kt:43:26 'newInstance(): T!' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/records/ReactHealthRecord.kt:43:40 Unchecked cast: ReactHealthRecordImpl<out Record>? to ReactHealthRecordImpl<T>
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/records/ReactHealthRecord.kt:55:46 Unnecessary safe call on a non-null receiver of type ReadableMap
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-health-connect/android/src/main/java/dev/matinzd/healthconnect/utils/HealthConnectUtils.kt:66:9 Condition 'null != item' is always 'true'
+
+> Task :react-native-screens:compileReleaseKotlin
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/RNScreensPackage.kt:42:47 'constructor ReactModuleInfo(String!, String!, Boolean, Boolean, Boolean, Boolean, Boolean)' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenContainer.kt:30:53 'FrameCallback' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenContainer.kt:30:98 'FrameCallback' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackFragment.kt:65:27 'setter for targetElevation: Float' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackFragment.kt:128:27 'setter for targetElevation: Float' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt:86:34 'getter for systemWindowInsetTop: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt:231:37 'setColorFilter(Int, PorterDuff.Mode): Unit' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenViewManager.kt:47:42 'setStateWrapper(StateWrapper!): Unit' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:55:53 'getter for statusBarColor: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:66:48 'getter for statusBarColor: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:69:32 'setter for statusBarColor: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:135:47 'replaceSystemWindowInsets(Int, Int, Int, Int): WindowInsetsCompat' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:136:51 'getter for systemWindowInsetLeft: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:138:51 'getter for systemWindowInsetRight: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:139:51 'getter for systemWindowInsetBottom: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:179:72 'getter for navigationBarColor: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt:185:16 'setter for navigationBarColor: Int' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/SearchBarManager.kt:100:22 Parameter 'view' is never used
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/SearchBarManager.kt:100:43 Parameter 'placeholder' is never used
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/SearchBarView.kt:147:43 Parameter 'flag' is never used
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/events/HeaderHeightChangeEvent.kt:6:44 'RCTEventEmitter' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/paper/java/com/swmansion/rnscreens/FabricEnabledViewGroup.kt:5:37 'FabricViewStateManager' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/paper/java/com/swmansion/rnscreens/FabricEnabledViewGroup.kt:9:48 'FabricViewStateManager' is deprecated. Deprecated in Java
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/paper/java/com/swmansion/rnscreens/FabricEnabledViewGroup.kt:11:42 Parameter 'width' is never used
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/paper/java/com/swmansion/rnscreens/FabricEnabledViewGroup.kt:11:54 Parameter 'height' is never used
+w: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/react-native-screens/android/src/paper/java/com/swmansion/rnscreens/FabricEnabledViewGroup.kt:11:67 Parameter 'headerHeight' is never used
+
+> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]
+"Install CMake 3.22.1 v.3.22.1" ready.
+Installing CMake 3.22.1 in C:\Users\fstal\Android\Sdk\cmake\3.22.1
+"Install CMake 3.22.1 v.3.22.1" complete.
+"Install CMake 3.22.1 v.3.22.1" finished.
+
+> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a] FAILED
+
+> Task :expo-modules-core:compileReleaseKotlin FAILED
+e: file:///C:/Users/fstal/Documents/MacroTracker2/MacroTracker/node_modules/expo-modules-core/android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt:166:36 Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<(out) String!>?
+
+FAILURE: Build completed with 2 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]'.
+> [CXX1210] C:\Users\fstal\Documents\MacroTracker2\MacroTracker\node_modules\expo-modules-core\android\CMakeLists.txt release|arm64-v8a : No compatible library found
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':expo-modules-core:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.6/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 2m 4s
+303 actionable tasks: 271 executed, 32 up-to-date

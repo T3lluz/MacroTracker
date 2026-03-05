@@ -1,0 +1,112 @@
+name: Firebase App Distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Release notes shown to testers"
+        required: false
+      testers:
+        description: "Comma-separated tester emails (optional)"
+        required: false
+      groups:
+        description: "Comma-separated tester groups (optional)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  distribute:
+    name: Build and distribute APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Java SDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "Missing required secret GOOGLE_SERVICES_JSON." >&2
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json
+
+      - name: Prebuild Expo Android project
+        run: npx expo prebuild -p android --clean --non-interactive
+
+      - name: Build APK with Gradle
+        working-directory: android
+        env:
+          NODE_ENV: production
+        run: ./gradlew assembleRelease
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No release APK found." >&2
+            exit 1
+          fi
+          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-distribution-apk
+          path: ${{ steps.apk.outputs.path }}
+
+      - name: Distribute to Firebase App Distribution
+        env:
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          INPUT_TESTERS: ${{ github.event.inputs.testers }}
+          INPUT_GROUPS: ${{ github.event.inputs.groups }}
+          DEFAULT_GROUPS: ${{ secrets.FIREBASE_TESTER_GROUPS }}
+          RELEASE_NOTES_INPUT: ${{ github.event.inputs.release_notes }}
+        run: |
+          if [ -z "$FIREBASE_APP_ID" ] || [ -z "$FIREBASE_TOKEN" ]; then
+            echo "Missing required secrets FIREBASE_APP_ID and/or FIREBASE_TOKEN." >&2
+            exit 1
+          fi
+
+          RELEASE_NOTES="$RELEASE_NOTES_INPUT"
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="Build from ${GITHUB_SHA}"
+          fi
+
+          EXTRA_ARGS=()
+          if [ -n "$INPUT_TESTERS" ]; then
+            EXTRA_ARGS+=(--testers "$INPUT_TESTERS")
+          fi
+
+          if [ -n "$INPUT_GROUPS" ]; then
+            EXTRA_ARGS+=(--groups "$INPUT_GROUPS")
+          elif [ -n "$DEFAULT_GROUPS" ]; then
+            EXTRA_ARGS+=(--groups "$DEFAULT_GROUPS")
+          fi
+
+          npx firebase-tools appdistribution:distribute "${{ steps.apk.outputs.path }}" \
+            --app "$FIREBASE_APP_ID" \
+            --token "$FIREBASE_TOKEN" \
+            --release-notes "$RELEASE_NOTES" \
+            "${EXTRA_ARGS[@]}"

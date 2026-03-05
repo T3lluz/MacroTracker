@@ -13,3 +13,19 @@ export interface DailySummary {
     calorieGoal: number;
     proteinGoal: number;
 }
+
+export interface DailyHealthMetrics {
+    date: string; // ISO string YYYY-MM-DD
+    steps: number;
+    caloriesBurned: number; // active kcal
+    sleepMinutes: number;
+    avgHeartRate: number; // bpm
+}
+
+export interface HealthRangeSummary {
+    averageSteps: number;
+    averageCaloriesBurned: number;
+    averageSleepMinutes: number;
+    averageHeartRate: number;
+    daysWithData: number;
+}

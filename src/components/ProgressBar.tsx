@@ -25,8 +25,8 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
 
     useEffect(() => {
         animatedProgress.value = withTiming(Math.min(1, Math.max(0, progress)), {
-            duration: 1000,
-            easing: Easing.out(Easing.exp),
+            duration: 420,
+            easing: Easing.out(Easing.cubic),
         });
     }, [progress]);
 
