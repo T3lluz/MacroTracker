@@ -14,6 +14,7 @@ export interface DailySummary {
     proteinGoal: number;
 }
 
+
 export interface DailyHealthMetrics {
     date: string; // ISO string YYYY-MM-DD
     steps: number;

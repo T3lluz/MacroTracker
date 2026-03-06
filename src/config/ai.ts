@@ -16,17 +16,15 @@ const envApiKey =
         : undefined);
 
 const expoExtraApiKey =
-    (Constants.expoConfig?.extra as { geminiApiKey?: string } | undefined)?.geminiApiKey ||
-    (Constants.manifest as any)?.extra?.geminiApiKey;
+    (Constants.expoConfig?.extra as { geminiApiKey?: string } | undefined)?.geminiApiKey;
 
 export const GEMINI_API_VERSION = 'v1beta';
-export const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash-latest'];
+export const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
 export const GEMINI_SCAN_MODELS = [
-    'gemini-flash-lite-latest',
     'gemini-2.0-flash-lite',
-    'gemini-2.0-flash-lite-001',
     'gemini-2.0-flash',
-    'gemini-flash-latest',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
 ];
 
 export const GEMINI_API_KEY = String(envApiKey || expoExtraApiKey || HARDCODED_GEMINI_API_KEY || '').trim();
@@ -73,3 +71,4 @@ export const getGeminiApiErrorMessage = (
     const details = trimGeminiApiError(errorText);
     return `${prefix}${safeStatus}${details ? `: ${details}` : ''}`;
 };
+

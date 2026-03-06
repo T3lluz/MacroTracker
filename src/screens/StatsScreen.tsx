@@ -1,163 +1,128 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { format, subDays } from 'date-fns';
 import AnimatedCard from '../components/AnimatedCard';
+import ProgressBar from '../components/ProgressBar';
 import AnimatedButton from '../components/AnimatedButton';
-import ScreenTransitionView from '../components/ScreenTransitionView';
 import { colors } from '../theme/colors';
-import { getGoals, saveGoals } from '../store/storage';
-import { hapticLight, hapticSuccess } from '../utils/haptics';
-
-const GOAL_PRESETS = [
-    { label: 'Cut', calories: 1800, protein: 140 },
-    { label: 'Maintain', calories: 2200, protein: 160 },
-    { label: 'Build', calories: 2600, protein: 190 },
-];
+import { getDailySummary, getGoals, saveGoals } from '../store/storage';
+import { DailySummary } from '../types';
 
 const StatsScreen = ({ navigation }: any) => {
-    const insets = useSafeAreaInsets();
+    const [history, setHistory] = useState<DailySummary[]>([]);
     const [calGoalStr, setCalGoalStr] = useState('2000');
     const [protGoalStr, setProtGoalStr] = useState('150');
-    const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-    const [goalFeedback, setGoalFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
     const loadData = async () => {
+        // Load last 7 days including today
+        const days = Array.from({ length: 7 }, (_, i) => {
+            const d = subDays(new Date(), i);
+            return format(d, 'yyyy-MM-dd');
+        });
+
+        const histories = await Promise.all(
+            days.map(d => getDailySummary(d))
+        );
+
+        setHistory(histories);
+
         const goals = await getGoals();
         if (goals) {
             setCalGoalStr(goals.calories.toString());
             setProtGoalStr(goals.protein.toString());
-            const matchedPreset = GOAL_PRESETS.find(
-                (preset) => preset.calories === goals.calories && preset.protein === goals.protein,
-            );
-            setSelectedPreset(matchedPreset?.label ?? null);
         }
     };
 
     useFocusEffect(
         useCallback(() => {
             loadData();
-        }, []),
+        }, [])
     );
 
     const handleSaveGoals = async () => {
-        const caloriesGoal = parseInt(calGoalStr, 10) || 2000;
-        const proteinGoal = parseInt(protGoalStr, 10) || 150;
-        await saveGoals(caloriesGoal, proteinGoal);
-        const matchedPreset = GOAL_PRESETS.find(
-            (preset) => preset.calories === caloriesGoal && preset.protein === proteinGoal,
-        );
-        setSelectedPreset(matchedPreset?.label ?? null);
-        setGoalFeedback({ text: 'Goals saved.', type: 'success' });
-        hapticSuccess();
+        const cal = parseInt(calGoalStr, 10) || 2000;
+        const prot = parseInt(protGoalStr, 10) || 150;
+        await saveGoals(cal, prot);
         loadData();
-    };
-
-    const applyPreset = async (preset: (typeof GOAL_PRESETS)[number]) => {
-        hapticLight();
-        setCalGoalStr(String(preset.calories));
-        setProtGoalStr(String(preset.protein));
-        setSelectedPreset(preset.label);
-        await saveGoals(preset.calories, preset.protein);
-        setGoalFeedback({ text: `${preset.label} preset applied.`, type: 'success' });
-    };
+    }
 
     return (
         <View style={styles.container}>
-            <ScreenTransitionView style={styles.container}>
-                <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    keyboardShouldPersistTaps="handled"
-                    removeClippedSubviews
-                >
-                    <View style={styles.contentWrap}>
-                        <View style={[styles.header, { marginTop: insets.top + 8 }]}>
-                            <Text style={styles.headerTitle}>More</Text>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Stats & Settings</Text>
+                </View>
+
+                <AnimatedCard delay={100}>
+                    <Text style={styles.cardTitle}>Daily Goals</Text>
+                    <View style={styles.row}>
+                        <View style={[styles.inputContainer, { marginRight: 8 }]}>
+                            <Text style={styles.label}>Calories</Text>
+                            <TextInput
+                                style={styles.input}
+                                keyboardType="numeric"
+                                value={calGoalStr}
+                                onChangeText={setCalGoalStr}
+                                placeholderTextColor={colors.textSecondary}
+                            />
                         </View>
-
-                    <AnimatedCard delay={80}>
-                        <View style={styles.titleRow}>
-                            <Ionicons name="settings-outline" size={18} color={colors.text} />
-                            <Text style={styles.cardTitle}>Daily Goals</Text>
+                        <View style={[styles.inputContainer, { marginLeft: 8 }]}>
+                            <Text style={styles.label}>Protein (g)</Text>
+                            <TextInput
+                                style={styles.input}
+                                keyboardType="numeric"
+                                value={protGoalStr}
+                                onChangeText={setProtGoalStr}
+                                placeholderTextColor={colors.textSecondary}
+                            />
                         </View>
-
-                        <View style={styles.row}>
-                            <View style={[styles.inputContainer, { marginRight: 8 }]}>
-                                <Text style={styles.label}>Calories</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    keyboardType="numeric"
-                                    value={calGoalStr}
-                                    onChangeText={(value) => {
-                                        setCalGoalStr(value);
-                                        setSelectedPreset(null);
-                                    }}
-                                    placeholderTextColor={colors.textSecondary}
-                                />
-                            </View>
-                            <View style={[styles.inputContainer, { marginLeft: 8 }]}>
-                                <Text style={styles.label}>Protein (g)</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    keyboardType="numeric"
-                                    value={protGoalStr}
-                                    onChangeText={(value) => {
-                                        setProtGoalStr(value);
-                                        setSelectedPreset(null);
-                                    }}
-                                    placeholderTextColor={colors.textSecondary}
-                                />
-                            </View>
-                        </View>
-
-                        <View style={styles.presetRow}>
-                            {GOAL_PRESETS.map((preset) => (
-                                <Pressable
-                                    key={preset.label}
-                                    onPress={() => applyPreset(preset)}
-                                    style={({ pressed }) => [
-                                        styles.presetChip,
-                                        selectedPreset === preset.label && styles.presetChipSelected,
-                                        pressed && styles.presetChipPressed,
-                                    ]}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.presetText,
-                                            selectedPreset === preset.label && styles.presetTextSelected,
-                                        ]}
-                                    >
-                                        {preset.label}
-                                    </Text>
-                                </Pressable>
-                            ))}
-                        </View>
-
-                        <AnimatedButton title="Save Goals" onPress={handleSaveGoals} style={{ marginTop: 8 }} />
-                        {!!goalFeedback && (
-                            <Text
-                                style={[
-                                    styles.feedbackText,
-                                    goalFeedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
-                                ]}
-                            >
-                                {goalFeedback.text}
-                            </Text>
-                        )}
-                    </AnimatedCard>
-
-                        <AnimatedCard delay={120}>
-                            <View style={styles.titleRow}>
-                                <Ionicons name="stats-chart-outline" size={18} color={colors.text} />
-                                <Text style={styles.cardTitle}>Analytics</Text>
-                            </View>
-                            <Text style={styles.helperText}>Open interactive graphs and complete history.</Text>
-                            <AnimatedButton title="Open History" onPress={() => navigation.navigate('History')} />
-                        </AnimatedCard>
                     </View>
-                </ScrollView>
-            </ScreenTransitionView>
+                    <AnimatedButton title="Save Goals" onPress={handleSaveGoals} style={{ marginTop: 12 }} />
+                </AnimatedCard>
+
+                <AnimatedCard delay={200}>
+                    <Text style={styles.cardTitle}>Last 7 Days</Text>
+                    {history.map((day, index) => {
+                        const isValidDate = day.totalCalories > 0 || day.totalProtein > 0;
+                        if (!isValidDate && index !== 0) return null; // Only show today if empty, otherwise hide empty days for cleaner history
+
+                        const isToday = index === 0;
+                        const dayName = isToday ? 'Today' : format(new Date(day.date), 'EEE, MMM d');
+
+                        const calProgress = day.calorieGoal > 0 ? day.totalCalories / day.calorieGoal : 0;
+                        const protProgress = day.proteinGoal > 0 ? day.totalProtein / day.proteinGoal : 0;
+
+                        return (
+                            <View key={day.date} style={styles.historyItem}>
+                                <Text style={styles.historyDate}>{dayName}</Text>
+                                <ProgressBar
+                                    progress={calProgress}
+                                    height={6}
+                                    color={calProgress > 1 ? colors.error : colors.primary}
+                                />
+                                <ProgressBar
+                                    progress={protProgress}
+                                    height={6}
+                                    color={colors.secondary}
+                                />
+                                <View style={styles.historyTextRow}>
+                                    <Text style={styles.historyTextDetail}>{day.totalCalories} kcal</Text>
+                                    <Text style={styles.historyTextDetail}>{day.totalProtein}g pro</Text>
+                                </View>
+                            </View>
+                        )
+                    })}
+                </AnimatedCard>
+
+            </ScrollView>
+            <View style={styles.footer}>
+                <AnimatedButton
+                    variant="secondary"
+                    title="Back to Home"
+                    onPress={() => navigation.goBack()}
+                />
+            </View>
         </View>
     );
 };
@@ -169,32 +134,23 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 16,
-        paddingBottom: 120,
-    },
-    contentWrap: {
-        width: '100%',
-        maxWidth: 460,
-        alignSelf: 'center',
+        paddingBottom: 100,
     },
     header: {
-        marginBottom: 12,
-        paddingHorizontal: 2,
+        marginTop: 40,
+        marginBottom: 20,
+        paddingHorizontal: 8,
     },
     headerTitle: {
-        fontSize: 30,
-        fontWeight: '700',
-        color: colors.text,
-    },
-    titleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginBottom: 10,
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: colors.primary,
     },
     cardTitle: {
-        fontSize: 18,
-        fontWeight: '700',
+        fontSize: 20,
+        fontWeight: 'bold',
         color: colors.text,
+        marginBottom: 16,
     },
     row: {
         flexDirection: 'row',
@@ -207,62 +163,46 @@ const styles = StyleSheet.create({
         marginBottom: 6,
         fontSize: 14,
     },
-    helperText: {
-        color: colors.textSecondary,
-        marginBottom: 10,
-        fontSize: 13,
-    },
     input: {
         backgroundColor: colors.background,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 11,
+        borderRadius: 10,
+        padding: 14,
         color: colors.text,
-        fontSize: 15,
-        marginBottom: 10,
+        fontSize: 16,
     },
-    presetRow: {
-        flexDirection: 'row',
-        gap: 8,
-        marginBottom: 4,
-    },
-    presetChip: {
-        flex: 1,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: colors.border,
+    historyItem: {
+        marginBottom: 16,
         backgroundColor: colors.background,
-        paddingVertical: 8,
-        alignItems: 'center',
+        padding: 12,
+        borderRadius: 8,
     },
-    presetChipSelected: {
-        borderColor: colors.primary,
-        backgroundColor: colors.surface,
-    },
-    presetChipPressed: {
-        opacity: 0.85,
-    },
-    presetText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: colors.textSecondary,
-    },
-    presetTextSelected: {
+    historyDate: {
         color: colors.text,
+        fontWeight: 'bold',
+        marginBottom: 8,
     },
-    feedbackText: {
+    historyTextRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         marginTop: 4,
-        fontSize: 13,
-        fontWeight: '600',
     },
-    feedbackSuccess: {
-        color: colors.secondary,
+    historyTextDetail: {
+        color: colors.textSecondary,
+        fontSize: 12,
     },
-    feedbackError: {
-        color: colors.error,
-    },
+    footer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        padding: 16,
+        paddingBottom: 32,
+        backgroundColor: colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+    }
 });
 
 export default StatsScreen;

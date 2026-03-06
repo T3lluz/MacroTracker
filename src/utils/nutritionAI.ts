@@ -185,3 +185,4 @@ export const estimateNutritionWithAI = async (foodQuery: string): Promise<Nutrit
 };
 
 export type { NutritionEstimate };
+

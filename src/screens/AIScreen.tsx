@@ -55,7 +55,7 @@ const AIScreen = ({ navigation }: any) => {
         await saveLog({
             id: Date.now().toString(),
             date: format(new Date(), 'yyyy-MM-dd'),
-            foodName: `${estimate.foodName} (AI)` ,
+            foodName: `${estimate.foodName} (AI)`,
             calories: estimate.calories,
             protein: estimate.protein,
         });
@@ -168,44 +168,14 @@ const AIScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    scrollContent: {
-        padding: 16,
-        paddingBottom: 120,
-    },
-    contentWrap: {
-        width: '100%',
-        maxWidth: 460,
-        alignSelf: 'center',
-    },
-    header: {
-        marginBottom: 12,
-        paddingHorizontal: 2,
-    },
-    headerTitle: {
-        fontSize: 30,
-        fontWeight: '700',
-        color: colors.text,
-    },
-    headerSubTitle: {
-        marginTop: 4,
-        color: colors.textSecondary,
-        fontSize: 14,
-    },
-    titleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginBottom: 10,
-    },
-    cardTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: colors.text,
-    },
+    container: { flex: 1, backgroundColor: colors.background },
+    scrollContent: { padding: 16, paddingBottom: 120 },
+    contentWrap: { width: '100%', maxWidth: 460, alignSelf: 'center' },
+    header: { marginBottom: 12, paddingHorizontal: 2 },
+    headerTitle: { fontSize: 30, fontWeight: '700', color: colors.text },
+    headerSubTitle: { marginTop: 4, color: colors.textSecondary, fontSize: 14 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+    cardTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
     input: {
         backgroundColor: colors.background,
         borderWidth: 1,
@@ -219,67 +189,19 @@ const styles = StyleSheet.create({
         minHeight: 70,
         textAlignVertical: 'top',
     },
-    loadingRow: {
-        marginTop: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    loadingText: {
-        color: colors.textSecondary,
-        fontSize: 13,
-    },
-    feedbackText: {
-        marginTop: 8,
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    feedbackSuccess: {
-        color: colors.secondary,
-    },
-    feedbackError: {
-        color: colors.error,
-    },
-    foodName: {
-        color: colors.text,
-        fontSize: 18,
-        fontWeight: '700',
-        marginBottom: 4,
-    },
-    metaText: {
-        color: colors.textSecondary,
-        fontSize: 13,
-        marginBottom: 8,
-    },
-    resultRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginBottom: 8,
-    },
-    resultPill: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 12,
-        paddingVertical: 10,
-        alignItems: 'center',
-        backgroundColor: colors.background,
-    },
-    resultValue: {
-        color: colors.text,
-        fontSize: 20,
-        fontWeight: '700',
-    },
-    resultLabel: {
-        color: colors.textSecondary,
-        fontSize: 12,
-        marginTop: 2,
-    },
-    noteText: {
-        color: colors.textSecondary,
-        fontSize: 12,
-        marginBottom: 10,
-    },
+    loadingRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    loadingText: { color: colors.textSecondary, fontSize: 13 },
+    feedbackText: { marginTop: 8, fontSize: 13, fontWeight: '600' },
+    feedbackSuccess: { color: colors.secondary },
+    feedbackError: { color: colors.error },
+    foodName: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },
+    metaText: { color: colors.textSecondary, fontSize: 13, marginBottom: 8 },
+    resultRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+    resultPill: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 10, alignItems: 'center', backgroundColor: colors.background },
+    resultValue: { color: colors.text, fontSize: 20, fontWeight: '700' },
+    resultLabel: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
+    noteText: { color: colors.textSecondary, fontSize: 12, marginBottom: 10 },
 });
 
 export default AIScreen;
+

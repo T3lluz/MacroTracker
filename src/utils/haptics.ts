@@ -92,3 +92,4 @@ export const hapticSuccess = async () => {
 export const hapticError = async () => {
     await triggerKnock('error', true);
 };
+

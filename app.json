@@ -3,13 +3,20 @@
     "name": "MacroTracker",
     "slug": "macrotracker",
     "version": "1.0.0",
+    "jsEngine": "hermes",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
+    },
+    "extra": {
+      "geminiApiKey": "YOUR_GEMINI_API_KEY_HERE",
+      "eas": {
+        "projectId": "130ff017-2b63-4581-bc90-8812a7a811e6"
+      }
     },
     "ios": {
       "supportsTablet": true,
@@ -25,16 +32,14 @@
       },
       "package": "com.fstal.macrotracker",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-system-ui",
       [
         "expo-camera",
         {
@@ -48,10 +53,6 @@
         }
       ]
     ],
-    "extra": {
-      "eas": {
-        "projectId": "130ff017-2b63-4581-bc90-8812a7a811e6"
-      }
-    }
+    "owner": "t3lluz"
   }
 }

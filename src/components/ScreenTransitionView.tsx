@@ -11,3 +11,4 @@ const ScreenTransitionView: React.FC<ScreenTransitionViewProps> = React.memo(({ 
 });
 
 export default ScreenTransitionView;
+

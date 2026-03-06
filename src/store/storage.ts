@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { subDays, format } from 'date-fns';
 import { DailyMacroLog, DailySummary } from '../types';
 
 const LOGS_KEY = '@macro_logs';
@@ -36,6 +37,14 @@ export const deleteLog = async (id: string) => {
     }
 }
 
+export const clearAllData = async () => {
+    try {
+        await AsyncStorage.multiRemove([LOGS_KEY, GOALS_KEY]);
+    } catch (e) {
+        console.error('Error clearing data', e);
+    }
+}
+
 export const getLogsForDate = async (dateStr: string): Promise<DailyMacroLog[]> => {
     const logs = await getLogs();
     return logs.filter(log => log.date === dateStr);
@@ -55,6 +64,30 @@ export const getDailySummary = async (dateStr: string): Promise<DailySummary> =>
         calorieGoal: goals?.calories || 2000,
         proteinGoal: goals?.protein || 150
     }
+}
+
+export const getDailySummariesRange = async (rangeDays: number): Promise<DailySummary[]> => {
+    const logs = await getLogs();
+    const goals = await getGoals();
+
+    const summaries: DailySummary[] = [];
+    for (let i = 0; i < rangeDays; i++) {
+        const date = subDays(new Date(), rangeDays - 1 - i);
+        const dateStr = format(date, 'yyyy-MM-dd');
+
+        const dayLogs = logs.filter(log => log.date === dateStr);
+        const totalCalories = dayLogs.reduce((sum, log) => sum + log.calories, 0);
+        const totalProtein = dayLogs.reduce((sum, log) => sum + log.protein, 0);
+
+        summaries.push({
+            date: dateStr,
+            totalCalories,
+            totalProtein,
+            calorieGoal: goals?.calories || 2000,
+            proteinGoal: goals?.protein || 150
+        });
+    }
+    return summaries;
 }
 
 export const saveGoals = async (calories: number, protein: number) => {
