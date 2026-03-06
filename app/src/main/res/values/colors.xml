@@ -3,5 +3,22 @@
   <color name="iconBackground">#ffffff</color>
   <color name="colorPrimary">#023c69</color>
   <color name="colorPrimaryDark">#ffffff</color>
+
+  <!-- Widget colors (light) -->
+  <color name="widget_surface">#FFFBFE</color>
+  <color name="widget_on_surface">#1C1B1F</color>
+  <color name="widget_subtitle">#49454F</color>
+  <color name="widget_calorie">#B23A48</color>
+  <color name="widget_protein">#2E7D32</color>
+  <color name="widget_track_bg">#E8E0E5</color>
+  <color name="widget_health">#1565C0</color>
+  <color name="widget_weather">#E65100</color>
+  <color name="widget_calendar">#4A148C</color>
+  <color name="widget_card_bg">#F3EDF7</color>
+  <color name="widget_steps">#1565C0</color>
+  <color name="widget_sleep">#6A1B9A</color>
+  <color name="widget_heart">#C62828</color>
+  <color name="widget_accent">#E8E0E5</color>
+  <color name="widget_on_accent">#1C1B1F</color>
 </resources>
 

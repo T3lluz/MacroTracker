@@ -37,6 +37,7 @@ import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -106,12 +107,12 @@ fun HelpScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            .padding(bottom = 48.dp),
+            .padding(bottom = 120.dp),
     ) {
         Spacer(modifier = Modifier.height(48.dp))
 
         // Header
-        Text("Help & How-To", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text("Help & How-To", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
         Text(
             "Get started in minutes",
             fontSize = 14.sp,

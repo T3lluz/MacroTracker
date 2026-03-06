@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MacroTracker" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.DailyDash" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">#080D18</item>
         <item name="android:statusBarColor">#080D18</item>
         <item name="android:navigationBarColor">#080D18</item>

@@ -1,7 +1,6 @@
 package com.macrotracker.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,9 +19,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
+import com.macrotracker.ui.util.rememberHaptics
 
 enum class ButtonVariant { PRIMARY, SECONDARY, DANGER }
 
@@ -35,10 +36,11 @@ fun MacroButton(
     enabled: Boolean = true,
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
 
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.95f else 1f,
-        animationSpec = spring(stiffness = 400f, dampingRatio = 0.6f),
+        animationSpec = MacroMotion.pressSpring(),
         label = "btnScale",
     )
 
@@ -49,7 +51,10 @@ fun MacroButton(
     }
 
     Button(
-        onClick = onClick,
+        onClick = {
+            haptics.click()
+            onClick()
+        },
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()

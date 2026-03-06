@@ -1,7 +1,6 @@
 package com.macrotracker.ui.screens
 
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -46,11 +45,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.HeaderColor
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.HistoryViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -67,6 +69,7 @@ fun HistoryScreen(
     val selectedDate by viewModel.selectedDate.collectAsState()
     val selectedLogs by viewModel.selectedLogs.collectAsState()
     val loading by viewModel.loading.collectAsState()
+    val haptics = rememberHaptics()
 
     LaunchedEffect(Unit) { viewModel.loadData() }
 
@@ -91,13 +94,13 @@ fun HistoryScreen(
             .padding(bottom = 120.dp),
     ) {
         Spacer(modifier = Modifier.height(48.dp))
-        Text("History", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text("History", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
         Spacer(modifier = Modifier.height(12.dp))
 
         // Macro Trends Card
         MacroCard(delayMs = 70) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-                Icon(Icons.Outlined.BarChart, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.BarChart, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Macro Trends", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
@@ -110,7 +113,10 @@ fun HistoryScreen(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(if (isActive) Primary else Background)
-                            .clickable { viewModel.setRangeDays(option) }
+                            .clickable {
+                                haptics.tick()
+                                viewModel.setRangeDays(option)
+                            }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
                         Text("${option}d", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (isActive) Color.White else TextSecondary)
@@ -126,7 +132,10 @@ fun HistoryScreen(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(if (isActive) Surface else Background)
-                            .clickable { viewModel.setMetric(key) }
+                            .clickable {
+                                haptics.tick()
+                                viewModel.setMetric(key)
+                            }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
                         Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (isActive) TextPrimary else TextSecondary)
@@ -151,7 +160,10 @@ fun HistoryScreen(
                     } catch (_: Exception) { "?" }
 
                     Column(
-                        modifier = Modifier.width(28.dp).clickable { viewModel.selectDate(date) },
+                        modifier = Modifier.width(28.dp).clickable {
+                            haptics.tick()
+                            viewModel.selectDate(date)
+                        },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         AnimatedBar(
@@ -173,7 +185,7 @@ fun HistoryScreen(
         // Selected date detail card
         MacroCard(delayMs = 100) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-                Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 val displayDate = try {
                     LocalDate.parse(selectedDate).format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
@@ -232,7 +244,7 @@ fun HistoryScreen(
 private fun AnimatedBar(targetHeight: Dp, color: Color) {
     val animatedHeight by animateDpAsState(
         targetValue = targetHeight,
-        animationSpec = tween(360),
+        animationSpec = MacroMotion.entranceSpring(),
         label = "barHeight",
     )
     Box(

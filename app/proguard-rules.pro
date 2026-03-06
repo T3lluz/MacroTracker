@@ -1,4 +1,4 @@
-# Moshi
+# Moshi / API response classes
 -keepclassmembers class * {
     @com.squareup.moshi.Json <fields>;
 }

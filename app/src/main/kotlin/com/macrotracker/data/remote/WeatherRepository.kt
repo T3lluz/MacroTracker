@@ -47,7 +47,7 @@ class WeatherRepository @Inject constructor(
         private const val BASE_URL =
             "https://api.met.no/weatherapi/locationforecast/2.0/compact"
         // Yr.no requires a descriptive User-Agent
-        private const val USER_AGENT = "MacroTracker/1.0 (Android; macro-tracker-app)"
+        private const val USER_AGENT = "DailyDash/1.0 (Android; daily-dash-app)"
     }
 
     suspend fun fetchWeather(lat: Double, lon: Double, locationName: String = ""): WeatherInfo = withContext(Dispatchers.IO) {

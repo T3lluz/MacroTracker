@@ -61,10 +61,12 @@ import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.WeatherCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.HomeHealthState
 import com.macrotracker.ui.viewmodel.HomeViewModel
 import java.time.LocalDate
@@ -99,6 +101,7 @@ fun HomeScreen(
     var quickFood by rememberSaveable { mutableStateOf("") }
     var quickCalories by rememberSaveable { mutableStateOf("") }
     var quickProtein by rememberSaveable { mutableStateOf("") }
+    val haptics = rememberHaptics()
 
     // Check if location permission is already granted
     fun hasLocationPermission(): Boolean {
@@ -165,12 +168,12 @@ fun HomeScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            .padding(bottom = 100.dp),
+            .padding(bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         // Greeting Header
-        Text(greeting, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Primary)
+        Text(greeting, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
         Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -426,12 +429,14 @@ fun HomeScreen(
                         val cal = quickCalories.toIntOrNull() ?: 0
                         val prot = quickProtein.toIntOrNull() ?: 0
                         if (cal > 0 || prot > 0) {
+                            haptics.confirm()
                             viewModel.addLog(quickFood, cal, prot)
                             quickFood = ""
                             quickCalories = ""
                             quickProtein = ""
                             Toast.makeText(context, "✅ Entry added!", Toast.LENGTH_SHORT).show()
                         } else {
+                            haptics.reject()
                             Toast.makeText(context, "Enter calories or protein first", Toast.LENGTH_SHORT).show()
                         }
                     },

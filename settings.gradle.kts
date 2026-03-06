@@ -17,5 +17,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MacroTracker"
+rootProject.name = "DailyDash"
 include(":app")

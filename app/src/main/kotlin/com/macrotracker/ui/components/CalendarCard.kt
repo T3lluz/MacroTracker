@@ -2,11 +2,8 @@ package com.macrotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,8 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.data.calendar.CalendarEvent
 import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.CalendarUiState
 
 private val CalendarAccent = Color(0xFF4285F4) // Google blue
@@ -64,7 +63,7 @@ fun CalendarCard(
 ) {
     AnimatedContent(
         targetState = state,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
         label = "calendarContent",
         modifier = modifier,
     ) { currentState ->
@@ -154,6 +153,7 @@ fun CalendarCard(
 @Composable
 private fun CalendarEventsCard(events: List<CalendarEvent>) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberHaptics()
 
     // Show up to 2 events collapsed, all when expanded
     val nextEvent = events.firstOrNull { it.isHappeningNow } ?: events.firstOrNull()
@@ -166,7 +166,10 @@ private fun CalendarEventsCard(events: List<CalendarEvent>) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded },
+                .clickable {
+                    if (expanded) haptics.toggleOff() else haptics.toggleOn()
+                    expanded = !expanded
+                },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -214,8 +217,8 @@ private fun CalendarEventsCard(events: List<CalendarEvent>) {
         // Additional events
         AnimatedVisibility(
             visible = visibleUpcoming.isNotEmpty(),
-            enter = expandVertically(tween(250)) + fadeIn(tween(250)),
-            exit = shrinkVertically(tween(200)) + fadeOut(tween(200)),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
         ) {
             Column {
                 visibleUpcoming.forEach { event ->
@@ -234,7 +237,10 @@ private fun CalendarEventsCard(events: List<CalendarEvent>) {
                 color = TextSecondary.copy(alpha = 0.7f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable {
+                        if (expanded) haptics.toggleOff() else haptics.toggleOn()
+                        expanded = !expanded
+                    }
                     .padding(vertical = 2.dp),
             )
         }
@@ -401,6 +407,7 @@ private fun EventTile(
 @Composable
 private fun UpcomingEventsCard(events: List<CalendarEvent>) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberHaptics()
 
     val firstEvent = events.first()
     val restEvents = events.drop(1)
@@ -414,7 +421,10 @@ private fun UpcomingEventsCard(events: List<CalendarEvent>) {
                 .fillMaxWidth()
                 .then(
                     if (restEvents.size > 1) {
-                        Modifier.clickable { expanded = !expanded }
+                        Modifier.clickable {
+                            if (expanded) haptics.toggleOff() else haptics.toggleOn()
+                            expanded = !expanded
+                        }
                     } else {
                         Modifier
                     },
@@ -465,8 +475,8 @@ private fun UpcomingEventsCard(events: List<CalendarEvent>) {
         // Additional upcoming events
         AnimatedVisibility(
             visible = visibleRest.isNotEmpty(),
-            enter = expandVertically(tween(250)) + fadeIn(tween(250)),
-            exit = shrinkVertically(tween(200)) + fadeOut(tween(200)),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
         ) {
             Column {
                 visibleRest.forEach { event ->
@@ -488,7 +498,10 @@ private fun UpcomingEventsCard(events: List<CalendarEvent>) {
                 color = TextSecondary.copy(alpha = 0.7f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable {
+                        if (expanded) haptics.toggleOff() else haptics.toggleOn()
+                        expanded = !expanded
+                    }
                     .padding(vertical = 2.dp),
             )
         }

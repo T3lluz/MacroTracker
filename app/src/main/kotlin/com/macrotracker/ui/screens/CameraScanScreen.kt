@@ -81,6 +81,7 @@ import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.viewmodel.CameraScanViewModel
 import com.macrotracker.ui.viewmodel.ScanPhase
+import com.macrotracker.ui.util.rememberHaptics
 import java.io.ByteArrayOutputStream
 
 @Composable
@@ -175,7 +176,7 @@ private fun PermissionGate(onRequestPermission: () -> Unit, onGoBack: () -> Unit
         Text("Camera Access Needed", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            "MacroTracker needs camera access to scan nutrition labels on food packaging.",
+            "DailyDash needs camera access to scan nutrition labels on food packaging.",
             fontSize = 15.sp, color = TextSecondary, textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(16.dp))
@@ -193,6 +194,7 @@ private fun CameraPhase(
     val lifecycleOwner = LocalLifecycleOwner.current
     val imageCapture = remember { ImageCapture.Builder().setJpegQuality(45).build() }
     val previewView = remember { PreviewView(context) }
+    val haptics = rememberHaptics()
 
     LaunchedEffect(lifecycleOwner) {
         val cameraProvider = ProcessCameraProvider.awaitInstance(context)
@@ -260,6 +262,7 @@ private fun CameraPhase(
                         .background(Color.White.copy(alpha = 0.25f))
                         .border(4.dp, Color.White, CircleShape)
                         .clickable {
+                            haptics.confirm()
                             imageCapture.takePicture(
                                 ContextCompat.getMainExecutor(context),
                                 object : ImageCapture.OnImageCapturedCallback() {
@@ -356,6 +359,7 @@ private fun ResultPhase(
     val servingsOverride by viewModel.servingsOverride.collectAsState()
     val servingSizeOverride by viewModel.servingSizeOverride.collectAsState()
     val packageWeightOverride by viewModel.packageWeightOverride.collectAsState()
+    val haptics = rememberHaptics()
 
     // The ORIGINAL scan result — used to decide which follow-up fields to show.
     // We must NOT use `adj` for this, because `adj` includes user-typed values
@@ -421,6 +425,7 @@ private fun ResultPhase(
                         "−", fontSize = 24.sp, color = Primary, fontWeight = FontWeight.Light,
                         modifier = Modifier
                             .clickable {
+                                haptics.tick()
                                 val v = servingsOverride.toDoubleOrNull() ?: 1.0
                                 viewModel.setServingsOverride("%.1f".format(maxOf(0.5, v - 0.5)))
                             }
@@ -437,6 +442,7 @@ private fun ResultPhase(
                         "+", fontSize = 24.sp, color = Primary, fontWeight = FontWeight.Light,
                         modifier = Modifier
                             .clickable {
+                                haptics.tick()
                                 val v = servingsOverride.toDoubleOrNull() ?: 1.0
                                 viewModel.setServingsOverride("%.1f".format(v + 0.5))
                             }
@@ -512,8 +518,10 @@ private fun ResultPhase(
                 if (adj.servingsPerContainer <= 0) missingRequired.add("servings in package")
 
                 if (missingRequired.isNotEmpty()) {
+                    haptics.reject()
                     Toast.makeText(context, "Please fill: ${missingRequired.joinToString(", ")}", Toast.LENGTH_SHORT).show()
                 } else {
+                    haptics.confirm()
                     onLog(adj)
                 }
             },

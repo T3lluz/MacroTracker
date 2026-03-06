@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -66,11 +65,14 @@ import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.HeaderColor
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.HealthConnectUiState
 import com.macrotracker.ui.viewmodel.HealthViewModel
 import java.time.LocalDate
@@ -95,6 +97,7 @@ fun HealthScreen(
     var foodName by rememberSaveable { mutableStateOf("") }
     var calories by rememberSaveable { mutableStateOf("") }
     var protein by rememberSaveable { mutableStateOf("") }
+    val haptics = rememberHaptics()
 
     // Health Connect permission launcher
     val hcPermissionLauncher = rememberLauncherForActivityResult(
@@ -135,12 +138,12 @@ fun HealthScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            .padding(bottom = 100.dp),
+            .padding(bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         // Header
-        Text("Health", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Primary)
+        Text("Health", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
         Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -245,12 +248,14 @@ fun HealthScreen(
                     val cal = calories.toIntOrNull() ?: 0
                     val prot = protein.toIntOrNull() ?: 0
                     if (cal > 0 || prot > 0) {
+                        haptics.confirm()
                         viewModel.addLog(foodName, cal, prot)
                         foodName = ""
                         calories = ""
                         protein = ""
                         Toast.makeText(context, "✅ Entry added!", Toast.LENGTH_SHORT).show()
                     } else {
+                        haptics.reject()
                         Toast.makeText(context, "Enter calories or protein first", Toast.LENGTH_SHORT).show()
                     }
                 },
@@ -292,7 +297,7 @@ fun HealthScreen(
                         ) {
                             val animatedHeight by animateDpAsState(
                                 targetValue = targetHeight,
-                                animationSpec = tween(400),
+                                animationSpec = MacroMotion.entranceSpring(),
                                 label = "barHeight",
                             )
                             Box(
@@ -353,7 +358,7 @@ private fun HealthConnectCard(
     MacroCard(delayMs = 50) {
         AnimatedContent(
             targetState = state,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
             label = "hcContent",
         ) { currentState ->
             when (currentState) {

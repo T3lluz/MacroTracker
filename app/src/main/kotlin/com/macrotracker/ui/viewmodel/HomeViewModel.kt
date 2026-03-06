@@ -1,5 +1,6 @@
 package com.macrotracker.ui.viewmodel
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,7 +16,9 @@ import com.macrotracker.data.remote.WeatherAiRepository
 import com.macrotracker.data.remote.WeatherAiResult
 import com.macrotracker.data.remote.WeatherInfo
 import com.macrotracker.data.remote.WeatherRepository
+import com.macrotracker.widget.WidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -54,6 +57,7 @@ sealed class CalendarUiState {
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val repository: MacroRepository,
     private val weatherRepository: WeatherRepository,
     private val weatherAiRepository: WeatherAiRepository,
@@ -64,6 +68,7 @@ class HomeViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "HomeViewModel"
+        private const val WEATHER_PREFS = "daily_dash_weather_cache"
     }
 
     private val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -102,6 +107,7 @@ class HomeViewModel @Inject constructor(
             try {
                 val stats = healthConnectRepository.readTodayStats()
                 _healthState.value = HomeHealthState.Success(stats)
+                WidgetUpdater.updateAllWidgets(appContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to read health data for home: ${e.message}", e)
                 _healthState.value = HomeHealthState.Unavailable
@@ -120,6 +126,7 @@ class HomeViewModel @Inject constructor(
                 val todayEvents = calendarRepository.readEvents()
                 if (todayEvents.isNotEmpty()) {
                     _calendarState.value = CalendarUiState.Success(events = todayEvents)
+                    WidgetUpdater.updateAllWidgets(appContext)
                 } else {
                     // No events today — look ahead 7 days for upcoming events
                     val endOfToday = LocalDate.now().plusDays(1).atStartOfDay()
@@ -153,6 +160,8 @@ class HomeViewModel @Inject constructor(
                 val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
                 val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
                 _weatherState.value = WeatherUiState.Success(weather)
+                cacheWeatherForWidget(weather)
+                WidgetUpdater.updateAllWidgets(appContext)
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "Weather error: ${e.message}", e)
                 _weatherState.value = WeatherUiState.Error(e.message ?: "Unknown error")
@@ -205,6 +214,23 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun cacheWeatherForWidget(weather: WeatherInfo) {
+        try {
+            val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
+            val todayForecast = weather.dailyForecasts.firstOrNull()
+            prefs.edit()
+                .putString("temp", weather.temperature.toInt().toString())
+                .putString("icon", weather.icon)
+                .putString("description", weather.description)
+                .putString("location", weather.locationName)
+                .putString("high", todayForecast?.maxTemp?.toInt()?.toString())
+                .putString("low", todayForecast?.minTemp?.toInt()?.toString())
+                .apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to cache weather for widget: ${e.message}")
+        }
+    }
+
     fun addLog(foodName: String, calories: Int, protein: Int) {
         viewModelScope.launch {
             val log = MacroLogEntity(
@@ -216,6 +242,7 @@ class HomeViewModel @Inject constructor(
             )
             repository.saveLog(log)
             loadData()
+            WidgetUpdater.updateAllWidgets(appContext)
         }
     }
 
@@ -223,6 +250,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteLog(id)
             loadData()
+            WidgetUpdater.updateAllWidgets(appContext)
         }
     }
 }

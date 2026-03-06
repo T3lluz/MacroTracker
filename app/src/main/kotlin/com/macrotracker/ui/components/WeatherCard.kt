@@ -2,11 +2,8 @@ package com.macrotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -52,9 +49,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.WeatherUiState
 
 private enum class TimeOfDay { DAY, NIGHT, TWILIGHT }
@@ -251,10 +250,11 @@ fun WeatherCard(
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberHaptics()
 
     AnimatedContent(
         targetState = state,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
         label = "weatherContent",
         modifier = modifier,
     ) { currentState ->
@@ -289,7 +289,12 @@ fun WeatherCard(
                         .clickable {
                             val wasExpanded = expanded
                             expanded = !expanded
-                            if (!wasExpanded) onExpand()
+                            if (!wasExpanded) {
+                                haptics.toggleOn()
+                                onExpand()
+                            } else {
+                                haptics.toggleOff()
+                            }
                         },
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -355,8 +360,8 @@ fun WeatherCard(
                             // Expandable forecast
                             AnimatedVisibility(
                                 visible = expanded,
-                                enter = expandVertically(tween(300)) + fadeIn(tween(300)),
-                                exit = shrinkVertically(tween(200)) + fadeOut(tween(200)),
+                                enter = MacroMotion.expandEnter,
+                                exit = MacroMotion.expandExit,
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     // AI Summary — first thing in expanded, right under current weather

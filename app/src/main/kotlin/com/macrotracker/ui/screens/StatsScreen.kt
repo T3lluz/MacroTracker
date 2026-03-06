@@ -35,10 +35,12 @@ import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.StatsViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -51,6 +53,7 @@ fun StatsScreen(
     val history by viewModel.history.collectAsState()
     val calGoal by viewModel.calGoal.collectAsState()
     val protGoal by viewModel.protGoal.collectAsState()
+    val haptics = rememberHaptics()
 
     LaunchedEffect(Unit) { viewModel.loadData() }
 
@@ -61,7 +64,7 @@ fun StatsScreen(
             .padding(16.dp)
             .padding(bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         // Header with back button
         Row(
@@ -80,7 +83,7 @@ fun StatsScreen(
                 "Stats & Goals",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = Primary,
+                color = HeaderColor,
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
@@ -114,7 +117,10 @@ fun StatsScreen(
 
             MacroButton(
                 text = "Save Goals",
-                onClick = { viewModel.saveGoals() },
+                onClick = {
+                    haptics.confirm()
+                    viewModel.saveGoals()
+                },
                 modifier = Modifier.padding(top = 12.dp),
             )
         }

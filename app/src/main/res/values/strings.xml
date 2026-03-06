@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">MacroTracker</string>
+    <string name="app_name">DailyDash</string>
+    <string name="widget_name">DailyDash</string>
+    <string name="widget_description">Your daily dashboard — macros, health, weather, calendar &amp; more at a glance</string>
 </resources>
 

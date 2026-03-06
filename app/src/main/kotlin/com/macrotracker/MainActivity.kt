@@ -4,8 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.macrotracker.ui.navigation.MacroTrackerNavHost
-import com.macrotracker.ui.theme.MacroTrackerTheme
+import com.macrotracker.ui.navigation.DailyDashNavHost
+import com.macrotracker.ui.theme.DailyDashTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -14,8 +14,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MacroTrackerTheme {
-                MacroTrackerNavHost()
+            DailyDashTheme {
+                DailyDashNavHost()
             }
         }
     }

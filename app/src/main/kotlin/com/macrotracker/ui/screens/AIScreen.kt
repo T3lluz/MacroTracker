@@ -45,6 +45,7 @@ import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
@@ -82,7 +83,7 @@ fun AIScreen(
         Spacer(modifier = Modifier.height(48.dp))
 
         // Header
-        Text("AI Nutrition", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text("AI Nutrition", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
         Text(
             "Ask for macro estimates when labels are unavailable.",
             fontSize = 14.sp,
@@ -93,7 +94,7 @@ fun AIScreen(
         // Camera Scan Card
         MacroCard(delayMs = 60) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-                Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("AI Camera Scan", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
@@ -109,7 +110,7 @@ fun AIScreen(
         // Estimate Card
         MacroCard(delayMs = 80) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Estimate Food Macros", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
@@ -155,7 +156,7 @@ fun AIScreen(
         if (est != null) {
             MacroCard(delayMs = 120) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-                    Icon(Icons.Outlined.Restaurant, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Restaurant, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Estimate Result", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 }

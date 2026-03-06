@@ -65,7 +65,7 @@ private val AppTypography = Typography(
 )
 
 @Composable
-fun MacroTrackerTheme(content: @Composable () -> Unit) {
+fun DailyDashTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = DarkColorScheme,
         typography = AppTypography,

@@ -55,11 +55,13 @@ import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 
 @Composable
@@ -76,6 +78,7 @@ fun SettingsScreen(
     var draftKey by remember(savedKey) { mutableStateOf(savedKey) }
     var keyVisible by remember { mutableStateOf(false) }
     var keySaved by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
 
     val isDirty = draftKey.trim() != savedKey
     val hasKey = savedKey.isNotBlank()
@@ -97,8 +100,8 @@ fun SettingsScreen(
             .padding(16.dp)
             .padding(bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(40.dp))
-        Text("Settings", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Primary)
+        Spacer(modifier = Modifier.height(48.dp))
+        Text("Settings", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
         Spacer(modifier = Modifier.height(20.dp))
 
         // ── Connections Card ─────────────────────────────────────────────
@@ -123,7 +126,7 @@ fun SettingsScreen(
             }
 
             Text(
-                text = "Services connected to MacroTracker",
+                text = "Services connected to DailyDash",
                 fontSize = 13.sp,
                 color = TextSecondary,
                 modifier = Modifier.padding(bottom = 14.dp),
@@ -228,7 +231,10 @@ fun SettingsScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
-                    IconButton(onClick = { keyVisible = !keyVisible }) {
+                    IconButton(onClick = {
+                        haptics.tick()
+                        keyVisible = !keyVisible
+                    }) {
                         Icon(
                             imageVector = if (keyVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                             contentDescription = if (keyVisible) "Hide key" else "Show key",
@@ -266,6 +272,7 @@ fun SettingsScreen(
                 MacroButton(
                     text = if (keySaved) "Saved ✓" else "Save Key",
                     onClick = {
+                        haptics.confirm()
                         viewModel.saveApiKey(draftKey)
                         keySaved = true
                     },
@@ -276,6 +283,7 @@ fun SettingsScreen(
                     MacroButton(
                         text = "Clear",
                         onClick = {
+                            haptics.reject()
                             draftKey = ""
                             viewModel.saveApiKey("")
                             keySaved = false

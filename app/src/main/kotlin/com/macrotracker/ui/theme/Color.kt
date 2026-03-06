@@ -14,3 +14,6 @@ val TextSecondary = Color(0xFF99A8C2)
 val Border = Color(0xFF24324A)
 val Success = Color(0xFF22C55E)
 
+// Semantic alias for screen-level headers — keeps every screen in sync
+val HeaderColor = TextPrimary
+

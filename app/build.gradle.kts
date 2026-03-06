@@ -103,4 +103,11 @@ dependencies {
 
     // Location
     implementation(libs.play.services.location)
+
+    // Glance (App Widgets)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+
+    // WorkManager (for widget periodic updates)
+    implementation(libs.work.runtime)
 }

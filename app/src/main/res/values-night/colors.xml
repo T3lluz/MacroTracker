@@ -1,0 +1,19 @@
+<resources>
+  <!-- Widget colors (dark) -->
+  <color name="widget_surface">#1C1B1F</color>
+  <color name="widget_on_surface">#E6E1E5</color>
+  <color name="widget_subtitle">#CAC4D0</color>
+  <color name="widget_calorie">#FFB4AB</color>
+  <color name="widget_protein">#A5D6A7</color>
+  <color name="widget_track_bg">#36343B</color>
+  <color name="widget_health">#90CAF9</color>
+  <color name="widget_weather">#FFB74D</color>
+  <color name="widget_calendar">#CE93D8</color>
+  <color name="widget_card_bg">#2B2930</color>
+  <color name="widget_steps">#90CAF9</color>
+  <color name="widget_sleep">#CE93D8</color>
+  <color name="widget_heart">#EF9A9A</color>
+  <color name="widget_accent">#36343B</color>
+  <color name="widget_on_accent">#E6E1E5</color>
+</resources>
+
