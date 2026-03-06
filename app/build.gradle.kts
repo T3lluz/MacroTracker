@@ -54,6 +54,7 @@ android {
     }
 }
 
+
 dependencies {
     // Compose BOM
     val composeBom = platform(libs.compose.bom)
@@ -97,6 +98,7 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    implementation(libs.concurrent.futures)
 
     // Health Connect
     implementation(libs.health.connect)

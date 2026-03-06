@@ -1,6 +1,8 @@
 package com.macrotracker.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -112,7 +114,7 @@ fun StatsScreen(
                         .padding(bottom = 16.dp)
                         .then(
                             Modifier
-                                .background(Background, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .background(Background, shape = RoundedCornerShape(8.dp))
                                 .padding(12.dp)
                         ),
                 ) {

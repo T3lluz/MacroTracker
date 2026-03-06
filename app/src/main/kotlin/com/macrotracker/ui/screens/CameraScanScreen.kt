@@ -13,6 +13,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -69,7 +70,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.data.remote.ScanResult
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
-import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
@@ -181,25 +181,23 @@ private fun CameraPhase(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val imageCapture = remember { ImageCapture.Builder().setJpegQuality(45).build() }
+    val previewView = remember { PreviewView(context) }
+
+    LaunchedEffect(lifecycleOwner) {
+        val cameraProvider = ProcessCameraProvider.awaitInstance(context)
+        val preview = Preview.Builder().build().also {
+            it.surfaceProvider = previewView.surfaceProvider
+        }
+        cameraProvider.unbindAll()
+        cameraProvider.bindToLifecycle(
+            lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // Camera preview
         AndroidView(
-            factory = { ctx ->
-                val previewView = PreviewView(ctx)
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                cameraProviderFuture.addListener({
-                    val cameraProvider = cameraProviderFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
-                    )
-                }, ContextCompat.getMainExecutor(ctx))
-                previewView
-            },
+            factory = { previewView },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -345,7 +343,6 @@ private fun ResultPhase(
     val caloriesOverride by viewModel.caloriesOverride.collectAsState()
     val proteinOverride by viewModel.proteinOverride.collectAsState()
     val servingsOverride by viewModel.servingsOverride.collectAsState()
-    val servingSizeOverride by viewModel.servingSizeOverride.collectAsState()
     val packageWeightOverride by viewModel.packageWeightOverride.collectAsState()
 
     val adj = viewModel.getAdjustedResult() ?: return
