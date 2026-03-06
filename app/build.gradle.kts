@@ -84,14 +84,9 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    // Networking
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.moshi)
+    // Networking (OkHttp used directly for Gemini API calls)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
-    implementation(libs.moshi)
-    implementation(libs.moshi.kotlin)
-    ksp(libs.moshi.codegen)
 
     // CameraX
     implementation(libs.camerax.core)
@@ -105,4 +100,7 @@ dependencies {
 
     // Image loading
     implementation(libs.coil.compose)
+
+    // Location
+    implementation(libs.play.services.location)
 }

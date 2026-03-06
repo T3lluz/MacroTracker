@@ -86,13 +86,14 @@ import java.io.ByteArrayOutputStream
 @Composable
 fun CameraScanScreen(
     onNavigateBack: () -> Unit,
-    onLogFood: (foodName: String, calories: Int, protein: Int) -> Unit,
+    onNavigateHome: () -> Unit,
     viewModel: CameraScanViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val phase by viewModel.phase.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
     val error by viewModel.error.collectAsState()
+    val loggedEvent by viewModel.loggedEvent.collectAsState()
 
     var hasCameraPermission by remember { mutableStateOf(false) }
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -109,6 +110,15 @@ fun CameraScanScreen(
     // Show error toast
     LaunchedEffect(error) {
         error?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+    }
+
+    // Navigate home after food is saved to the database
+    LaunchedEffect(loggedEvent) {
+        if (loggedEvent) {
+            viewModel.consumeLoggedEvent()
+            Toast.makeText(context, "✅ Food logged successfully!", Toast.LENGTH_SHORT).show()
+            onNavigateHome()
+        }
     }
 
     when {
@@ -140,7 +150,8 @@ fun CameraScanScreen(
             viewModel = viewModel,
             bitmap = capturedBitmap,
             onLog = { adj ->
-                onLogFood(adj.foodName, adj.totalCalories, adj.totalProtein)
+                // Save directly to the database — no more just populating form fields
+                viewModel.saveScannedFood(adj)
             },
             onScanAgain = {
                 capturedBitmap = null
@@ -343,7 +354,13 @@ private fun ResultPhase(
     val caloriesOverride by viewModel.caloriesOverride.collectAsState()
     val proteinOverride by viewModel.proteinOverride.collectAsState()
     val servingsOverride by viewModel.servingsOverride.collectAsState()
+    val servingSizeOverride by viewModel.servingSizeOverride.collectAsState()
     val packageWeightOverride by viewModel.packageWeightOverride.collectAsState()
+
+    // The ORIGINAL scan result — used to decide which follow-up fields to show.
+    // We must NOT use `adj` for this, because `adj` includes user-typed values
+    // and would cause the input fields to disappear the moment the user types a valid number.
+    val originalResult by viewModel.result.collectAsState()
 
     val adj = viewModel.getAdjustedResult() ?: return
 
@@ -427,20 +444,24 @@ private fun ResultPhase(
                     )
                 }
 
-                // Follow-up fields
+                // Follow-up fields — use original scan result to decide which to show
                 Spacer(modifier = Modifier.height(16.dp))
 
-                val hasNamedFood = adj.foodName.isNotBlank() && adj.foodName.lowercase() != "scanned food"
+                val orig = originalResult
+                val hasNamedFood = orig != null && orig.foodName.isNotBlank() && orig.foodName.lowercase() != "scanned food"
                 if (!hasNamedFood) {
                     FollowUpField("Product Name *", "Enter product name", foodNameOverride, { viewModel.setFoodNameOverride(it) })
                 }
-                if (adj.caloriesPerServing <= 0) {
+                if (orig == null || orig.caloriesPerServing <= 0) {
                     FollowUpField("Calories Per Serving *", "e.g. 180", caloriesOverride, { viewModel.setCaloriesOverride(it) }, KeyboardType.Decimal)
                 }
-                if (adj.proteinPerServing <= 0) {
+                if (orig == null || orig.proteinPerServing <= 0) {
                     FollowUpField("Protein Per Serving (g)", "e.g. 12", proteinOverride, { viewModel.setProteinOverride(it) }, KeyboardType.Decimal)
                 }
-                if (adj.packageWeightGrams <= 0) {
+                if (orig == null || orig.servingSizeGrams <= 0) {
+                    FollowUpField("Serving Size (g)", "e.g. 85", servingSizeOverride, { viewModel.setServingSizeOverride(it) }, KeyboardType.Decimal)
+                }
+                if (orig == null || orig.packageWeightGrams <= 0) {
                     FollowUpField("Total Product Weight (g)", "e.g. 340", packageWeightOverride, { viewModel.setPackageWeightOverride(it) }, KeyboardType.Decimal)
                 }
 

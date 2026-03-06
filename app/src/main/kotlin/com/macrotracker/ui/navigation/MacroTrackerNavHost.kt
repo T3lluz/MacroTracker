@@ -1,43 +1,54 @@
 package com.macrotracker.ui.navigation
 
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -50,24 +61,30 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.macrotracker.ui.screens.AIScreen
 import com.macrotracker.ui.screens.CameraScanScreen
+import com.macrotracker.ui.screens.HealthScreen
+import com.macrotracker.ui.screens.HelpScreen
 import com.macrotracker.ui.screens.HistoryScreen
 import com.macrotracker.ui.screens.HomeScreen
+import com.macrotracker.ui.screens.SettingsScreen
 import com.macrotracker.ui.screens.StatsScreen
 import com.macrotracker.ui.theme.Background
-import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextSecondary
+import kotlin.math.roundToInt
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector, val activeIcon: ImageVector) {
-    data object Home : Screen("home", "Log", Icons.Outlined.Home, Icons.Filled.Home)
+    data object Home : Screen("home", "Home", Icons.Outlined.Home, Icons.Filled.Home)
+    data object Health : Screen("health", "Health", Icons.Outlined.FavoriteBorder, Icons.Filled.FavoriteBorder)
     data object History : Screen("history", "History", Icons.Outlined.BarChart, Icons.Filled.BarChart)
     data object AI : Screen("ai", "AI", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome)
-    data object Stats : Screen("stats", "More", Icons.Outlined.GridView, Icons.Filled.GridView)
-    data object CameraScan : Screen("cameraScan", "", Icons.Outlined.Home, Icons.Filled.Home) // not in bottom nav
+    data object Settings : Screen("settings", "Settings", Icons.Outlined.Settings, Icons.Filled.Settings)
+    data object Stats : Screen("stats", "", Icons.Outlined.BarChart, Icons.Filled.BarChart)
+    data object CameraScan : Screen("cameraScan", "", Icons.Outlined.Home, Icons.Filled.Home)
+    data object Help : Screen("help", "", Icons.Outlined.Home, Icons.Filled.Home)
 }
 
-private val BOTTOM_NAV_ITEMS = listOf(Screen.Home, Screen.History, Screen.AI, Screen.Stats)
+private val BOTTOM_NAV_ITEMS = listOf(Screen.Home, Screen.Health, Screen.History, Screen.AI, Screen.Settings)
 
 @Composable
 fun MacroTrackerNavHost() {
@@ -75,7 +92,9 @@ fun MacroTrackerNavHost() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    val showBottomBar = currentRoute in BOTTOM_NAV_ITEMS.map { it.route }
+    val showBottomBar = BOTTOM_NAV_ITEMS.any { screen ->
+        navBackStackEntry?.destination?.hierarchy?.any { it.route?.startsWith(screen.route) == true } == true
+    }
 
     Scaffold(
         containerColor = Background,
@@ -99,13 +118,42 @@ fun MacroTrackerNavHost() {
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
-                enterTransition = { fadeIn() + slideInHorizontally { it / 4 } },
-                exitTransition = { fadeOut() + slideOutHorizontally { -it / 4 } },
-                popEnterTransition = { fadeIn() + slideInHorizontally { -it / 4 } },
-                popExitTransition = { fadeOut() + slideOutHorizontally { it / 4 } },
+                enterTransition = {
+                    fadeIn(tween(180)) + slideInHorizontally(
+                        animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    ) { (it * 0.12f).toInt() }
+                },
+                exitTransition = {
+                    fadeOut(tween(130)) + slideOutHorizontally(
+                        animationSpec = tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    ) { -(it * 0.12f).toInt() }
+                },
+                popEnterTransition = {
+                    fadeIn(tween(180)) + slideInHorizontally(
+                        animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    ) { -(it * 0.12f).toInt() }
+                },
+                popExitTransition = {
+                    fadeOut(tween(130)) + slideOutHorizontally(
+                        animationSpec = tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    ) { (it * 0.12f).toInt() }
+                },
             ) {
+                composable(Screen.Home.route) {
+                    HomeScreen(
+                        onNavigateToHealth = {
+                            navController.navigate(Screen.Health.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onNavigateToStats = { navController.navigate(Screen.Settings.route) },
+                    )
+                }
+
                 composable(
-                    route = "${Screen.Home.route}?foodName={foodName}&calories={calories}&protein={protein}",
+                    route = "${Screen.Health.route}?foodName={foodName}&calories={calories}&protein={protein}",
                     arguments = listOf(
                         navArgument("foodName") { type = NavType.StringType; defaultValue = "" },
                         navArgument("calories") { type = NavType.IntType; defaultValue = -1 },
@@ -115,19 +163,11 @@ fun MacroTrackerNavHost() {
                     val foodName = entry.arguments?.getString("foodName")?.takeIf { it.isNotEmpty() }
                     val calories = entry.arguments?.getInt("calories")?.takeIf { it >= 0 }
                     val protein = entry.arguments?.getInt("protein")?.takeIf { it >= 0 }
-                    HomeScreen(
+                    HealthScreen(
                         onNavigateToCameraScan = { navController.navigate(Screen.CameraScan.route) },
-                        onNavigateToStats = { navController.navigate(Screen.Stats.route) },
                         scannedFoodName = foodName,
                         scannedCalories = calories,
                         scannedProtein = protein,
-                    )
-                }
-
-                composable(Screen.Home.route) {
-                    HomeScreen(
-                        onNavigateToCameraScan = { navController.navigate(Screen.CameraScan.route) },
-                        onNavigateToStats = { navController.navigate(Screen.Stats.route) },
                     )
                 }
 
@@ -138,25 +178,69 @@ fun MacroTrackerNavHost() {
                 composable(Screen.AI.route) {
                     AIScreen(
                         onNavigateToCameraScan = { navController.navigate(Screen.CameraScan.route) },
+                        onNavigateToHome = {
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                     )
                 }
 
-                composable(Screen.Stats.route) {
-                    StatsScreen()
+                composable(Screen.Settings.route) {
+                    SettingsScreen(
+                        onNavigateToHelp = { navController.navigate(Screen.Help.route) },
+                        onNavigateToStats = { navController.navigate(Screen.Stats.route) },
+                    )
+                }
+
+                composable(
+                    route = Screen.Stats.route,
+                    enterTransition = {
+                        fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it }
+                    },
+                    exitTransition = {
+                        fadeOut(tween(130)) + slideOutHorizontally(tween(180)) { it }
+                    },
+                ) {
+                    StatsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                    )
                 }
 
                 composable(
                     route = Screen.CameraScan.route,
-                    enterTransition = { slideInHorizontally { it } },
-                    exitTransition = { slideOutHorizontally { it } },
+                    enterTransition = {
+                        fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it }
+                    },
+                    exitTransition = {
+                        fadeOut(tween(130)) + slideOutHorizontally(tween(180)) { it }
+                    },
                 ) {
                     CameraScanScreen(
                         onNavigateBack = { navController.popBackStack() },
-                        onLogFood = { foodName, calories, protein ->
-                            navController.navigate("${Screen.Home.route}?foodName=$foodName&calories=$calories&protein=$protein") {
-                                popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
+                        onNavigateHome = {
+                            navController.navigate(Screen.Health.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
                             }
                         },
+                    )
+                }
+
+                composable(
+                    route = Screen.Help.route,
+                    enterTransition = {
+                        fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it }
+                    },
+                    exitTransition = {
+                        fadeOut(tween(130)) + slideOutHorizontally(tween(180)) { it }
+                    },
+                ) {
+                    HelpScreen(
+                        onNavigateBack = { navController.popBackStack() },
                     )
                 }
             }
@@ -170,6 +254,17 @@ private fun BottomNavBar(
     currentRoute: String?,
     onItemClick: (Screen) -> Unit,
 ) {
+    val activeIndex = items.indexOfFirst { currentRoute?.startsWith(it.route) == true }.coerceAtLeast(0)
+
+    val animatedIndex by animateFloatAsState(
+        targetValue = activeIndex.toFloat(),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "navPillX",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,45 +272,67 @@ private fun BottomNavBar(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(0.96f)
                 .height(52.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(Surface)
-                .padding(horizontal = 5.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 4.dp),
         ) {
-            items.forEach { screen ->
-                val isActive = currentRoute == screen.route
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(999.dp))
-                        .then(if (isActive) Modifier.background(Primary, RoundedCornerShape(999.dp)) else Modifier)
-                        .clickable { if (!isActive) onItemClick(screen) }
-                        .padding(vertical = 9.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
+            val itemWidth = maxWidth / items.size
+            val itemWidthPx = with(LocalDensity.current) { itemWidth.toPx() }
+
+            // Animated sliding pill background
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(x = (animatedIndex * itemWidthPx).roundToInt(), y = 0) }
+                    .width(itemWidth)
+                    .height(52.dp)
+                    .padding(vertical = 6.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Primary),
+            )
+
+            // Nav items row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items.forEachIndexed { index, screen ->
+                    val isActive = index == activeIndex
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { if (!isActive) onItemClick(screen) },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = if (isActive) screen.activeIcon else screen.icon,
-                            contentDescription = screen.label,
-                            tint = if (isActive) Color.White else TextSecondary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        if (screen.label.isNotEmpty()) {
-                            Text(
-                                text = screen.label,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isActive) Color.White else TextSecondary,
-                                modifier = Modifier.padding(start = 6.dp),
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                imageVector = if (isActive) screen.activeIcon else screen.icon,
+                                contentDescription = screen.label,
+                                tint = if (isActive) Color.White else TextSecondary,
+                                modifier = Modifier.size(18.dp),
                             )
+                            if (isActive && screen.label.isNotEmpty()) {
+                                Text(
+                                    text = screen.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -223,4 +340,3 @@ private fun BottomNavBar(
         }
     }
 }
-

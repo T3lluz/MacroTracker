@@ -31,6 +31,12 @@ class AiViewModel @Inject constructor(
     private val _feedback = MutableStateFlow<FeedbackState?>(null)
     val feedback: StateFlow<FeedbackState?> = _feedback
 
+    /** Emits `true` once after a successful log so the UI can navigate away. */
+    private val _loggedEvent = MutableStateFlow(false)
+    val loggedEvent: StateFlow<Boolean> = _loggedEvent
+
+    fun consumeLoggedEvent() { _loggedEvent.value = false }
+
     fun estimateNutrition(foodQuery: String) {
         if (foodQuery.isBlank()) {
             _feedback.value = FeedbackState("Enter a food name or description first.", true)
@@ -66,6 +72,7 @@ class AiViewModel @Inject constructor(
                 )
             )
             _feedback.value = FeedbackState("AI estimate logged to today.", false)
+            _loggedEvent.value = true
         }
     }
 }

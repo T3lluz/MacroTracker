@@ -2,7 +2,6 @@ package com.macrotracker.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,13 +9,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -39,6 +45,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun StatsScreen(
+    onNavigateBack: () -> Unit = {},
     viewModel: StatsViewModel = hiltViewModel(),
 ) {
     val history by viewModel.history.collectAsState()
@@ -55,7 +62,29 @@ fun StatsScreen(
             .padding(bottom = 120.dp),
     ) {
         Spacer(modifier = Modifier.height(40.dp))
-        Text("Stats & Settings", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Primary)
+
+        // Header with back button
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            IconButton(onClick = onNavigateBack, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Outlined.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Primary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Text(
+                "Stats & Goals",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = Primary,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
 
         // Goals Card
@@ -141,4 +170,3 @@ fun StatsScreen(
         }
     }
 }
-

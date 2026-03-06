@@ -25,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,11 +54,21 @@ import com.macrotracker.ui.viewmodel.AiViewModel
 @Composable
 fun AIScreen(
     onNavigateToCameraScan: () -> Unit,
+    onNavigateToHome: () -> Unit,
     viewModel: AiViewModel = hiltViewModel(),
 ) {
     val loading by viewModel.loading.collectAsState()
     val estimate by viewModel.estimate.collectAsState()
     val feedback by viewModel.feedback.collectAsState()
+    val loggedEvent by viewModel.loggedEvent.collectAsState()
+
+    // Navigate to Home after a successful log
+    LaunchedEffect(loggedEvent) {
+        if (loggedEvent) {
+            viewModel.consumeLoggedEvent()
+            onNavigateToHome()
+        }
+    }
 
     var foodQuery by rememberSaveable { mutableStateOf("") }
 
