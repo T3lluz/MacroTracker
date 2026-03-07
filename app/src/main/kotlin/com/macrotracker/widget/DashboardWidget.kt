@@ -362,3 +362,5 @@ private fun Bar(progress: Float, accent: ColorProvider, track: ColorProvider) {
 }
 
 private fun pct(cur: Int, goal: Int) = if (goal > 0) (cur.toFloat() / goal).coerceIn(0f, 1f) else 0f
+
+

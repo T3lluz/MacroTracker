@@ -1,8 +1,13 @@
 package com.macrotracker.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Link
@@ -40,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +57,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
@@ -58,12 +67,12 @@ import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Success
-import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     onNavigateToHelp: () -> Unit = {},
@@ -74,6 +83,8 @@ fun SettingsScreen(
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
     val weatherConnected by viewModel.weatherConnected.collectAsState()
     val calendarConnected by viewModel.calendarConnected.collectAsState()
+    val availableCalendars by viewModel.availableCalendars.collectAsState()
+    val selectedCalendarIds by viewModel.selectedCalendarIds.collectAsState()
 
     var draftKey by remember(savedKey) { mutableStateOf(savedKey) }
     var keyVisible by remember { mutableStateOf(false) }
@@ -165,6 +176,30 @@ fun SettingsScreen(
                 connected = calendarConnected,
                 iconTint = Color(0xFF4285F4),
             )
+
+            if (calendarConnected && availableCalendars.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Select calendars to show:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    availableCalendars.forEach { cal ->
+                        CalendarChip(
+                            calendar = cal,
+                            isSelected = selectedCalendarIds.contains(cal.id),
+                            onToggle = { viewModel.toggleCalendar(cal.id) }
+                        )
+                    }
+                }
+            }
 
             HorizontalDivider(
                 color = Border.copy(alpha = 0.3f),
@@ -351,6 +386,52 @@ fun SettingsScreen(
                 onClick = onNavigateToHelp,
                 modifier = Modifier.weight(1f),
                 variant = ButtonVariant.SECONDARY,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarChip(
+    calendar: CalendarInfo,
+    isSelected: Boolean,
+    onToggle: () -> Unit
+) {
+    val color = Color(calendar.color).copy(alpha = 1f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (isSelected) color.copy(alpha = 0.15f) else Background)
+            .border(
+                width = 1.dp,
+                color = if (isSelected) color.copy(alpha = 0.5f) else Border.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable { onToggle() }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = calendar.name,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = if (isSelected) TextPrimary else TextSecondary,
+            maxLines = 1
+        )
+        if (isSelected) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                Icons.Outlined.Check,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(10.dp)
             )
         }
     }

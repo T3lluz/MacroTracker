@@ -20,6 +20,13 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class CalendarInfo(
+    val id: Long,
+    val name: String,
+    val color: Int,
+    val accountName: String
+)
+
 data class CalendarEvent(
     val id: Long,
     val title: String,
@@ -30,6 +37,8 @@ data class CalendarEvent(
     val isAllDay: Boolean,
     val description: String = "",
     val customAppUri: String = "",
+    val calendarName: String = "",
+    val calendarId: Long = 0,
 ) {
     /** Extract the first URL (meeting link) from description or customAppUri */
     val meetingLink: String?
@@ -95,9 +104,56 @@ class CalendarRepository @Inject constructor(
     }
 
     /**
-     * Read calendar events for today and optionally the next [extraDays] days.
+     * Get all available calendars on the device.
      */
-    suspend fun readEvents(extraDays: Int = 0): List<CalendarEvent> = withContext(Dispatchers.IO) {
+    suspend fun getAvailableCalendars(): List<CalendarInfo> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext emptyList()
+
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.CALENDAR_COLOR,
+            CalendarContract.Calendars.ACCOUNT_NAME
+        )
+
+        val calendars = mutableListOf<CalendarInfo>()
+        var cursor: Cursor? = null
+        try {
+            cursor = context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC"
+            )
+            cursor?.let {
+                while (it.moveToNext()) {
+                    calendars.add(
+                        CalendarInfo(
+                            id = it.getLong(0),
+                            name = it.getString(1) ?: "Unknown",
+                            color = it.getInt(2),
+                            accountName = it.getString(3) ?: ""
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query calendars", e)
+        } finally {
+            cursor?.close()
+        }
+        calendars
+    }
+
+    /**
+     * Read calendar events for today and optionally the next [extraDays] days.
+     * Optionally filter by [calendarIds].
+     */
+    suspend fun readEvents(
+        extraDays: Int = 0,
+        calendarIds: Set<Long>? = null
+    ): List<CalendarEvent> = withContext(Dispatchers.IO) {
         if (!hasPermission()) {
             Log.w(TAG, "Calendar permission not granted")
             return@withContext emptyList()
@@ -117,6 +173,8 @@ class CalendarRepository @Inject constructor(
             CalendarContract.Instances.ALL_DAY,
             CalendarContract.Instances.DESCRIPTION,
             CalendarContract.Instances.CUSTOM_APP_URI,
+            CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Instances.CALENDAR_ID,
         )
 
         val events = mutableListOf<CalendarEvent>()
@@ -125,13 +183,20 @@ class CalendarRepository @Inject constructor(
         ContentUris.appendId(builder, startOfDay)
         ContentUris.appendId(builder, endOfRange)
 
+        var selection: String? = null
+        var selectionArgs: Array<String>? = null
+
+        if (calendarIds != null && calendarIds.isNotEmpty()) {
+            selection = "${CalendarContract.Instances.CALENDAR_ID} IN (${calendarIds.joinToString(",")})"
+        }
+
         var cursor: Cursor? = null
         try {
             cursor = context.contentResolver.query(
                 builder.build(),
                 projection,
-                null,
-                null,
+                selection,
+                selectionArgs,
                 "${CalendarContract.Instances.BEGIN} ASC",
             )
 
@@ -146,6 +211,8 @@ class CalendarRepository @Inject constructor(
                     val allDay = it.getInt(6) == 1
                     val description = it.getString(7) ?: ""
                     val customAppUri = it.getString(8) ?: ""
+                    val calendarName = it.getString(9) ?: ""
+                    val calendarId = it.getLong(10)
 
                     val startDt = LocalDateTime.ofInstant(Instant.ofEpochMilli(begin), zone)
                     val endDt = LocalDateTime.ofInstant(Instant.ofEpochMilli(end), zone)
@@ -161,6 +228,8 @@ class CalendarRepository @Inject constructor(
                             isAllDay = allDay,
                             description = description,
                             customAppUri = customAppUri,
+                            calendarName = calendarName,
+                            calendarId = calendarId,
                         ),
                     )
                 }
@@ -174,5 +243,3 @@ class CalendarRepository @Inject constructor(
         events
     }
 }
-
-

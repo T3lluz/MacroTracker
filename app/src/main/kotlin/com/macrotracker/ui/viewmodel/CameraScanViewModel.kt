@@ -6,7 +6,6 @@ import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
 import com.macrotracker.data.remote.NutritionAiRepository
 import com.macrotracker.data.remote.ScanResult
-import com.macrotracker.data.remote.maybeComputeTotals
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +15,18 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 enum class ScanPhase { CAMERA, PREVIEW, RESULT }
+
+data class LogSummary(
+    val foodName: String,
+    val caloriesPerServing: Int,
+    val proteinPerServing: Double,
+    val servingsPerContainer: Double,
+    val servingSizeGrams: Int,
+    val packageWeightGrams: Int,
+    val loggedCalories: Int,
+    val loggedProtein: Int,
+    val multiplier: Double
+)
 
 @HiltViewModel
 class CameraScanViewModel @Inject constructor(
@@ -56,12 +67,24 @@ class CameraScanViewModel @Inject constructor(
     private val _packageWeightOverride = MutableStateFlow("")
     val packageWeightOverride: StateFlow<String> = _packageWeightOverride
 
+    // Eaten fields
+    private val _amountEaten = MutableStateFlow("1")
+    val amountEaten: StateFlow<String> = _amountEaten
+
+    private val _unitEaten = MutableStateFlow("servings")
+    val unitEaten: StateFlow<String> = _unitEaten
+
+    val units = listOf("servings", "packages", "g", "ml", "dl", "L", "kg")
+
     fun setFoodNameOverride(v: String) { _foodNameOverride.value = v }
     fun setCaloriesOverride(v: String) { _caloriesOverride.value = v }
     fun setProteinOverride(v: String) { _proteinOverride.value = v }
     fun setServingsOverride(v: String) { _servingsOverride.value = v }
     fun setServingSizeOverride(v: String) { _servingSizeOverride.value = v }
     fun setPackageWeightOverride(v: String) { _packageWeightOverride.value = v }
+    
+    fun setAmountEaten(v: String) { _amountEaten.value = v }
+    fun setUnitEaten(v: String) { _unitEaten.value = v }
 
     fun setPhase(p: ScanPhase) { _phase.value = p }
 
@@ -78,6 +101,11 @@ class CameraScanViewModel @Inject constructor(
                 _servingsOverride.value = if (scanResult.servingsPerContainer > 0) formatDouble(scanResult.servingsPerContainer) else "1"
                 _servingSizeOverride.value = formatNum(scanResult.servingSizeGrams)
                 _packageWeightOverride.value = formatNum(scanResult.packageWeightGrams)
+                
+                // Defaults for consumption
+                _amountEaten.value = "1"
+                _unitEaten.value = "servings"
+
                 _phase.value = ScanPhase.RESULT
             } catch (e: Exception) {
                 _error.value = e.message ?: "Scan failed."
@@ -87,42 +115,59 @@ class CameraScanViewModel @Inject constructor(
         }
     }
 
-    fun getAdjustedResult(): ScanResult? {
+    fun getLogSummary(
+        foodNameStr: String,
+        calsStr: String,
+        protStr: String,
+        servsStr: String,
+        servSizeStr: String,
+        pkgWeightStr: String,
+        amtStr: String,
+        unitStr: String
+    ): LogSummary? {
         val r = _result.value ?: return null
-        return getAdjustedResult(
-            foodNameOverride = _foodNameOverride.value,
-            caloriesOverride = _caloriesOverride.value,
-            proteinOverride = _proteinOverride.value,
-            servingsOverride = _servingsOverride.value,
-            servingSizeOverride = _servingSizeOverride.value,
-            packageWeightOverride = _packageWeightOverride.value,
-        )
-    }
-
-    /**
-     * Overload that accepts explicit override strings.
-     * Call this from Composables that have already collected the override StateFlows,
-     * so the result is guaranteed to reflect the latest typed values.
-     */
-    fun getAdjustedResult(
-        foodNameOverride: String,
-        caloriesOverride: String,
-        proteinOverride: String,
-        servingsOverride: String,
-        servingSizeOverride: String,
-        packageWeightOverride: String,
-    ): ScanResult? {
-        val r = _result.value ?: return null
-        // Default servings to 1 when the field is empty and original was 0,
-        // so the user doesn't get blocked by a hidden-zero requirement.
+        
+        val cals = calsStr.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.caloriesPerServing
+        // Protein can be a decimal, so we keep it as a double to avoid issues when the user types a decimal
+        val prot = protStr.toDoubleOrNull()?.coerceAtLeast(0.0) ?: r.proteinPerServing.toDouble()
+        
         val fallbackServings = if (r.servingsPerContainer > 0) r.servingsPerContainer else 1.0
-        return maybeComputeTotals(
-            foodName = foodNameOverride.ifBlank { r.foodName },
-            caloriesPerServing = caloriesOverride.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.caloriesPerServing,
-            proteinPerServing = proteinOverride.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.proteinPerServing,
-            servingsPerContainer = servingsOverride.toDoubleOrNull()?.coerceAtLeast(0.0) ?: fallbackServings,
-            servingSizeGrams = servingSizeOverride.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.servingSizeGrams,
-            packageWeightGrams = packageWeightOverride.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.packageWeightGrams,
+        var finalServs = servsStr.toDoubleOrNull()?.coerceAtLeast(0.0) ?: fallbackServings
+        var finalServSize = servSizeStr.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.servingSizeGrams
+        var finalPkgWeight = pkgWeightStr.toDoubleOrNull()?.toInt()?.coerceAtLeast(0) ?: r.packageWeightGrams
+
+        if (finalServs <= 0 && finalServSize > 0 && finalPkgWeight > 0) {
+            finalServs = finalPkgWeight.toDouble() / finalServSize
+        }
+        if (finalServSize <= 0 && finalServs > 0 && finalPkgWeight > 0) {
+            finalServSize = (finalPkgWeight / finalServs).toInt()
+        }
+        if (finalPkgWeight <= 0 && finalServs > 0 && finalServSize > 0) {
+            finalPkgWeight = (finalServs * finalServSize).toInt()
+        }
+
+        val amt = amtStr.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+        
+        val multiplier = when (unitStr) {
+            "servings" -> amt
+            "packages" -> amt * finalServs
+            "g", "ml" -> if (finalServSize > 0) amt / finalServSize else 0.0
+            "kg", "L" -> if (finalServSize > 0) (amt * 1000) / finalServSize else 0.0
+            "dl" -> if (finalServSize > 0) (amt * 100) / finalServSize else 0.0
+            else -> amt
+        }
+
+        return LogSummary(
+            foodName = foodNameStr.ifBlank { r.foodName },
+            caloriesPerServing = cals,
+            proteinPerServing = prot,
+            servingsPerContainer = finalServs,
+            servingSizeGrams = finalServSize,
+            packageWeightGrams = finalPkgWeight,
+            // Calculate correctly and round to avoid strange decimal point behaviour with the multiplier
+            loggedCalories = Math.round(cals * multiplier).toInt(),
+            loggedProtein = Math.round(prot * multiplier).toInt(),
+            multiplier = multiplier
         )
     }
 
@@ -131,16 +176,16 @@ class CameraScanViewModel @Inject constructor(
     val loggedEvent: StateFlow<Boolean> = _loggedEvent
     fun consumeLoggedEvent() { _loggedEvent.value = false }
 
-    fun saveScannedFood(scanResult: ScanResult) {
+    fun saveScannedFood(summary: LogSummary) {
         viewModelScope.launch {
             val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd")
             macroRepo.saveLog(
                 MacroLogEntity(
                     id = System.currentTimeMillis().toString(),
                     date = LocalDate.now().format(dateFormat),
-                    foodName = "${scanResult.foodName} (Scan)",
-                    calories = scanResult.totalCalories,
-                    protein = scanResult.totalProtein,
+                    foodName = "${summary.foodName} (Scan)",
+                    calories = summary.loggedCalories,
+                    protein = summary.loggedProtein,
                 )
             )
             _loggedEvent.value = true
@@ -157,6 +202,8 @@ class CameraScanViewModel @Inject constructor(
         _servingsOverride.value = ""
         _servingSizeOverride.value = ""
         _packageWeightOverride.value = ""
+        _amountEaten.value = "1"
+        _unitEaten.value = "servings"
     }
 
     private fun formatNum(v: Int): String = if (v > 0) v.toString() else ""
@@ -164,4 +211,3 @@ class CameraScanViewModel @Inject constructor(
         if (v == v.toLong().toDouble()) v.toLong().toString() else "%.2f".format(v)
     } else ""
 }
-

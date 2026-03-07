@@ -4,15 +4,19 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,8 +27,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.outlined.Bedtime
-import androidx.compose.material.icons.outlined.DirectionsWalk
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Refresh
@@ -39,24 +44,36 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.macrotracker.data.health.DailyHealthStats
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
@@ -72,13 +89,20 @@ import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.HealthConnectUiState
 import com.macrotracker.ui.viewmodel.HealthViewModel
+import java.time.DayOfWeek
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
+import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
+
+enum class HealthMetric { STEPS, HEART_RATE, SLEEP, CALORIES }
 
 @Composable
 fun HealthScreen(
@@ -93,6 +117,14 @@ fun HealthScreen(
     val logs by viewModel.logs.collectAsState()
     val weekHistory by viewModel.weekHistory.collectAsState()
     val healthConnectState by viewModel.healthConnectState.collectAsState()
+    val healthHistory by viewModel.healthHistory.collectAsState()
+
+    val selectedDate by viewModel.selectedDate.collectAsState()
+    val intradayHeartRate by viewModel.intradayHeartRate.collectAsState()
+    val detailedSleep by viewModel.detailedSleep.collectAsState()
+    val weekStartDay by viewModel.weekStartDay.collectAsState()
+    
+    var selectedMetric by rememberSaveable { mutableStateOf(HealthMetric.STEPS) }
 
     var foodName by rememberSaveable { mutableStateOf("") }
     var calories by rememberSaveable { mutableStateOf("") }
@@ -165,6 +197,34 @@ fun HealthScreen(
             onRetry = { viewModel.loadHealthConnect() },
         )
 
+        // Health History Card
+        if (healthConnectState is HealthConnectUiState.Success && healthHistory.isNotEmpty()) {
+            HealthHistoryCard(
+                healthHistory = healthHistory,
+                selectedDate = selectedDate,
+                selectedMetric = selectedMetric,
+                weekStartDay = weekStartDay,
+                haptics = haptics,
+                onDateSelected = { 
+                    viewModel.selectDate(it)
+                },
+                onMetricSelected = { 
+                    selectedMetric = it
+                    haptics.tick()
+                },
+                onWeekStartDaySelected = {
+                    viewModel.setWeekStartDay(it)
+                    haptics.tick()
+                }
+            )
+
+            if (selectedMetric == HealthMetric.HEART_RATE) {
+                HeartRateDetailCard(intradayHeartRate, selectedDate, haptics)
+            } else if (selectedMetric == HealthMetric.SLEEP) {
+                SleepDetailCard(detailedSleep, selectedDate, haptics)
+            }
+        }
+
         // Daily Summary Card
         val s = summary
         if (s != null) {
@@ -220,6 +280,16 @@ fun HealthScreen(
                 value = foodName,
                 onValueChange = { foodName = it },
                 placeholder = "Food Name (optional)",
+                trailingIcon = {
+                    if (foodName.isNotEmpty()) {
+                        IconButton(onClick = { foodName = "" }) {
+                            Icon(
+                                imageVector = Icons.Filled.Clear,
+                                contentDescription = "Clear",
+                            )
+                        }
+                    }
+                },
             )
 
             Row(
@@ -232,6 +302,16 @@ fun HealthScreen(
                     placeholder = "Calories",
                     modifier = Modifier.weight(1f),
                     keyboardType = KeyboardType.Number,
+                    trailingIcon = {
+                        if (calories.isNotEmpty()) {
+                            IconButton(onClick = { calories = "" }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Clear,
+                                    contentDescription = "Clear",
+                                )
+                            }
+                        }
+                    },
                 )
                 MacroTextField(
                     value = protein,
@@ -239,6 +319,16 @@ fun HealthScreen(
                     placeholder = "Protein (g)",
                     modifier = Modifier.weight(1f),
                     keyboardType = KeyboardType.Number,
+                    trailingIcon = {
+                        if (protein.isNotEmpty()) {
+                            IconButton(onClick = { protein = "" }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Clear,
+                                    contentDescription = "Clear",
+                                )
+                            }
+                        }
+                    },
                 )
             }
 
@@ -267,7 +357,7 @@ fun HealthScreen(
         if (weekHistory.isNotEmpty()) {
             MacroCard(delayMs = 200) {
                 Text(
-                    "This Week",
+                    "Food Calories",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
@@ -279,22 +369,30 @@ fun HealthScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(100.dp),
+                        .height(160.dp), // Increased height to prevent clipping
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.Bottom,
                 ) {
                     weekHistory.forEach { day ->
                         val heightFraction = day.totalCalories.toFloat() / maxCal
-                        val targetHeight = (10 + heightFraction * 70).dp
+                        val targetHeight = (10 + heightFraction * 110).dp
                         val isToday = day.date == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                         val dayLabel = try {
-                            LocalDate.parse(day.date).dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault())
+                            LocalDate.parse(day.date).dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
                         } catch (_: Exception) { "?" }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.weight(1f),
                         ) {
+                            if (day.totalCalories > 0) {
+                                Text(
+                                    text = day.totalCalories.toString(),
+                                    fontSize = 10.sp,
+                                    color = if (isToday) TextPrimary else TextSecondary,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
                             val animatedHeight by animateDpAsState(
                                 targetValue = targetHeight,
                                 animationSpec = MacroMotion.entranceSpring(),
@@ -405,7 +503,7 @@ private fun HealthConnectCard(
                         }
 
                         Text(
-                            "via Health Connect (Garmin)",
+                            "via Health Connect",
                             fontSize = 12.sp,
                             color = TextSecondary,
                             modifier = Modifier.padding(bottom = 14.dp),
@@ -417,7 +515,7 @@ private fun HealthConnectCard(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             HealthStatTile(
-                                icon = Icons.Outlined.DirectionsWalk,
+                                icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
                                 value = "%,d".format(stats.steps),
                                 label = "Steps",
                                 iconTint = Primary,
@@ -453,10 +551,10 @@ private fun HealthConnectCard(
                             )
                             HealthStatTile(
                                 icon = Icons.Outlined.LocalFireDepartment,
-                                value = if (stats.activeCaloriesBurned > 0) {
-                                    "${stats.activeCaloriesBurned.toInt()} kcal"
+                                value = if (stats.totalCaloriesBurned > 0) {
+                                    "${stats.totalCaloriesBurned.toInt()} kcal"
                                 } else "—",
-                                label = "Active Calories",
+                                label = "Total Calories",
                                 iconTint = Color(0xFFFF9800),
                                 modifier = Modifier.weight(1f),
                             )
@@ -473,7 +571,7 @@ private fun HealthConnectCard(
                             color = TextPrimary,
                         )
                         Text(
-                            "Connect to Health Connect to see your steps, heart rate, sleep & calories from Garmin.",
+                            "Connect to Health Connect to see your steps, heart rate, sleep & calories.",
                             fontSize = 13.sp,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
@@ -509,7 +607,7 @@ private fun HealthConnectCard(
                                 color = TextPrimary,
                             )
                             Text(
-                                "Health Connect is not available on this device.\nInstall it from the Play Store to see Garmin data.",
+                                "Health Connect is not available on this device.\nInstall it from the Play Store.",
                                 fontSize = 12.sp,
                                 color = TextSecondary,
                                 lineHeight = 16.sp,
@@ -548,6 +646,762 @@ private fun HealthConnectCard(
                 }
             }
         }
+    }
+}
+
+// ── Health History Graph ──────────────────────────────────────────────
+
+@Composable
+private fun HealthHistoryCard(
+    healthHistory: List<DailyHealthStats>,
+    selectedDate: LocalDate,
+    selectedMetric: HealthMetric,
+    weekStartDay: DayOfWeek,
+    haptics: HapticHelper,
+    onDateSelected: (LocalDate) -> Unit,
+    onMetricSelected: (HealthMetric) -> Unit,
+    onWeekStartDaySelected: (DayOfWeek) -> Unit
+) {
+    MacroCard(delayMs = 75) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Weekly Trends",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Starts:",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Background)
+                            .clickable {
+                                onWeekStartDaySelected(
+                                    if (weekStartDay == DayOfWeek.MONDAY) DayOfWeek.SUNDAY else DayOfWeek.MONDAY
+                                )
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (weekStartDay == DayOfWeek.MONDAY) "Mon" else "Sun",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Primary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Metric Selector
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MetricFilterChip(
+                    text = "Steps",
+                    selected = selectedMetric == HealthMetric.STEPS,
+                    onClick = { onMetricSelected(HealthMetric.STEPS) },
+                    modifier = Modifier.weight(1f)
+                )
+                MetricFilterChip(
+                    text = "HR",
+                    selected = selectedMetric == HealthMetric.HEART_RATE,
+                    onClick = { onMetricSelected(HealthMetric.HEART_RATE) },
+                    modifier = Modifier.weight(1f)
+                )
+                MetricFilterChip(
+                    text = "Sleep",
+                    selected = selectedMetric == HealthMetric.SLEEP,
+                    onClick = { onMetricSelected(HealthMetric.SLEEP) },
+                    modifier = Modifier.weight(1f)
+                )
+                MetricFilterChip(
+                    text = "Cals",
+                    selected = selectedMetric == HealthMetric.CALORIES,
+                    onClick = { onMetricSelected(HealthMetric.CALORIES) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            val color = when (selectedMetric) {
+                HealthMetric.STEPS -> Primary
+                HealthMetric.HEART_RATE -> Color(0xFFEF5350)
+                HealthMetric.SLEEP -> Color(0xFF7C4DFF)
+                HealthMetric.CALORIES -> Color(0xFFFF9800)
+            }
+
+            // Calculate Weekly Averages/Totals for enrichment
+            val validStats = healthHistory.filter {
+                when (selectedMetric) {
+                    HealthMetric.STEPS -> it.stats.steps > 0
+                    HealthMetric.HEART_RATE -> it.stats.avgHeartRate > 0
+                    HealthMetric.SLEEP -> it.stats.sleepMinutes > 0
+                    HealthMetric.CALORIES -> it.stats.totalCaloriesBurned > 0
+                }
+            }
+            
+            val avgValue = if (validStats.isNotEmpty()) {
+                validStats.sumOf {
+                    when (selectedMetric) {
+                        HealthMetric.STEPS -> it.stats.steps.toDouble()
+                        HealthMetric.HEART_RATE -> it.stats.avgHeartRate.toDouble()
+                        HealthMetric.SLEEP -> (it.stats.sleepMinutes / 60.0)
+                        HealthMetric.CALORIES -> it.stats.totalCaloriesBurned
+                    }
+                } / validStats.size
+            } else 0.0
+
+            val summaryText = when (selectedMetric) {
+                HealthMetric.STEPS -> "Avg: ${String.format(Locale.US, "%,d", avgValue.toInt())} steps"
+                HealthMetric.HEART_RATE -> "Avg: ${avgValue.toInt()} bpm"
+                HealthMetric.SLEEP -> {
+                    val h = avgValue.toInt()
+                    val m = ((avgValue - h) * 60).toInt()
+                    "Avg: ${h}h ${m}m"
+                }
+                HealthMetric.CALORIES -> "Avg: ${String.format(Locale.US, "%,d", avgValue.toInt())} kcal"
+            }
+
+            // Display Summary Text Above Graph
+            if (avgValue > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Weekly Average",
+                        fontSize = 13.sp,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = summaryText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = color
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Graph
+            val maxValue = healthHistory.maxOf {
+                when (selectedMetric) {
+                    HealthMetric.STEPS -> it.stats.steps.toDouble()
+                    HealthMetric.HEART_RATE -> it.stats.avgHeartRate.toDouble()
+                    HealthMetric.SLEEP -> (it.stats.sleepMinutes / 60.0) // hours
+                    HealthMetric.CALORIES -> it.stats.totalCaloriesBurned
+                }
+            }.coerceAtLeast(1.0)
+
+            Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.BottomStart) {
+                // Background Average Line Indicator
+                if (avgValue > 0 && maxValue > 0) {
+                    val heightFraction = (avgValue / maxValue).toFloat()
+                    val bottomContentHeight = 22.dp // Space for "Mon", "Tue" text + spacers below the bar
+                    val avgBarHeight = 10.dp + (heightFraction * 120).dp
+                    val lineBottomOffset = bottomContentHeight + avgBarHeight
+
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val lineY = size.height - lineBottomOffset.toPx()
+                        drawLine(
+                            color = color.copy(alpha = 0.5f),
+                            start = Offset(0f, lineY),
+                            end = Offset(size.width, lineY),
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(15f, 15f), 0f)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(healthHistory) {
+                            var lastIndex = -1
+                            detectDragGestures(
+                                onDragStart = { _ -> },
+                                onDrag = { change, _ -> 
+                                    if (healthHistory.isNotEmpty()) {
+                                        val widthPerItem = size.width / healthHistory.size.toFloat()
+                                        val index = (change.position.x / widthPerItem).toInt().coerceIn(0, healthHistory.size - 1)
+                                        if (index != lastIndex) {
+                                            haptics.tick()
+                                            onDateSelected(healthHistory[index].date)
+                                            lastIndex = index
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                        .pointerInput(healthHistory) {
+                            detectTapGestures(
+                                onPress = { touch -> 
+                                    if (healthHistory.isNotEmpty()) {
+                                        val widthPerItem = size.width / healthHistory.size.toFloat()
+                                        val index = (touch.x / widthPerItem).toInt().coerceIn(0, healthHistory.size - 1)
+                                        haptics.tick()
+                                        onDateSelected(healthHistory[index].date)
+                                    }
+                                }
+                            )
+                        },
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    healthHistory.forEach { day ->
+                        val value = when (selectedMetric) {
+                            HealthMetric.STEPS -> day.stats.steps.toDouble()
+                            HealthMetric.HEART_RATE -> day.stats.avgHeartRate.toDouble()
+                            HealthMetric.SLEEP -> (day.stats.sleepMinutes / 60.0)
+                            HealthMetric.CALORIES -> day.stats.totalCaloriesBurned
+                        }
+                        val heightFraction = (value / maxValue).toFloat()
+                        val targetHeight = (10 + heightFraction * 120).dp // Adjusted to scale better with 180dp row
+                        val isSelected = day.date == selectedDate
+                        val dayLabel = try {
+                            day.date.dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
+                        } catch (_: Exception) { "?" }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .padding(vertical = 4.dp),
+                        ) {
+                            // Display value on top of bar, prominently if selected
+                            val displayValue = when (selectedMetric) {
+                                HealthMetric.STEPS -> if (value >= 1000) String.format(Locale.US, "%.1fk", value/1000.0) else value.toInt().toString()
+                                HealthMetric.HEART_RATE -> value.toInt().toString()
+                                HealthMetric.SLEEP -> String.format(Locale.US, "%.1fh", value)
+                                HealthMetric.CALORIES -> value.toInt().toString()
+                            }
+                            
+                            if (value > 0 || isSelected) {
+                                Text(
+                                    text = if (value > 0) displayValue else "—",
+                                    fontSize = if (isSelected) 12.sp else 9.sp,
+                                    color = if (isSelected) TextPrimary else TextSecondary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                            }
+
+                            val animatedHeight by animateDpAsState(
+                                targetValue = targetHeight,
+                                animationSpec = MacroMotion.entranceSpring(),
+                                label = "barHeight",
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .width(if (isSelected) 28.dp else 24.dp)
+                                    .height(animatedHeight)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isSelected) color else color.copy(alpha = 0.3f)),
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                dayLabel,
+                                fontSize = 11.sp,
+                                color = if (isSelected) TextPrimary else TextSecondary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: LocalDate, haptics: HapticHelper) {
+    MacroCard(delayMs = 125) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            val dateStr = if (date == LocalDate.now()) "Today" else date.format(DateTimeFormatter.ofPattern("MMM d"))
+            Text(
+                "Heart Rate ($dateStr)",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (samples.isEmpty()) {
+                Text("No detailed heart rate data available.", color = TextSecondary, fontSize = 14.sp)
+            } else {
+                var touchX by remember { mutableStateOf<Float?>(null) }
+                val textMeasurer = rememberTextMeasurer()
+
+                Canvas(modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .pointerInput(samples) {
+                        var lastClosestIndex = -1
+                        val width = size.width.toFloat()
+                        
+                        detectDragGestures(
+                            onDragStart = { touchX = it.x },
+                            onDrag = { change, _ -> 
+                                touchX = change.position.x 
+                                val closestIndex = samples.withIndex().minByOrNull {
+                                    val zdt = it.value.time.atZone(java.time.ZoneId.systemDefault())
+                                    val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
+                                    val px = (hourFraction / 24f) * width
+                                    kotlin.math.abs(px - change.position.x)
+                                }?.index ?: -1
+                                
+                                if (closestIndex != -1 && closestIndex != lastClosestIndex) {
+                                    haptics.tick()
+                                    lastClosestIndex = closestIndex
+                                }
+                            },
+                            onDragEnd = { touchX = null },
+                            onDragCancel = { touchX = null }
+                        )
+                    }
+                    .pointerInput(samples) {
+                        detectTapGestures(
+                            onPress = { 
+                                touchX = it.x 
+                                haptics.tick()
+                                tryAwaitRelease()
+                                touchX = null
+                            }
+                        )
+                    }
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val minHr = 40f
+                    val maxHr = maxOf(180f, samples.maxOf { it.beatsPerMinute }.toFloat())
+                    val hrRange = maxHr - minHr
+
+                    val path = androidx.compose.ui.graphics.Path()
+                    val points = mutableListOf<Pair<Offset, HeartRateRecord.Sample>>()
+
+                    // Top margin to ensure tooltip doesn't draw out of bounds easily
+                    val topMargin = 40.dp.toPx()
+                    val graphHeight = height - topMargin
+
+                    samples.forEachIndexed { index, sample ->
+                        val zdt = sample.time.atZone(java.time.ZoneId.systemDefault())
+                        val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
+                        val x = (hourFraction / 24f) * width
+                        val y = topMargin + graphHeight - ((sample.beatsPerMinute - minHr) / hrRange) * graphHeight
+                        
+                        val point = Offset(x, y)
+                        points.add(point to sample)
+
+                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+
+                    // Draw the heart rate continuous line
+                    drawPath(
+                        path = path,
+                        color = Color(0xFFEF5350),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 2.dp.toPx(), 
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round, 
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round
+                        )
+                    )
+
+                    // Draw interactive data overlay if currently touching/dragging
+                    if (touchX != null && points.isNotEmpty()) {
+                        val closest = points.minByOrNull { kotlin.math.abs(it.first.x - touchX!!) }
+                        if (closest != null) {
+                            val (point, sample) = closest
+
+                            // Draw vertical indicator line
+                            drawLine(
+                                color = Color.Gray.copy(alpha = 0.5f),
+                                start = Offset(point.x, topMargin),
+                                end = Offset(point.x, height),
+                                strokeWidth = 1.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            )
+
+                            // Highlight the data point
+                            drawCircle(
+                                color = Color.White,
+                                radius = 4.dp.toPx(),
+                                center = point
+                            )
+                            drawCircle(
+                                color = Color(0xFFEF5350),
+                                radius = 3.dp.toPx(),
+                                center = point
+                            )
+
+                            // Draw Tooltip showing exact time and bpm
+                            val zdt = sample.time.atZone(java.time.ZoneId.systemDefault())
+                            val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
+                            val text = "${sample.beatsPerMinute} bpm\n${zdt.format(timeFmt)}"
+
+                            val textLayout = textMeasurer.measure(
+                                text = text,
+                                style = TextStyle(
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            )
+
+                            val tooltipWidth = textLayout.size.width + 16.dp.toPx()
+                            val tooltipHeight = textLayout.size.height + 8.dp.toPx()
+
+                            // Constrain tooltip horizontally to not clip off screen
+                            var tooltipX = point.x - tooltipWidth / 2f
+                            if (tooltipX < 0) tooltipX = 0f
+                            if (tooltipX + tooltipWidth > width) tooltipX = width - tooltipWidth
+
+                            // Draw background box for tooltip
+                            drawRoundRect(
+                                color = Color(0xFF333333),
+                                topLeft = Offset(tooltipX, 0f),
+                                size = Size(tooltipWidth, tooltipHeight),
+                                cornerRadius = CornerRadius(6.dp.toPx())
+                            )
+
+                            // Draw tooltip text
+                            drawText(
+                                textLayoutResult = textLayout,
+                                topLeft = Offset(tooltipX + 8.dp.toPx(), 4.dp.toPx())
+                            )
+                        }
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("12 AM", fontSize = 10.sp, color = TextSecondary)
+                    Text("12 PM", fontSize = 10.sp, color = TextSecondary)
+                    Text("11:59 PM", fontSize = 10.sp, color = TextSecondary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate, haptics: HapticHelper) {
+    MacroCard(delayMs = 125) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            val dateStr = if (date == LocalDate.now()) "Last Night" else date.format(DateTimeFormatter.ofPattern("MMM d"))
+            Text(
+                "Sleep Stages ($dateStr)",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (sessions.isEmpty() || sessions.all { it.stages.isEmpty() }) {
+                Text("No detailed sleep stages available.", color = TextSecondary, fontSize = 14.sp)
+            } else {
+                val stages = sessions.flatMap { it.stages }.sortedBy { it.startTime }
+                var touchX by remember { mutableStateOf<Float?>(null) }
+                val textMeasurer = rememberTextMeasurer()
+                
+                // Detailed Hypnogram for Sleep Stages
+                Row(modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)) {
+                    // Y-axis labels
+                    Column(
+                        modifier = Modifier
+                            .width(50.dp)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Awake", fontSize = 10.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text("REM", fontSize = 10.sp, color = Color(0xFF03A9F4), fontWeight = FontWeight.Bold)
+                        Text("Light", fontSize = 10.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                        Text("Deep", fontSize = 10.sp, color = Color(0xFF3F51B5), fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    val minTime = stages.first().startTime.toEpochMilli()
+                    val maxTime = stages.last().endTime.toEpochMilli()
+                    val timeRange = maxTime - minTime
+
+                    // Hypnogram Canvas
+                    Box(modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()) {
+                        Canvas(modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(stages) {
+                                var lastStage: SleepSessionRecord.Stage? = null
+                                detectDragGestures(
+                                    onDragStart = { touchX = it.x },
+                                    onDrag = { change, _ -> 
+                                        touchX = change.position.x 
+                                        if (timeRange > 0) {
+                                            val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val touchTime = minTime + (fraction * timeRange).toLong()
+                                            val stage = stages.find { touchTime in it.startTime.toEpochMilli()..it.endTime.toEpochMilli() }
+                                            if (stage != null && stage != lastStage) {
+                                                haptics.tick()
+                                                lastStage = stage
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = { touchX = null },
+                                    onDragCancel = { touchX = null }
+                                )
+                            }
+                            .pointerInput(stages) {
+                                detectTapGestures(
+                                    onPress = { 
+                                        touchX = it.x 
+                                        haptics.tick()
+                                        tryAwaitRelease()
+                                        touchX = null
+                                    }
+                                )
+                            }
+                        ) {
+                            val width = size.width
+                            val height = size.height
+
+                            val topMargin = 40.dp.toPx()
+                            val drawHeight = height - topMargin
+
+                            val awakeY = topMargin + drawHeight * 0.1f
+                            val remY = topMargin + drawHeight * 0.36f
+                            val lightY = topMargin + drawHeight * 0.63f
+                            val deepY = topMargin + drawHeight * 0.9f
+
+                            // Background dotted grid lines for readability
+                            val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, awakeY), androidx.compose.ui.geometry.Offset(width, awakeY), pathEffect = pathEffect)
+                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, remY), androidx.compose.ui.geometry.Offset(width, remY), pathEffect = pathEffect)
+                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, lightY), androidx.compose.ui.geometry.Offset(width, lightY), pathEffect = pathEffect)
+                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, deepY), androidx.compose.ui.geometry.Offset(width, deepY), pathEffect = pathEffect)
+
+                            if (timeRange > 0) {
+                                stages.forEachIndexed { index, stage ->
+                                    val startX = ((stage.startTime.toEpochMilli() - minTime).toFloat() / timeRange) * width
+                                    val endX = ((stage.endTime.toEpochMilli() - minTime).toFloat() / timeRange) * width
+
+                                    val (y, color) = when (stage.stage) {
+                                        SleepSessionRecord.STAGE_TYPE_AWAKE -> awakeY to Color(0xFFFF9800)
+                                        SleepSessionRecord.STAGE_TYPE_REM -> remY to Color(0xFF03A9F4)
+                                        SleepSessionRecord.STAGE_TYPE_LIGHT -> lightY to Color(0xFF4CAF50)
+                                        SleepSessionRecord.STAGE_TYPE_DEEP -> deepY to Color(0xFF3F51B5)
+                                        else -> lightY to Color.Gray
+                                    }
+
+                                    // horizontal line showing time spent in stage
+                                    drawLine(
+                                        color = color,
+                                        start = androidx.compose.ui.geometry.Offset(startX, y),
+                                        end = androidx.compose.ui.geometry.Offset(endX, y),
+                                        strokeWidth = 4.dp.toPx(),
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+
+                                    // vertical connecting line to previous stage
+                                    if (index > 0) {
+                                        val prevStage = stages[index - 1]
+                                        val prevY = when (prevStage.stage) {
+                                            SleepSessionRecord.STAGE_TYPE_AWAKE -> awakeY
+                                            SleepSessionRecord.STAGE_TYPE_REM -> remY
+                                            SleepSessionRecord.STAGE_TYPE_LIGHT -> lightY
+                                            SleepSessionRecord.STAGE_TYPE_DEEP -> deepY
+                                            else -> lightY
+                                        }
+                                        drawLine(
+                                            color = Color.Gray.copy(alpha = 0.4f),
+                                            start = androidx.compose.ui.geometry.Offset(startX, prevY),
+                                            end = androidx.compose.ui.geometry.Offset(startX, y),
+                                            strokeWidth = 2.dp.toPx()
+                                        )
+                                    }
+                                }
+
+                                // Interactive Tooltip & Highlight
+                                if (touchX != null) {
+                                    val fraction = (touchX!! / width).coerceIn(0f, 1f)
+                                    val touchTime = minTime + (fraction * timeRange).toLong()
+                                    val activeStage = stages.find { touchTime in it.startTime.toEpochMilli()..it.endTime.toEpochMilli() }
+                                    
+                                    if (activeStage != null) {
+                                        val stageName = when(activeStage.stage) {
+                                            SleepSessionRecord.STAGE_TYPE_AWAKE -> "Awake"
+                                            SleepSessionRecord.STAGE_TYPE_REM -> "REM"
+                                            SleepSessionRecord.STAGE_TYPE_LIGHT -> "Light"
+                                            SleepSessionRecord.STAGE_TYPE_DEEP -> "Deep"
+                                            else -> "Unknown"
+                                        }
+
+                                        val activeY = when (activeStage.stage) {
+                                            SleepSessionRecord.STAGE_TYPE_AWAKE -> awakeY
+                                            SleepSessionRecord.STAGE_TYPE_REM -> remY
+                                            SleepSessionRecord.STAGE_TYPE_LIGHT -> lightY
+                                            SleepSessionRecord.STAGE_TYPE_DEEP -> deepY
+                                            else -> lightY
+                                        }
+
+                                        drawLine(
+                                            color = Color.Gray.copy(alpha = 0.5f),
+                                            start = Offset(touchX!!, topMargin),
+                                            end = Offset(touchX!!, height),
+                                            strokeWidth = 1.dp.toPx(),
+                                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                        )
+
+                                        drawCircle(
+                                            color = Color.White,
+                                            radius = 4.dp.toPx(),
+                                            center = Offset(touchX!!, activeY)
+                                        )
+
+                                        val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
+                                        val startStr = Instant.ofEpochMilli(activeStage.startTime.toEpochMilli()).atZone(ZoneId.systemDefault()).format(timeFmt)
+                                        val endStr = Instant.ofEpochMilli(activeStage.endTime.toEpochMilli()).atZone(ZoneId.systemDefault()).format(timeFmt)
+                                        val durationMins = Duration.between(activeStage.startTime, activeStage.endTime).toMinutes()
+
+                                        val text = "$stageName: ${durationMins}m\n$startStr - $endStr"
+
+                                        val textLayout = textMeasurer.measure(
+                                            text = text,
+                                            style = TextStyle(
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        )
+
+                                        val tooltipWidth = textLayout.size.width + 16.dp.toPx()
+                                        val tooltipHeight = textLayout.size.height + 8.dp.toPx()
+
+                                        var tooltipX = touchX!! - tooltipWidth / 2f
+                                        if (tooltipX < 0) tooltipX = 0f
+                                        if (tooltipX + tooltipWidth > width) tooltipX = width - tooltipWidth
+
+                                        drawRoundRect(
+                                            color = Color(0xFF333333),
+                                            topLeft = Offset(tooltipX, 0f),
+                                            size = Size(tooltipWidth, tooltipHeight),
+                                            cornerRadius = CornerRadius(6.dp.toPx())
+                                        )
+
+                                        drawText(
+                                            textLayoutResult = textLayout,
+                                            topLeft = Offset(tooltipX + 8.dp.toPx(), 4.dp.toPx())
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Start/End Time bounds for hypnogram
+                val minTime = stages.firstOrNull()?.startTime?.toEpochMilli() ?: 0L
+                val maxTime = stages.lastOrNull()?.endTime?.toEpochMilli() ?: 0L
+                if (minTime < maxTime) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 58.dp, top = 8.dp), // Pushed to right past the 50dp Y-Axis labels
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val startZdt = java.time.Instant.ofEpochMilli(minTime).atZone(java.time.ZoneId.systemDefault())
+                        val endZdt = java.time.Instant.ofEpochMilli(maxTime).atZone(java.time.ZoneId.systemDefault())
+                        val fmt = DateTimeFormatter.ofPattern("h:mm a")
+                        Text(startZdt.format(fmt), fontSize = 10.sp, color = TextSecondary)
+                        Text(endZdt.format(fmt), fontSize = 10.sp, color = TextSecondary)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+
+                val deepTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_DEEP }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val lightTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_LIGHT }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val remTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_REM }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val awakeTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+
+                SleepStageRow("Awake", awakeTime, Color(0xFFFF9800))
+                SleepStageRow("REM", remTime, Color(0xFF03A9F4))
+                SleepStageRow("Light", lightTime, Color(0xFF4CAF50))
+                SleepStageRow("Deep", deepTime, Color(0xFF3F51B5))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SleepStageRow(label: String, minutes: Long, color: Color) {
+    if (minutes <= 0) return
+    val h = minutes / 60
+    val m = minutes % 60
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier
+            .size(12.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(color))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(label, color = TextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Text(if (h > 0) "${h}h ${m}m" else "${m}m", color = TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun MetricFilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) Primary else Background)
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) Color.White else TextPrimary,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

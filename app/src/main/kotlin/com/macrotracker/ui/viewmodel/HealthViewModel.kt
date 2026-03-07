@@ -1,8 +1,11 @@
 package com.macrotracker.ui.viewmodel
 
 import android.util.Log
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.macrotracker.data.health.DailyHealthStats
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.health.HealthStats
 import com.macrotracker.data.local.DailySummary
@@ -12,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -20,7 +24,7 @@ sealed class HealthConnectUiState {
     data object NotAvailable : HealthConnectUiState()
     data object PermissionRequired : HealthConnectUiState()
     data object Loading : HealthConnectUiState()
-    data class Success(val stats: HealthStats) : HealthConnectUiState()
+    data class Success(val stats: HealthStats, val isRefreshing: Boolean = false) : HealthConnectUiState()
     data class Error(val message: String) : HealthConnectUiState()
 }
 
@@ -49,17 +53,65 @@ class HealthViewModel @Inject constructor(
     private val _healthConnectState = MutableStateFlow<HealthConnectUiState>(HealthConnectUiState.Loading)
     val healthConnectState: StateFlow<HealthConnectUiState> = _healthConnectState
 
+    private val _healthHistory = MutableStateFlow<List<DailyHealthStats>>(emptyList())
+    val healthHistory: StateFlow<List<DailyHealthStats>> = _healthHistory
+
+    // Detail States
+    private val _selectedDate = MutableStateFlow<LocalDate>(LocalDate.now())
+    val selectedDate: StateFlow<LocalDate> = _selectedDate
+
+    private val _intradayHeartRate = MutableStateFlow<List<HeartRateRecord.Sample>>(emptyList())
+    val intradayHeartRate: StateFlow<List<HeartRateRecord.Sample>> = _intradayHeartRate
+
+    private val _detailedSleep = MutableStateFlow<List<SleepSessionRecord>>(emptyList())
+    val detailedSleep: StateFlow<List<SleepSessionRecord>> = _detailedSleep
+
     val healthConnectPermissions = HealthConnectRepository.PERMISSIONS
+
+    private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
+    val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay
+
+    fun setWeekStartDay(day: DayOfWeek) {
+        _weekStartDay.value = day
+        loadData()
+        loadHealthConnect(silent = true)
+    }
+
+    private fun getWeekRange(): Pair<LocalDate, LocalDate> {
+        val today = LocalDate.now()
+        val startDay = _weekStartDay.value
+        var start = today
+        while (start.dayOfWeek != startDay) {
+            start = start.minusDays(1)
+        }
+        val end = start.plusDays(6)
+        return Pair(start, end)
+    }
 
     fun loadData() {
         viewModelScope.launch {
             _summary.value = repository.getDailySummary(today)
             _logs.value = repository.getLogsForDate(today)
-            _weekHistory.value = repository.getDailySummariesRange(7)
+            val (start, end) = getWeekRange()
+            _weekHistory.value = repository.getDailySummariesBetween(start, end)
         }
     }
 
-    fun loadHealthConnect(permissionsGranted: Boolean = false) {
+    fun selectDate(date: LocalDate) {
+        _selectedDate.value = date
+        loadDetailedData(date)
+    }
+
+    private fun loadDetailedData(date: LocalDate) {
+        viewModelScope.launch {
+            if (healthConnectRepository.hasAllPermissions()) {
+                _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
+                _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+            }
+        }
+    }
+
+    fun loadHealthConnect(permissionsGranted: Boolean = false, silent: Boolean = false) {
         viewModelScope.launch {
             if (!healthConnectRepository.isAvailable()) {
                 Log.w(TAG, "Health Connect not available")
@@ -68,22 +120,39 @@ class HealthViewModel @Inject constructor(
             }
 
             val hasPerms = permissionsGranted || healthConnectRepository.hasAllPermissions()
-            Log.d(TAG, "loadHealthConnect: permissionsGranted=$permissionsGranted, hasPerms=$hasPerms")
             if (!hasPerms) {
                 _healthConnectState.value = HealthConnectUiState.PermissionRequired
                 return@launch
             }
 
-            _healthConnectState.value = HealthConnectUiState.Loading
+            val current = _healthConnectState.value
+            if (!silent || current !is HealthConnectUiState.Success) {
+                _healthConnectState.value = HealthConnectUiState.Loading
+            } else {
+                _healthConnectState.value = current.copy(isRefreshing = true)
+            }
+
             try {
                 val stats = healthConnectRepository.readTodayStats()
-                Log.d(TAG, "Health stats loaded: $stats")
-                _healthConnectState.value = HealthConnectUiState.Success(stats)
+                // Safeguard against temporary 0 values if we already had a higher count
+                if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
+                    _healthConnectState.value = current.copy(isRefreshing = false)
+                } else {
+                    _healthConnectState.value = HealthConnectUiState.Success(stats)
+                }
+
+                val (start, end) = getWeekRange()
+                _healthHistory.value = healthConnectRepository.readHistoryStatsBetween(start, end)
+                loadDetailedData(_selectedDate.value)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to read health data", e)
-                _healthConnectState.value = HealthConnectUiState.Error(
-                    e.message ?: "Failed to read health data",
-                )
+                if (current !is HealthConnectUiState.Success) {
+                    _healthConnectState.value = HealthConnectUiState.Error(
+                        e.message ?: "Failed to read health data",
+                    )
+                } else {
+                    _healthConnectState.value = current.copy(isRefreshing = false)
+                }
             }
         }
     }

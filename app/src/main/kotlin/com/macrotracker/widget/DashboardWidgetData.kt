@@ -37,3 +37,4 @@ data class DashboardWidgetData(
     val aiInsight: String? = null,
 )
 
+

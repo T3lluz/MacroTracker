@@ -57,6 +57,11 @@ class AiViewModel @Inject constructor(
             }
         }
     }
+    
+    fun clearEstimate() {
+        _estimate.value = null
+        _feedback.value = null
+    }
 
     fun logEstimate() {
         val est = _estimate.value ?: return
@@ -76,4 +81,3 @@ class AiViewModel @Inject constructor(
         }
     }
 }
-

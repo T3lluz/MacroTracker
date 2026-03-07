@@ -2,8 +2,6 @@ package com.macrotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,18 +15,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.EventNote
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,6 +67,10 @@ fun CalendarCard(
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+
     AnimatedContent(
         targetState = state,
         transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
@@ -68,15 +78,14 @@ fun CalendarCard(
         modifier = modifier,
     ) { currentState ->
         when (currentState) {
-            is CalendarUiState.Loading -> {
-                // Don't show anything while loading to avoid flicker
-            }
+            is CalendarUiState.Loading -> { }
 
             is CalendarUiState.Success -> {
                 val events = currentState.events
                 val upcomingEvents = currentState.upcomingEvents
-                if (events.isEmpty() && upcomingEvents.isEmpty()) {
-                    // No events today or upcoming — show a clean compact card
+                val allVisibleEvents = (events + upcomingEvents).distinctBy { it.id }
+                
+                if (allVisibleEvents.isEmpty()) {
                     MacroCard(delayMs = 125) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -97,7 +106,7 @@ fun CalendarCard(
                                     color = TextPrimary,
                                 )
                                 Text(
-                                    "No events this week — enjoy the free time!",
+                                    "No events found for selected calendars.",
                                     fontSize = 13.sp,
                                     color = TextSecondary,
                                     fontStyle = FontStyle.Italic,
@@ -105,10 +114,110 @@ fun CalendarCard(
                             }
                         }
                     }
-                } else if (events.isEmpty() && upcomingEvents.isNotEmpty()) {
-                    UpcomingEventsCard(events = upcomingEvents)
                 } else {
-                    CalendarEventsCard(events = events)
+                    MacroCard(
+                        delayMs = 125,
+                        modifier = Modifier.clickable {
+                            val wasExpanded = expanded
+                            expanded = !expanded
+                            if (!wasExpanded) haptics.toggleOn() else haptics.toggleOff()
+                        }
+                    ) {
+                        Column {
+                            // Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (events.isNotEmpty()) Icons.Outlined.CalendarMonth else Icons.AutoMirrored.Outlined.EventNote,
+                                        contentDescription = null,
+                                        tint = CalendarAccent,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (events.isNotEmpty()) "Today's Schedule" else "Upcoming Events",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { showDetails = true }, modifier = Modifier.size(28.dp)) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Outlined.EventNote,
+                                            contentDescription = "Full View",
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                        contentDescription = if (expanded) "Collapse" else "Expand",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Featured Event (Next up)
+                            val featured = allVisibleEvents.first()
+                            EventTile(
+                                event = featured,
+                                featured = true
+                            )
+
+                            // Expandable list
+                            AnimatedVisibility(
+                                visible = expanded && allVisibleEvents.size > 1,
+                                enter = MacroMotion.expandEnter,
+                                exit = MacroMotion.expandExit,
+                            ) {
+                                Column {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    HorizontalDivider(color = TextSecondary.copy(alpha = 0.1f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    allVisibleEvents.drop(1).take(2).forEachIndexed { index, event ->
+                                        if (index > 0) Spacer(modifier = Modifier.height(8.dp))
+                                        EventTile(event = event, featured = false)
+                                    }
+
+                                    if (allVisibleEvents.size > 3) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "+${allVisibleEvents.size - 3} more events · Tap icon for full list",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(start = 22.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!expanded && allVisibleEvents.size > 1) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "Tap to see ${allVisibleEvents.size - 1} more events",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary.copy(alpha = 0.5f),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
+                            }
+                        }
+                    }
+
+                    if (showDetails) {
+                        CalendarDetailsDialog(
+                            events = allVisibleEvents,
+                            onDismiss = { showDetails = false }
+                        )
+                    }
                 }
             }
 
@@ -143,106 +252,58 @@ fun CalendarCard(
                 }
             }
 
-            is CalendarUiState.Unavailable -> {
-                // Don't render anything
-            }
+            is CalendarUiState.Unavailable -> { }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CalendarEventsCard(events: List<CalendarEvent>) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val haptics = rememberHaptics()
-
-    // Show up to 2 events collapsed, all when expanded
-    val nextEvent = events.firstOrNull { it.isHappeningNow } ?: events.firstOrNull()
-    val upcomingEvents = if (nextEvent != null) events.filter { it != nextEvent } else events
-    val visibleUpcoming = if (expanded) upcomingEvents else upcomingEvents.take(1)
-    val hiddenCount = upcomingEvents.size - visibleUpcoming.size
-
-    MacroCard(delayMs = 125) {
-        // Header
-        Row(
+private fun CalendarDetailsDialog(
+    events: List<CalendarEvent>,
+    onDismiss: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    if (expanded) haptics.toggleOff() else haptics.toggleOn()
-                    expanded = !expanded
-                },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(vertical = 24.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = com.macrotracker.ui.theme.Surface,
+            tonalElevation = 8.dp
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Outlined.CalendarMonth,
-                    contentDescription = null,
-                    tint = CalendarAccent,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Today's Schedule",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${events.size} event${if (events.size != 1) "s" else ""}",
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "Detailed Schedule",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Featured / current event
-        if (nextEvent != null) {
-            EventTile(
-                event = nextEvent,
-                featured = true,
-            )
-        }
-
-        // Additional events
-        AnimatedVisibility(
-            visible = visibleUpcoming.isNotEmpty(),
-            enter = MacroMotion.expandEnter,
-            exit = MacroMotion.expandExit,
-        ) {
-            Column {
-                visibleUpcoming.forEach { event ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    EventTile(event = event, featured = false)
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    items(events) { event ->
+                        EventTile(event = event, featured = false, showFullInfo = true)
+                    }
                 }
             }
-        }
-
-        // "Show more" / "Show less" hint
-        if (upcomingEvents.size > 1) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = if (expanded) "Tap header to collapse" else "+$hiddenCount more event${if (hiddenCount != 1) "s" else ""} · Tap to expand",
-                fontSize = 11.sp,
-                color = TextSecondary.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (expanded) haptics.toggleOff() else haptics.toggleOn()
-                        expanded = !expanded
-                    }
-                    .padding(vertical = 2.dp),
-            )
         }
     }
 }
@@ -251,6 +312,7 @@ private fun CalendarEventsCard(events: List<CalendarEvent>) {
 private fun EventTile(
     event: CalendarEvent,
     featured: Boolean,
+    showFullInfo: Boolean = false,
 ) {
     val eventColor = try {
         Color(event.calendarColor).copy(alpha = 1f)
@@ -258,24 +320,17 @@ private fun EventTile(
         CalendarAccent
     }
     val uriHandler = LocalUriHandler.current
+    
+    val bgColor = if (featured) Background else Background.copy(alpha = 0.5f)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (featured) {
-                    Modifier
-                        .background(Background, RoundedCornerShape(10.dp))
-                        .padding(12.dp)
-                } else {
-                    Modifier
-                        .background(Background.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .padding(10.dp)
-                },
-            ),
+            .clip(RoundedCornerShape(if (featured) 10.dp else 8.dp))
+            .background(bgColor)
+            .padding(if (featured) 12.dp else 10.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        // Color indicator line
         Box(
             modifier = Modifier
                 .padding(top = 3.dp)
@@ -289,15 +344,24 @@ private fun EventTile(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(
-                    text = event.title,
-                    fontSize = if (featured) 15.sp else 14.sp,
-                    fontWeight = if (featured) FontWeight.Bold else FontWeight.SemiBold,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = event.title,
+                        fontSize = if (featured) 15.sp else 14.sp,
+                        fontWeight = if (featured) FontWeight.Bold else FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = if (showFullInfo) 3 else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (event.calendarName.isNotBlank()) {
+                        Text(
+                            text = event.calendarName,
+                            fontSize = 10.sp,
+                            color = eventColor.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
                 if (event.isHappeningNow) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -311,92 +375,41 @@ private fun EventTile(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(3.dp))
-            // Always show date and time
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Outlined.Schedule,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(13.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = event.formattedDateAndTime,
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                )
-            }
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            InfoTag(icon = Icons.Outlined.Schedule, text = event.formattedDateAndTime, color = TextSecondary)
+            
             if (event.location.isNotBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.LocationOn,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(13.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = event.location,
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Spacer(modifier = Modifier.height(4.dp))
+                InfoTag(icon = Icons.Outlined.LocationOn, text = event.location, color = TextSecondary)
             }
-            // Meeting link
+
             val link = event.meetingLink
             if (link != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
-                        try { uriHandler.openUri(link) } catch (_: Exception) { }
-                    },
-                ) {
-                    Icon(
-                        Icons.Outlined.Link,
-                        contentDescription = null,
-                        tint = CalendarAccent,
-                        modifier = Modifier.size(13.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    val displayLink = when {
-                        link.contains("meet.google.com") -> "Google Meet"
-                        link.contains("zoom.us") || link.contains("zoom.") -> "Zoom Meeting"
-                        link.contains("teams.microsoft") || link.contains("teams.live") -> "Teams Meeting"
-                        link.contains("webex") -> "Webex Meeting"
-                        else -> "Join Meeting"
-                    }
-                    Text(
-                        text = displayLink,
-                        fontSize = 12.sp,
-                        color = CalendarAccent,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Spacer(modifier = Modifier.height(4.dp))
+                val displayLink = when {
+                    link.contains("meet.google.com") -> "Google Meet"
+                    link.contains("zoom.us") || link.contains("zoom.") -> "Zoom Meeting"
+                    else -> "Join Meeting"
                 }
+                InfoTag(
+                    icon = Icons.Outlined.Link, 
+                    text = displayLink, 
+                    color = CalendarAccent,
+                    onClick = { try { uriHandler.openUri(link) } catch (_: Exception) { } }
+                )
             }
-            // Description snippet (only for featured)
-            if (featured && event.description.isNotBlank() && link == null) {
-                // Show a short snippet of the description if there's no meeting link
-                val snippet = event.description
-                    .replace(Regex("<[^>]*>"), "") // strip HTML
-                    .replace(Regex("\\s+"), " ")
-                    .trim()
-                    .take(80)
+
+            if (showFullInfo && event.description.isNotBlank()) {
+                val snippet = event.description.replace(Regex("<[^>]*>"), "").trim()
                 if (snippet.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (snippet.length >= 80) "$snippet…" else snippet,
-                        fontSize = 11.sp,
-                        color = TextSecondary.copy(alpha = 0.7f),
-                        fontStyle = FontStyle.Italic,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        text = snippet,
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        lineHeight = 16.sp
                     )
                 }
             }
@@ -405,105 +418,25 @@ private fun EventTile(
 }
 
 @Composable
-private fun UpcomingEventsCard(events: List<CalendarEvent>) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val haptics = rememberHaptics()
-
-    val firstEvent = events.first()
-    val restEvents = events.drop(1)
-    val visibleRest = if (expanded) restEvents else restEvents.take(1)
-    val hiddenCount = restEvents.size - visibleRest.size
-
-    MacroCard(delayMs = 125) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (restEvents.size > 1) {
-                        Modifier.clickable {
-                            if (expanded) haptics.toggleOff() else haptics.toggleOn()
-                            expanded = !expanded
-                        }
-                    } else {
-                        Modifier
-                    },
-                ),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.AutoMirrored.Outlined.EventNote,
-                    contentDescription = null,
-                    tint = CalendarAccent,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        "Nothing today",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                    )
-                    Text(
-                        "Next up on your calendar",
-                        fontSize = 13.sp,
-                        color = TextSecondary,
-                    )
-                }
-            }
-            if (restEvents.size > 1) {
-                Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Featured next event
-        EventTile(
-            event = firstEvent,
-            featured = true,
+private fun InfoTag(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    color: Color,
+    onClick: (() -> Unit)? = null
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(12.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = text,
+            fontSize = 11.sp,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-
-        // Additional upcoming events
-        AnimatedVisibility(
-            visible = visibleRest.isNotEmpty(),
-            enter = MacroMotion.expandEnter,
-            exit = MacroMotion.expandExit,
-        ) {
-            Column {
-                visibleRest.forEach { event ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    EventTile(
-                        event = event,
-                        featured = false,
-                    )
-                }
-            }
-        }
-
-        // "Show more" / "Show less" hint
-        if (restEvents.size > 1) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = if (expanded) "Tap header to collapse" else "+$hiddenCount more event${if (hiddenCount != 1) "s" else ""} · Tap to expand",
-                fontSize = 11.sp,
-                color = TextSecondary.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (expanded) haptics.toggleOff() else haptics.toggleOn()
-                        expanded = !expanded
-                    }
-                    .padding(vertical = 2.dp),
-            )
-        }
     }
 }

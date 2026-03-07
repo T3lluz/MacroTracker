@@ -13,7 +13,7 @@ import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.room.Room
 import com.macrotracker.BuildConfig
@@ -27,7 +27,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -43,6 +42,8 @@ object DashboardWidgetDataProvider {
     private const val TAG = "DashWidgetData"
     private const val WEATHER_PREFS = "daily_dash_weather_cache"
     private const val WIDGET_PREFS = "daily_dash_widget"
+    private const val CALENDAR_PREFS = "calendar_settings"
+    private const val KEY_SELECTED_CALENDARS = "selected_calendar_ids"
     private const val AI_INSIGHT_KEY = "ai_insight"
     private const val AI_INSIGHT_TS_KEY = "ai_insight_ts"
     private const val AI_INSIGHT_TTL = 60 * 60 * 1000L // 1 hour
@@ -126,32 +127,34 @@ object DashboardWidgetDataProvider {
             }
 
             val zone = ZoneId.systemDefault()
-            val startOfDay = LocalDate.now().atStartOfDay(zone).toInstant()
-            val now = LocalDateTime.now().atZone(zone).toInstant()
+            val now = Instant.now()
+            val startOfDay = LocalDate.now(zone).atStartOfDay(zone).toInstant()
             val todayRange = TimeRangeFilter.between(startOfDay, now)
-            val sleepStart = LocalDate.now().minusDays(1).atTime(18, 0).atZone(zone).toInstant()
+            val sleepStart = LocalDate.now(zone).minusDays(1).atTime(18, 0).atZone(zone).toInstant()
             val sleepRange = TimeRangeFilter.between(sleepStart, now)
 
-            val steps = try {
-                client.readRecords(ReadRecordsRequest(StepsRecord::class, timeRangeFilter = todayRange))
-                    .records.sumOf { it.count }
-            } catch (_: Exception) { 0L }
+            val response = client.aggregate(
+                AggregateRequest(
+                    metrics = setOf(
+                        StepsRecord.COUNT_TOTAL,
+                        HeartRateRecord.BPM_AVG,
+                        ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+                    ),
+                    timeRangeFilter = todayRange,
+                ),
+            )
 
-            val avgHr = try {
-                val samples = client.readRecords(ReadRecordsRequest(HeartRateRecord::class, timeRangeFilter = todayRange))
-                    .records.flatMap { it.samples }
-                if (samples.isNotEmpty()) samples.map { it.beatsPerMinute }.average().toLong() else 0L
-            } catch (_: Exception) { 0L }
+            val sleepResponse = client.aggregate(
+                AggregateRequest(
+                    metrics = setOf(SleepSessionRecord.SLEEP_DURATION_TOTAL),
+                    timeRangeFilter = sleepRange,
+                ),
+            )
 
-            val sleepMin = try {
-                client.readRecords(ReadRecordsRequest(SleepSessionRecord::class, timeRangeFilter = sleepRange))
-                    .records.sumOf { Duration.between(it.startTime, it.endTime).toMinutes() }
-            } catch (_: Exception) { 0L }
-
-            val activeCal = try {
-                client.readRecords(ReadRecordsRequest(ActiveCaloriesBurnedRecord::class, timeRangeFilter = todayRange))
-                    .records.sumOf { it.energy.inKilocalories }
-            } catch (_: Exception) { 0.0 }
+            val steps = response[StepsRecord.COUNT_TOTAL] ?: 0L
+            val avgHr = response[HeartRateRecord.BPM_AVG] ?: 0L
+            val sleepMin = sleepResponse[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L
+            val activeCal = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
 
             DashboardWidgetData(
                 steps = steps,
@@ -203,6 +206,11 @@ object DashboardWidgetDataProvider {
                 return DashboardWidgetData()
             }
 
+            val calendarPrefs = context.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
+            val selectedIds = calendarPrefs.getStringSet(KEY_SELECTED_CALENDARS, null)
+                ?.mapNotNull { it.toLongOrNull() }
+                ?.toSet()
+
             val zone = ZoneId.systemDefault()
             val now = Instant.now()
             val startMillis = now.toEpochMilli()
@@ -214,16 +222,22 @@ object DashboardWidgetDataProvider {
                 CalendarContract.Instances.BEGIN,
                 CalendarContract.Instances.END,
                 CalendarContract.Instances.ALL_DAY,
+                CalendarContract.Instances.CALENDAR_ID,
             )
 
             val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
             ContentUris.appendId(builder, startMillis)
             ContentUris.appendId(builder, endMillis)
 
+            var selection: String? = null
+            if (selectedIds != null && selectedIds.isNotEmpty()) {
+                selection = "${CalendarContract.Instances.CALENDAR_ID} IN (${selectedIds.joinToString(",")})"
+            }
+
             val cursor = context.contentResolver.query(
                 builder.build(),
                 projection,
-                null,
+                selection,
                 null,
                 "${CalendarContract.Instances.BEGIN} ASC",
             )
@@ -350,19 +364,7 @@ object DashboardWidgetDataProvider {
         if (d.steps > 0) parts += "Steps: ${d.steps}"
         if (d.sleepMinutes > 0) parts += "Sleep: ${d.sleepMinutes / 60}h ${d.sleepMinutes % 60}m"
         if (d.activeCaloriesBurned > 0) parts += "Active cal burned: ${d.activeCaloriesBurned.toInt()}"
-        if (d.hasWeatherData) parts += "Weather: ${d.weatherTemp}° ${d.weatherDescription}"
-        if (d.eventsToday > 0) parts += "Events today: ${d.eventsToday}"
-        val hour = java.time.LocalTime.now().hour
-        val timeOfDay = when { hour < 12 -> "morning"; hour < 17 -> "afternoon"; else -> "evening" }
-
-        return """
-            You are a concise wellness assistant for a home-screen widget.
-            Given the user's data for today ($timeOfDay):
-            ${parts.joinToString("; ")}
-            
-            Write ONE short motivational/practical tip (max 15 words). 
-            Be specific to the data. No quotes, no emoji, no markdown.
-        """.trimIndent()
+        
+        return "Given these stats, give a 1-sentence supportive health tip for today: ${parts.joinToString(", ")}"
     }
 }
-
