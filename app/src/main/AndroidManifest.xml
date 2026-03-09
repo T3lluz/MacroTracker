@@ -35,7 +35,8 @@
     <application
         android:name=".DailyDashApp"
         android:label="DailyDash"
-        android:icon="@android:mipmap/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DailyDash">
 
