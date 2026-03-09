@@ -20,6 +20,13 @@ class WidgetRefreshWorker(
 
     override suspend fun doWork(): Result {
         DashboardWidget().updateAll(context)
+        MacrosWidget().updateAll(context)
+        HealthWidget().updateAll(context)
+        WeatherWidget().updateAll(context)
+        CalendarWidget().updateAll(context)
+        F1CountdownWidget().updateAll(context)
+        F1StandingsWidget().updateAll(context)
+        F1ScheduleWidget().updateAll(context)
         return Result.success()
     }
 

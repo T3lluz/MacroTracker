@@ -1,7 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DailyDash</string>
-    <string name="widget_name">DailyDash</string>
+
+    <!-- Dashboard (all-in-one) widget -->
+    <string name="widget_name">DailyDash — Dashboard</string>
     <string name="widget_description">Your daily dashboard — macros, health, weather, calendar &amp; more at a glance</string>
+
+    <!-- Macros widget -->
+    <string name="widget_macros_name">DailyDash — Nutrition</string>
+    <string name="widget_macros_description">Track your calorie and protein goals with progress bars</string>
+
+    <!-- Health widget -->
+    <string name="widget_health_name">DailyDash — Health</string>
+    <string name="widget_health_description">Steps, heart rate, sleep, and active calories from Health Connect</string>
+
+    <!-- Weather widget -->
+    <string name="widget_weather_name">DailyDash — Weather</string>
+    <string name="widget_weather_description">Current temperature, conditions, and high/low forecast</string>
+
+    <!-- Calendar widget -->
+    <string name="widget_calendar_name">DailyDash — Calendar</string>
+    <string name="widget_calendar_description">Next upcoming event and today\'s schedule at a glance</string>
+
+    <!-- F1 widgets -->
+    <string name="widget_f1_countdown_name">F1 — Next Race Countdown</string>
+    <string name="widget_f1_countdown_description">Countdown to the next Formula 1 Grand Prix with circuit info</string>
+    <string name="widget_f1_standings_name">F1 — Championship Standings</string>
+    <string name="widget_f1_standings_description">Live driver and constructor championship standings</string>
+    <string name="widget_f1_schedule_name">F1 — Race Calendar</string>
+    <string name="widget_f1_schedule_description">Full 2026 Formula 1 race calendar with sprint weekends</string>
 </resources>
 

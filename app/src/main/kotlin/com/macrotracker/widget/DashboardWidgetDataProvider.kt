@@ -46,6 +46,14 @@ object DashboardWidgetDataProvider {
     private const val KEY_SELECTED_CALENDARS = "selected_calendar_ids"
     private const val AI_INSIGHT_KEY = "ai_insight"
     private const val AI_INSIGHT_TS_KEY = "ai_insight_ts"
+    private const val AI_NUTRITION_KEY = "ai_insight_nutrition"
+    private const val AI_NUTRITION_TS_KEY = "ai_insight_nutrition_ts"
+    private const val AI_HEALTH_KEY = "ai_insight_health"
+    private const val AI_HEALTH_TS_KEY = "ai_insight_health_ts"
+    private const val AI_WEATHER_KEY = "ai_insight_weather"
+    private const val AI_WEATHER_TS_KEY = "ai_insight_weather_ts"
+    private const val AI_CALENDAR_KEY = "ai_insight_calendar"
+    private const val AI_CALENDAR_TS_KEY = "ai_insight_calendar_ts"
     private const val AI_INSIGHT_TTL = 60 * 60 * 1000L // 1 hour
 
     suspend fun loadData(context: Context): DashboardWidgetData {
@@ -67,16 +75,31 @@ object DashboardWidgetDataProvider {
             weatherIcon = weather.weatherIcon,
             weatherDescription = weather.weatherDescription,
             weatherLocation = weather.weatherLocation,
+            weatherFeelsLike = weather.weatherFeelsLike,
+            weatherHumidity = weather.weatherHumidity,
             hasWeatherData = weather.hasWeatherData,
+            hourlyForecast = weather.hourlyForecast,
             nextEventTitle = calendar.nextEventTitle,
             nextEventTime = calendar.nextEventTime,
             nextEventRelativeDay = calendar.nextEventRelativeDay,
             eventsToday = calendar.eventsToday,
             hasCalendarData = calendar.hasCalendarData,
+            upcomingEvents = calendar.upcomingEvents,
         )
 
-        val insight = loadAiInsight(context, merged)
-        return merged.copy(aiInsight = insight)
+        val insight            = loadAiInsight(context, merged, AI_INSIGHT_KEY,   AI_INSIGHT_TS_KEY,   buildInsightPrompt(merged))
+        val insightNutrition   = loadAiInsight(context, merged, AI_NUTRITION_KEY,  AI_NUTRITION_TS_KEY, buildNutritionPrompt(merged))
+        val insightHealth      = loadAiInsight(context, merged, AI_HEALTH_KEY,     AI_HEALTH_TS_KEY,    buildHealthPrompt(merged))
+        val insightWeather     = loadAiInsight(context, merged, AI_WEATHER_KEY,    AI_WEATHER_TS_KEY,   buildWeatherPrompt(merged))
+        val insightCalendar    = loadAiInsight(context, merged, AI_CALENDAR_KEY,   AI_CALENDAR_TS_KEY,  buildCalendarPrompt(merged))
+        return merged.copy(
+            aiInsight = insight,
+            aiInsightNutrition = insightNutrition,
+            aiInsightHealth = insightHealth,
+            aiInsightWeather = insightWeather,
+            aiInsightCalendar = insightCalendar,
+            lastUpdatedAt = System.currentTimeMillis(),
+        )
     }
 
     private suspend fun loadMacros(context: Context): DashboardWidgetData {
@@ -89,19 +112,30 @@ object DashboardWidgetDataProvider {
 
             val dao = db.macroDao()
             val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            val yesterday = LocalDate.now().minusDays(1).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
             val totalCalories = dao.getTotalCaloriesForDate(today)
             val totalProtein = dao.getTotalProteinForDate(today)
+            val yesterdayCalories = dao.getTotalCaloriesForDate(yesterday)
             val goals = dao.getGoals() ?: GoalsEntity()
             val logs = dao.getLogsForDate(today)
             db.close()
 
+            // Build recent meals list: "Food Name · 420 kcal"
+            val recentMeals = logs.take(5).map { "${it.foodName} · ${it.calories} kcal" }
+
             DashboardWidgetData(
                 totalCalories = totalCalories,
                 totalProtein = totalProtein,
+                totalFat = 0,
+                totalCarbs = 0,
                 calorieGoal = goals.calorieGoal,
                 proteinGoal = goals.proteinGoal,
+                fatGoal = 0,
+                carbGoal = 0,
                 mealCount = logs.size,
                 lastMeal = logs.firstOrNull()?.foodName,
+                recentMeals = recentMeals,
+                yesterdayCalories = yesterdayCalories,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load macros: ${e.message}", e)
@@ -179,6 +213,24 @@ object DashboardWidgetDataProvider {
             val location = prefs.getString("location", null)
             val high = prefs.getString("high", null)
             val low = prefs.getString("low", null)
+            val feelsLike = prefs.getString("feels_like", null)
+            val humidity = prefs.getString("humidity", null)
+
+            // Hourly forecast: stored as pipe-separated segments
+            // Format: "3 PM|⛅|18|20|6 PM|🌧|16|60|…"
+            val hourlyRaw = prefs.getString("hourly_forecast", null)
+            val hourlyForecast: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
+                hourlyRaw.split("|").chunked(4).mapNotNull { seg ->
+                    if (seg.size < 3) null
+                    else HourlyForecast(
+                        hour = seg[0],
+                        icon = seg[1],
+                        temp = seg[2],
+                        pop  = seg.getOrNull(3)?.toIntOrNull(),
+                    )
+                }
+            } else emptyList()
+
             if (temp != null && icon != null) {
                 DashboardWidgetData(
                     weatherTemp = temp,
@@ -187,7 +239,10 @@ object DashboardWidgetDataProvider {
                     weatherIcon = icon,
                     weatherDescription = desc,
                     weatherLocation = location,
+                    weatherFeelsLike = feelsLike,
+                    weatherHumidity = humidity,
                     hasWeatherData = true,
+                    hourlyForecast = hourlyForecast,
                 )
             } else {
                 DashboardWidgetData()
@@ -214,8 +269,8 @@ object DashboardWidgetDataProvider {
             val zone = ZoneId.systemDefault()
             val now = Instant.now()
             val startMillis = now.toEpochMilli()
-            // Look ahead 7 days for the next event
-            val endMillis = LocalDate.now().plusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
+            // Look ahead 30 days to collect enough upcoming events
+            val endMillis = LocalDate.now().plusDays(30).atStartOfDay(zone).toInstant().toEpochMilli()
 
             val projection = arrayOf(
                 CalendarContract.Instances.TITLE,
@@ -250,6 +305,7 @@ object DashboardWidgetDataProvider {
             var nextTime: String? = null
             var nextRelativeDay: String? = null
             var todayCount = 0
+            val upcomingEvents = mutableListOf<CalendarEvent>()
 
             cursor?.use {
                 while (it.moveToNext()) {
@@ -262,25 +318,38 @@ object DashboardWidgetDataProvider {
                         todayCount++
                     }
 
-                    // First upcoming event (that hasn't ended yet)
+                    val eventDt = LocalDateTime.ofInstant(Instant.ofEpochMilli(begin), zone)
+                    val eventDate = eventDt.toLocalDate()
+                    val today = LocalDate.now()
+
+                    val relativeDay = when {
+                        eventDate == today -> "Today"
+                        eventDate == today.plusDays(1) -> "Tomorrow"
+                        else -> eventDate.dayOfWeek.name.lowercase()
+                            .replaceFirstChar { c -> c.uppercase() }
+                    }
+
+                    val timeStr = if (isAllDay) {
+                        "All day"
+                    } else {
+                        eventDt.format(DateTimeFormatter.ofPattern("h:mm a"))
+                    }
+
+                    // Capture the first upcoming event for backward compat fields
                     if (nextTitle == null) {
                         nextTitle = title
-                        val eventDt = LocalDateTime.ofInstant(Instant.ofEpochMilli(begin), zone)
-                        val eventDate = eventDt.toLocalDate()
-                        val today = LocalDate.now()
+                        nextRelativeDay = relativeDay
+                        nextTime = timeStr
+                    }
 
-                        nextRelativeDay = when {
-                            eventDate == today -> "Today"
-                            eventDate == today.plusDays(1) -> "Tomorrow"
-                            else -> eventDate.dayOfWeek.name.lowercase()
-                                .replaceFirstChar { c -> c.uppercase() }
-                        }
-
-                        nextTime = if (isAllDay) {
-                            "All day"
-                        } else {
-                            eventDt.format(DateTimeFormatter.ofPattern("h:mm a"))
-                        }
+                    // Collect up to 10 upcoming events
+                    if (upcomingEvents.size < 10) {
+                        upcomingEvents += CalendarEvent(
+                            title = title,
+                            time = timeStr,
+                            relativeDay = relativeDay,
+                            isAllDay = isAllDay,
+                        )
                     }
                 }
             }
@@ -291,6 +360,7 @@ object DashboardWidgetDataProvider {
                 nextEventRelativeDay = nextRelativeDay,
                 eventsToday = todayCount,
                 hasCalendarData = nextTitle != null || todayCount > 0,
+                upcomingEvents = upcomingEvents,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load calendar: ${e.message}", e)
@@ -299,10 +369,16 @@ object DashboardWidgetDataProvider {
     }
 
     // ── AI daily insight (Gemini 2.0 Flash free tier, cached 1 h) ────────
-    private suspend fun loadAiInsight(context: Context, data: DashboardWidgetData): String? {
+    private suspend fun loadAiInsight(
+        context: Context,
+        data: DashboardWidgetData,
+        cacheKey: String,
+        cacheTsKey: String,
+        prompt: String,
+    ): String? {
         val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
-        val cached = prefs.getString(AI_INSIGHT_KEY, null)
-        val ts = prefs.getLong(AI_INSIGHT_TS_KEY, 0L)
+        val cached = prefs.getString(cacheKey, null)
+        val ts = prefs.getLong(cacheTsKey, 0L)
         if (cached != null && System.currentTimeMillis() - ts < AI_INSIGHT_TTL) return cached
 
         // Get API key from settings prefs (same store the app uses)
@@ -313,13 +389,12 @@ object DashboardWidgetDataProvider {
 
         return withContext(Dispatchers.IO) {
             try {
-                val prompt = buildInsightPrompt(data)
                 val body = JSONObject().apply {
                     put("contents", JSONArray().put(JSONObject().apply {
                         put("parts", JSONArray().put(JSONObject().put("text", prompt)))
                     }))
                     put("generationConfig", JSONObject().apply {
-                        put("maxOutputTokens", 60)
+                        put("maxOutputTokens", 120)
                         put("temperature", 0.7)
                     })
                 }.toString()
@@ -336,7 +411,7 @@ object DashboardWidgetDataProvider {
 
                 val response = client.newCall(request).execute()
                 val json = JSONObject(response.body?.string() ?: "")
-                val text = json
+                val rawText = json
                     .optJSONArray("candidates")
                     ?.optJSONObject(0)
                     ?.optJSONObject("content")
@@ -344,19 +419,30 @@ object DashboardWidgetDataProvider {
                     ?.optJSONObject(0)
                     ?.optString("text")
                     ?.trim()
-                    ?.take(120)  // safety limit
+
+                // Trim to the last complete sentence so we never show a truncated fragment.
+                val text = rawText?.let { raw ->
+                    val truncated = raw.take(220)
+                    // Find the last sentence-ending punctuation
+                    val lastEnd = truncated.indexOfLast { it == '.' || it == '!' || it == '?' }
+                    if (lastEnd >= 0) truncated.substring(0, lastEnd + 1) else truncated
+                }
 
                 if (!text.isNullOrBlank()) {
-                    prefs.edit().putString(AI_INSIGHT_KEY, text).putLong(AI_INSIGHT_TS_KEY, System.currentTimeMillis()).apply()
+                    prefs.edit()
+                        .putString(cacheKey, text)
+                        .putLong(cacheTsKey, System.currentTimeMillis())
+                        .apply()
                     text
                 } else cached
             } catch (e: Exception) {
-                Log.e(TAG, "AI insight failed: ${e.message}")
+                Log.e(TAG, "AI insight failed [$cacheKey]: ${e.message}")
                 cached
             }
         }
     }
 
+    /** General dashboard insight (nutrition + health overview). */
     private fun buildInsightPrompt(d: DashboardWidgetData): String {
         val parts = mutableListOf<String>()
         parts += "Calories: ${d.totalCalories}/${d.calorieGoal} kcal"
@@ -364,7 +450,50 @@ object DashboardWidgetDataProvider {
         if (d.steps > 0) parts += "Steps: ${d.steps}"
         if (d.sleepMinutes > 0) parts += "Sleep: ${d.sleepMinutes / 60}h ${d.sleepMinutes % 60}m"
         if (d.activeCaloriesBurned > 0) parts += "Active cal burned: ${d.activeCaloriesBurned.toInt()}"
-        
-        return "Given these stats, give a 1-sentence supportive health tip for today: ${parts.joinToString(", ")}"
+        return "Given these health stats: ${parts.joinToString(", ")}. Reply with exactly ONE complete supportive tip sentence (max 20 words, must end with a period)."
+    }
+
+    /** Nutrition-focused insight for the Macros widget. */
+    private fun buildNutritionPrompt(d: DashboardWidgetData): String {
+        val parts = mutableListOf<String>()
+        parts += "Calories: ${d.totalCalories}/${d.calorieGoal} kcal"
+        parts += "Protein: ${d.totalProtein}/${d.proteinGoal}g"
+        if (d.fatGoal > 0) parts += "Fat: ${d.totalFat}/${d.fatGoal}g"
+        if (d.carbGoal > 0) parts += "Carbs: ${d.totalCarbs}/${d.carbGoal}g"
+        parts += "Meals logged: ${d.mealCount}"
+        return "Today's nutrition: ${parts.joinToString(", ")}. Reply with exactly ONE complete meal or macro tip sentence (max 20 words, must end with a period)."
+    }
+
+    /** Health & activity-focused insight for the Health widget. */
+    private fun buildHealthPrompt(d: DashboardWidgetData): String {
+        if (!d.hasHealthData) return "Reply with exactly ONE complete fitness motivation sentence (max 20 words, must end with a period)."
+        val parts = mutableListOf<String>()
+        if (d.steps > 0) parts += "Steps: ${d.steps}/${d.stepsGoal}"
+        if (d.avgHeartRate > 0) parts += "Avg HR: ${d.avgHeartRate} BPM"
+        if (d.sleepMinutes > 0) parts += "Sleep: ${d.sleepMinutes / 60}h ${d.sleepMinutes % 60}m"
+        if (d.activeCaloriesBurned > 0) parts += "Active kcal: ${d.activeCaloriesBurned.toInt()}"
+        return "Today's activity: ${parts.joinToString(", ")}. Reply with exactly ONE complete fitness or recovery tip sentence (max 20 words, must end with a period)."
+    }
+
+    /** Weather-focused insight for the Weather widget. */
+    private fun buildWeatherPrompt(d: DashboardWidgetData): String {
+        if (!d.hasWeatherData) return "Reply with exactly ONE complete outdoor activity tip sentence (max 20 words, must end with a period)."
+        val parts = mutableListOf<String>()
+        parts += "Temp: ${d.weatherTemp}°C"
+        if (d.weatherDescription != null) parts += "Conditions: ${d.weatherDescription}"
+        if (d.weatherHigh != null && d.weatherLow != null) parts += "High ${d.weatherHigh}° Low ${d.weatherLow}°"
+        return "Today's weather: ${parts.joinToString(", ")}. Reply with exactly ONE complete clothing or outdoor activity tip sentence (max 20 words, must end with a period)."
+    }
+
+    /** Calendar-focused insight for the Calendar widget. */
+    private fun buildCalendarPrompt(d: DashboardWidgetData): String {
+        val parts = mutableListOf<String>()
+        parts += "${d.eventsToday} events today"
+        if (d.nextEventTitle != null) {
+            parts += "Next: \"${d.nextEventTitle}\""
+            if (d.nextEventRelativeDay != null) parts += "${d.nextEventRelativeDay}"
+            if (d.nextEventTime != null) parts += "at ${d.nextEventTime}"
+        }
+        return "My schedule: ${parts.joinToString(", ")}. Reply with exactly ONE complete productivity or time-management tip sentence (max 20 words, must end with a period)."
     }
 }

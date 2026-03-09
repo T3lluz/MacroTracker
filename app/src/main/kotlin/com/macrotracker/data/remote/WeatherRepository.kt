@@ -34,6 +34,8 @@ data class WeatherInfo(
     val description: String,
     val icon: String, // emoji
     val locationName: String = "",
+    val feelsLike: Double? = null,      // dew-point-based approximation from Yr.no
+    val humidity: Double? = null,       // relative_humidity from Yr.no
     val hourlyForecasts: List<HourlyForecast> = emptyList(),
     val dailyForecasts: List<DailyForecast> = emptyList(),
 )
@@ -85,6 +87,9 @@ class WeatherRepository @Inject constructor(
 
         val temperature = instant.getDouble("air_temperature")
         val windSpeed = instant.getDouble("wind_speed")
+        val humidity = instant.optDouble("relative_humidity").takeIf { !it.isNaN() }
+        // Yr.no doesn't give feels-like directly; use dew point as a proxy when available
+        val feelsLike = instant.optDouble("dew_point_temperature").takeIf { !it.isNaN() }
 
         // Symbol code from next_1_hours or next_6_hours
         val symbolCode = when {
@@ -183,6 +188,8 @@ class WeatherRepository @Inject constructor(
             description = description,
             icon = icon,
             locationName = locationName,
+            feelsLike = feelsLike,
+            humidity = humidity,
             hourlyForecasts = hourlyForecasts,
             dailyForecasts = dailyForecasts,
         )

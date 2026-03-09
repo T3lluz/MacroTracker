@@ -4,21 +4,42 @@
   <color name="colorPrimary">#023c69</color>
   <color name="colorPrimaryDark">#ffffff</color>
 
-  <!-- Widget colors (light) -->
-  <color name="widget_surface">#FFFBFE</color>
-  <color name="widget_on_surface">#1C1B1F</color>
-  <color name="widget_subtitle">#49454F</color>
-  <color name="widget_calorie">#B23A48</color>
-  <color name="widget_protein">#2E7D32</color>
-  <color name="widget_track_bg">#E8E0E5</color>
-  <color name="widget_health">#1565C0</color>
-  <color name="widget_weather">#E65100</color>
-  <color name="widget_calendar">#4A148C</color>
-  <color name="widget_card_bg">#F3EDF7</color>
-  <color name="widget_steps">#1565C0</color>
-  <color name="widget_sleep">#6A1B9A</color>
-  <color name="widget_heart">#C62828</color>
-  <color name="widget_accent">#E8E0E5</color>
-  <color name="widget_on_accent">#1C1B1F</color>
+  <!-- Widget colors — F1-inspired dark palette -->
+  <color name="widget_surface">#15151E</color>
+  <color name="widget_on_surface">#FFFFFF</color>
+  <color name="widget_subtitle">#8A8AA0</color>
+  <color name="widget_calorie">#FF6B6B</color>
+  <color name="widget_protein">#4ADE80</color>
+  <color name="widget_fat">#FB923C</color>
+  <color name="widget_carb">#60A5FA</color>
+  <color name="widget_track_bg">#2E2E42</color>
+  <color name="widget_health">#60A5FA</color>
+  <color name="widget_weather">#FBBF24</color>
+  <color name="widget_calendar">#A78BFA</color>
+  <color name="widget_card_bg">#242433</color>
+  <color name="widget_steps">#60A5FA</color>
+  <color name="widget_sleep">#A78BFA</color>
+  <color name="widget_heart">#FF6B6B</color>
+  <color name="widget_accent">#2E2E42</color>
+  <color name="widget_on_accent">#FFFFFF</color>
+  <color name="widget_primary">#A78BFA</color>
+  <color name="widget_secondary">#8A8AA0</color>
+
+  <!-- F1 widget colors -->
+  <color name="f1_red">#E8002D</color>
+  <color name="f1_dark">#15151E</color>
+  <color name="f1_surface">#15151E</color>
+  <color name="f1_card">#242433</color>
+  <color name="f1_card_alt">#1E1E2E</color>
+  <color name="f1_pill">#2E2E42</color>
+  <color name="f1_divider">#3A3A4E</color>
+  <color name="f1_text">#FFFFFF</color>
+  <color name="f1_sub">#8A8AA0</color>
+  <color name="f1_gold">#F5C842</color>
+  <color name="f1_silver">#C8C8D4</color>
+  <color name="f1_bronze">#D4835A</color>
+  <color name="f1_accent">#E8002D</color>
+  <color name="f1_green">#39B54A</color>
+  <color name="f1_blue">#0090D0</color>
 </resources>
 

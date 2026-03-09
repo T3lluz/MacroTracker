@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -42,15 +43,21 @@ sealed class WeatherUiState {
         val aiSummary: String? = null,
         val aiClothingRecommendation: String? = null,
         val aiSummaryLoading: Boolean = false,
+        /** True when the location was obtained with coarse (approximate) permission only. */
+        val isPrecise: Boolean = true,
+        val lastUpdatedAt: Instant? = null,
+        val aiSummaryUpdatedAt: Instant? = null,
     ) : WeatherUiState()
     data object PermissionRequired : WeatherUiState()
+    /** User granted only approximate (coarse) location — weather works but precision is limited. */
+    data object ApproximateLocation : WeatherUiState()
     data class Error(val message: String) : WeatherUiState()
 }
 
 sealed class HomeHealthState {
     data object Loading : HomeHealthState()
     data object Unavailable : HomeHealthState()
-    data class Success(val stats: HealthStats, val isRefreshing: Boolean = false) : HomeHealthState()
+    data class Success(val stats: HealthStats, val isRefreshing: Boolean = false, val lastUpdatedAt: Instant? = null) : HomeHealthState()
 }
 
 sealed class CalendarUiState {
@@ -60,6 +67,7 @@ sealed class CalendarUiState {
         val upcomingEvents: List<CalendarEvent> = emptyList(),
         val availableCalendars: List<CalendarInfo> = emptyList(),
         val selectedCalendarIds: Set<Long> = emptySet(),
+        val lastUpdatedAt: Instant? = null,
     ) : CalendarUiState()
     data object PermissionRequired : CalendarUiState()
     data object Unavailable : CalendarUiState()
@@ -94,6 +102,9 @@ class HomeViewModel @Inject constructor(
     private val _logs = MutableStateFlow<List<MacroLogEntity>>(emptyList())
     val logs: StateFlow<List<MacroLogEntity>> = _logs
 
+    private val _logsLastUpdatedAt = MutableStateFlow<Instant?>(null)
+    val logsLastUpdatedAt: StateFlow<Instant?> = _logsLastUpdatedAt
+
     private val _weatherState = MutableStateFlow<WeatherUiState>(WeatherUiState.PermissionRequired)
     val weatherState: StateFlow<WeatherUiState> = _weatherState
 
@@ -121,6 +132,9 @@ class HomeViewModel @Inject constructor(
 
         settingsRepository.weatherEnabled.onEach { enabled ->
             val hasPermission = ContextCompat.checkSelfPermission(
+                appContext, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
                 appContext, Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
             if (enabled && hasPermission) {
@@ -170,8 +184,21 @@ class HomeViewModel @Inject constructor(
 
     fun loadData() {
         viewModelScope.launch {
-            _summary.value = repository.getDailySummary(today)
-            _logs.value = repository.getLogsForDate(today)
+            val newSummary = repository.getDailySummary(today)
+            val newLogs = repository.getLogsForDate(today)
+
+            // Only advance the "last updated" timestamp when the data actually changed
+            val prevSummary = _summary.value
+            val dataChanged = prevSummary == null ||
+                prevSummary.totalCalories != newSummary.totalCalories ||
+                prevSummary.totalProtein != newSummary.totalProtein ||
+                _logs.value.size != newLogs.size
+
+            _summary.value = newSummary
+            _logs.value = newLogs
+            if (dataChanged) {
+                _logsLastUpdatedAt.value = Instant.now()
+            }
         }
     }
 
@@ -197,7 +224,9 @@ class HomeViewModel @Inject constructor(
             _f1State.value = F1UiState.Loading
             f1Repository.getOverallF1Data(forceRefresh)
                 .onSuccess { f1Data ->
-                    _f1State.value = F1UiState.Success(f1Data)
+                    val fetchedAt = f1Repository.lastFetchTimeMs
+                        .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
+                    _f1State.value = F1UiState.Success(f1Data, lastUpdatedAt = fetchedAt)
                 }
                 .onFailure { error ->
                     _f1State.value = F1UiState.Error(error.message ?: "Unknown error")
@@ -223,9 +252,9 @@ class HomeViewModel @Inject constructor(
                 val stats = healthConnectRepository.readTodayStats()
                 if (stats.steps == 0L && current is HomeHealthState.Success && current.stats.steps > 0) {
                      Log.w(TAG, "Health Connect returned 0 steps, keeping previous value to avoid flicker")
-                     _healthState.value = current.copy(isRefreshing = false)
+                     _healthState.value = current.copy(isRefreshing = false) // preserve lastUpdatedAt
                 } else {
-                    _healthState.value = HomeHealthState.Success(stats)
+                    _healthState.value = HomeHealthState.Success(stats, lastUpdatedAt = Instant.now())
                 }
                 WidgetUpdater.updateAllWidgets(appContext)
             } catch (e: Exception) {
@@ -276,7 +305,8 @@ class HomeViewModel @Inject constructor(
                     events = todayEvents,
                     upcomingEvents = upcoming.take(10),
                     availableCalendars = available,
-                    selectedCalendarIds = selected
+                    selectedCalendarIds = selected,
+                    lastUpdatedAt = Instant.now(),
                 )
 
                 WidgetUpdater.updateAllWidgets(appContext)
@@ -298,8 +328,15 @@ class HomeViewModel @Inject constructor(
             _weatherState.value = WeatherUiState.PermissionRequired
             return
         }
+
+        // Detect whether the user granted precise (fine) or approximate (coarse) location
+        val hasPreciseLocation = ContextCompat.checkSelfPermission(
+            appContext, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
         viewModelScope.launch {
             try {
+                _weatherState.value = WeatherUiState.Loading
                 val location = locationProvider.getLocation()
                 if (location == null) {
                     if (_weatherState.value !is WeatherUiState.Success) {
@@ -311,13 +348,15 @@ class HomeViewModel @Inject constructor(
                 val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
 
                 val current = _weatherState.value
+                // Only stamp a new fetch time — this is always a real network call (WeatherRepository has no cache)
+                val fetchedAt = Instant.now()
                 if (current is WeatherUiState.Success) {
-                    _weatherState.value = current.copy(weather = weather)
+                    _weatherState.value = current.copy(weather = weather, isPrecise = hasPreciseLocation, lastUpdatedAt = fetchedAt)
                     if (current.aiSummary == null) {
                         loadWeatherAiSummary()
                     }
                 } else {
-                    _weatherState.value = WeatherUiState.Success(weather)
+                    _weatherState.value = WeatherUiState.Success(weather, isPrecise = hasPreciseLocation, lastUpdatedAt = fetchedAt)
                     loadWeatherAiSummary()
                 }
 
@@ -341,10 +380,14 @@ class HomeViewModel @Inject constructor(
         if (!force) {
             val cached = weatherAiRepository.getCachedResult(current.weather.symbolCode)
             if (cached != null) {
+                // Use the real generation timestamp from the repository cache
+                val aiGeneratedAt = weatherAiRepository.aiLastFetchTimeMs
+                    .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
                 _weatherState.value = current.copy(
                     aiSummary = cached.summary,
                     aiClothingRecommendation = cached.clothingRecommendation,
                     aiSummaryLoading = false,
+                    aiSummaryUpdatedAt = aiGeneratedAt,
                 )
                 return
             }
@@ -354,12 +397,16 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = weatherAiRepository.generateWeatherSummary(current.weather)
+                // Stamp with the repository's cached time — set inside cacheResult() when Gemini responded
+                val aiGeneratedAt = weatherAiRepository.aiLastFetchTimeMs
+                    .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
                 val latest = _weatherState.value
                 if (latest is WeatherUiState.Success) {
                     _weatherState.value = latest.copy(
                         aiSummary = result?.summary ?: "Could not generate summary.",
                         aiClothingRecommendation = result?.clothingRecommendation ?: "",
                         aiSummaryLoading = false,
+                        aiSummaryUpdatedAt = aiGeneratedAt,
                     )
                 }
             } catch (e: Exception) {
@@ -380,6 +427,25 @@ class HomeViewModel @Inject constructor(
         try {
             val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
+
+            // Build hourly forecast string: "3 PM|⛅|18|20|6 PM|🌧|16|60|…"
+            // Take next 8 hours, convert "HH:MM" → "h a" (e.g. "14:00" → "2 PM")
+            val hourlyStr = weather.hourlyForecasts.take(8).joinToString("|") { h ->
+                val displayHour = try {
+                    val parts = h.time.split(":")
+                    val hr = parts[0].toInt()
+                    when {
+                        hr == 0  -> "12 AM"
+                        hr < 12  -> "$hr AM"
+                        hr == 12 -> "12 PM"
+                        else     -> "${hr - 12} PM"
+                    }
+                } catch (_: Exception) { h.time }
+                val temp = h.temperature.toInt().toString()
+                // Yr.no doesn't provide precipitation probability, use 0 as placeholder
+                "$displayHour|${h.icon}|$temp|0"
+            }
+
             prefs.edit()
                 .putString("temp", weather.temperature.toInt().toString())
                 .putString("icon", weather.icon)
@@ -387,6 +453,9 @@ class HomeViewModel @Inject constructor(
                 .putString("location", weather.locationName)
                 .putString("high", todayForecast?.maxTemp?.toInt()?.toString())
                 .putString("low", todayForecast?.minTemp?.toInt()?.toString())
+                .putString("feels_like", weather.feelsLike?.toInt()?.toString())
+                .putString("humidity", weather.humidity?.toInt()?.toString())
+                .putString("hourly_forecast", hourlyStr.ifEmpty { null })
                 .apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to cache weather for widget: ${e.message}")

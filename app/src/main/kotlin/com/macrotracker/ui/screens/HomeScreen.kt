@@ -77,6 +77,8 @@ import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.YoutubeCard
 import com.macrotracker.ui.components.encodeWidgetConfig
 import com.macrotracker.ui.components.parseWidgetConfig
+import com.macrotracker.ui.util.LastUpdatedText
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.HeaderColor
@@ -84,7 +86,6 @@ import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
-import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.HomeHealthState
 import com.macrotracker.ui.viewmodel.HomeViewModel
 import java.time.LocalDate
@@ -106,6 +107,7 @@ fun HomeScreen(
     val f1State by viewModel.f1State.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val homeWidgetOrder by viewModel.homeWidgetOrder.collectAsState()
+    val logsLastUpdatedAt by viewModel.logsLastUpdatedAt.collectAsState()
 
     var quickFood by rememberSaveable { mutableStateOf("") }
     var quickCalories by rememberSaveable { mutableStateOf("") }
@@ -123,9 +125,13 @@ fun HomeScreen(
         Triple("QUICK_ADD", "Quick Add", Icons.Default.Add)
     )
 
-    fun hasLocationPermission(): Boolean = ContextCompat.checkSelfPermission(
-        context, Manifest.permission.ACCESS_COARSE_LOCATION,
-    ) == PackageManager.PERMISSION_GRANTED
+    fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
 
     fun hasCalendarPermission(): Boolean = ContextCompat.checkSelfPermission(
         context, Manifest.permission.READ_CALENDAR,
@@ -253,6 +259,14 @@ fun HomeScreen(
                                 },
                                 onRetry = { viewModel.loadWeather(hasLocationPermission()) },
                                 onExpand = { viewModel.loadWeatherAiSummary() },
+                                onRequestPreciseLocation = {
+                                    locationPermissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                                        )
+                                    )
+                                },
                             )
                         }
                         "CALENDAR" -> {
@@ -288,8 +302,17 @@ fun HomeScreen(
                                                 modifier = Modifier.padding(bottom = 12.dp),
                                             )
                                         }
-                                        if (hs.isRefreshing) {
-                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            LastUpdatedText(
+                                                lastUpdatedAt = hs.lastUpdatedAt,
+                                                color = TextSecondary,
+                                            )
+                                            if (hs.isRefreshing) {
+                                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                            }
                                         }
                                     }
 
@@ -353,8 +376,17 @@ fun HomeScreen(
                                             color = TextPrimary,
                                             modifier = Modifier.padding(bottom = 12.dp),
                                         )
-                                        IconButton(onClick = onNavigateToStats, modifier = Modifier.size(32.dp)) {
-                                            Icon(Icons.Outlined.FitnessCenter, contentDescription = "Stats", tint = Secondary)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            LastUpdatedText(
+                                                lastUpdatedAt = logsLastUpdatedAt,
+                                                color = TextSecondary,
+                                            )
+                                            IconButton(onClick = onNavigateToStats, modifier = Modifier.size(32.dp)) {
+                                                Icon(Icons.Outlined.FitnessCenter, contentDescription = "Stats", tint = Secondary)
+                                            }
                                         }
                                     }
 

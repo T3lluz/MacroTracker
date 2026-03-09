@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YouTube official logo: red rounded rectangle with white play triangle -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="68dp"
+    android:height="48dp"
+    android:viewportWidth="68"
+    android:viewportHeight="48">
+
+    <!-- Red rounded-rectangle background (official YouTube brand path) -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M66.52,7.74
+            C65.73,4.77 63.4,2.44 60.43,1.66
+            C55.16,0.24 34,0.24 34,0.24
+            C34,0.24 12.84,0.24 7.57,1.66
+            C4.6,2.44 2.27,4.77 1.48,7.74
+            C0,13.01 0,24 0,24
+            C0,24 0,34.99 1.48,40.26
+            C2.27,43.23 4.6,45.56 7.57,46.34
+            C12.84,47.76 34,47.76 34,47.76
+            C34,47.76 55.16,47.76 60.43,46.34
+            C63.4,45.56 65.73,43.23 66.52,40.26
+            C68,34.99 68,24 68,24
+            C68,24 68,13.01 66.52,7.74Z" />
+
+    <!-- White play triangle (official YouTube brand path) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M27,17L27,31L44,24Z" />
+
+</vector>

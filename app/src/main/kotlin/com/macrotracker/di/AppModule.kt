@@ -8,7 +8,6 @@ import com.macrotracker.data.f1.F1Repository
 import com.macrotracker.data.f1.F1RepositoryImpl
 import com.macrotracker.data.local.MacroDao
 import com.macrotracker.data.local.MacroDatabase
-import com.macrotracker.data.youtube.YouTubeApiService
 import com.macrotracker.data.youtube.YouTubeRepository
 import com.macrotracker.data.youtube.YouTubeRepositoryImpl
 import dagger.Binds
@@ -26,8 +25,6 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -37,13 +34,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): MacroDatabase {
-        return Room.databaseBuilder(
-            context,
-            MacroDatabase::class.java,
-            "macro_tracker.db",
-        ).build()
-    }
+    fun provideDatabase(@ApplicationContext context: Context): MacroDatabase =
+        Room.databaseBuilder(context, MacroDatabase::class.java, "macro_tracker.db").build()
 
     @Provides
     @Singleton
@@ -51,80 +43,41 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        return OkHttpClient.Builder()
-            .addInterceptor(logging)
+    fun provideOkHttpClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
-    }
 
     @Provides
     @Singleton
-    fun provideKtorClient(okHttpClient: OkHttpClient): HttpClient {
-        return HttpClient(OkHttp) {
-            engine {
-                preconfigured = okHttpClient
-            }
+    fun provideKtorClient(okHttpClient: OkHttpClient): HttpClient =
+        HttpClient(OkHttp) {
+            engine { preconfigured = okHttpClient }
             defaultRequest {
                 url("https://api.openf1.org/v1/")
-                // Browser-like UA so F1/media CDN doesn't block requests
                 headers.append(
                     HttpHeaders.UserAgent,
                     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                 )
             }
             install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                    prettyPrint = true
-                    isLenient = true
-                    coerceInputValues = true // Coerces nulls to default values or handles unexpected types gracefully
-                })
+                json(Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true })
             }
         }
-    }
-
-    @Provides
-    @Singleton
-    fun provideYouTubeRetrofit(okHttpClient: OkHttpClient): Retrofit {
-        return Retrofit.Builder()
-            .baseUrl("https://www.googleapis.com/youtube/v3/")
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-    }
-
-    @Provides
-    @Singleton
-    fun provideYouTubeApiService(retrofit: Retrofit): YouTubeApiService {
-        return retrofit.create(YouTubeApiService::class.java)
-    }
 }
 
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class F1DataModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindF1ApiService(impl: F1ApiServiceImpl): F1ApiService
-
-    @Binds
-    @Singleton
-    abstract fun bindF1Repository(impl: F1RepositoryImpl): F1Repository
+    @Binds @Singleton abstract fun bindF1ApiService(impl: F1ApiServiceImpl): F1ApiService
+    @Binds @Singleton abstract fun bindF1Repository(impl: F1RepositoryImpl): F1Repository
 }
 
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class YouTubeDataModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindYouTubeRepository(impl: YouTubeRepositoryImpl): YouTubeRepository
+    @Binds @Singleton abstract fun bindYouTubeRepository(impl: YouTubeRepositoryImpl): YouTubeRepository
 }
-

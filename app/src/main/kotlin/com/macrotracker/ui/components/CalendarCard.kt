@@ -61,6 +61,7 @@ import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.LastUpdatedText
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.CalendarUiState
 
@@ -149,6 +150,10 @@ fun CalendarCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
+                                    LastUpdatedText(
+                                        lastUpdatedAt = currentState.lastUpdatedAt,
+                                        color = TextSecondary,
+                                    )
                                     IconButton(onClick = { showDetails = true }, modifier = Modifier.size(36.dp)) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Outlined.EventNote,

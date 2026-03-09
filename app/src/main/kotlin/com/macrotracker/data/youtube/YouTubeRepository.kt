@@ -7,29 +7,31 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 interface YouTubeRepository {
-    val apiKeyFlow: StateFlow<String>
-    fun getApiKey(): String
-    fun saveApiKey(key: String)
+    /** Fetches latest videos via RSS — no API key required. */
     suspend fun getLatestVideosForTrackedChannels(): Result<List<YoutubeVideo>>
+    /** Searches channels by scraping YouTube — no API key required. */
     suspend fun searchChannels(query: String): Result<List<YoutubeChannel>>
-    suspend fun getMySubscriptions(accessToken: String): Result<List<YoutubeChannel>>
     fun getTrackedChannels(): List<YoutubeChannel>
     fun addTrackedChannel(channel: YoutubeChannel)
     fun removeTrackedChannel(channelId: String)
     fun isChannelTracked(channelId: String): Boolean
     fun invalidateCache()
+    /** Fetches channel avatar thumbnails for the given channel IDs. Returns map of channelId → URL. */
+    suspend fun fetchChannelThumbnails(channelIds: List<String>): Map<String, String>
+    /** Fetches the avatar thumbnail URL for a single channel. */
+    suspend fun fetchChannelThumbnail(channelId: String): String
+    /** The epoch-ms timestamp of when videos were last actually fetched from the network (0 if never). */
+    val lastFetchTimeMs: Long
 }
 
 @Singleton
 class YouTubeRepositoryImpl @Inject constructor(
-    private val api: YouTubeApiService,
+    private val rssFeedService: YouTubeRssFeedService,
     @ApplicationContext private val context: Context,
 ) : YouTubeRepository {
 
@@ -39,27 +41,16 @@ class YouTubeRepositoryImpl @Inject constructor(
         private const val KEY_TRACKED_CHANNELS = "tracked_channel_ids"
         private const val KEY_CHANNEL_TITLE_PREFIX = "channel_title_"
         private const val KEY_CHANNEL_THUMB_PREFIX = "channel_thumb_"
-        private const val KEY_API_KEY = "youtube_api_key"
         private const val CACHE_DURATION = 10 * 60 * 1000L // 10 min
     }
 
     private val prefs by lazy { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
-    private val _apiKeyFlow = MutableStateFlow(prefs.getString(KEY_API_KEY, "") ?: "")
-    override val apiKeyFlow: StateFlow<String> = _apiKeyFlow
-
-    override fun getApiKey(): String = _apiKeyFlow.value
-
-    override fun saveApiKey(key: String) {
-        val trimmed = key.trim()
-        prefs.edit { putString(KEY_API_KEY, trimmed) }
-        _apiKeyFlow.value = trimmed
-        invalidateCache()
-    }
-
     // In-memory cache
     private var cachedVideos: List<YoutubeVideo>? = null
     private var lastFetchTime: Long = 0
+
+    override val lastFetchTimeMs: Long get() = lastFetchTime
 
     override fun invalidateCache() {
         cachedVideos = null
@@ -107,9 +98,6 @@ class YouTubeRepositoryImpl @Inject constructor(
 
     override suspend fun getLatestVideosForTrackedChannels(): Result<List<YoutubeVideo>> =
         withContext(Dispatchers.IO) {
-            val key = getApiKey()
-            if (key.isBlank()) return@withContext Result.failure(Exception("NO_API_KEY"))
-
             val now = System.currentTimeMillis()
             if (cachedVideos != null && (now - lastFetchTime) < CACHE_DURATION) {
                 return@withContext Result.success(cachedVideos!!)
@@ -120,80 +108,26 @@ class YouTubeRepositoryImpl @Inject constructor(
 
             try {
                 val jobs = trackedChannels.map { channel ->
-                    async {
-                        try {
-                            api.searchChannelVideos(channelId = channel.channelId, apiKey = key)
-                                .items.mapNotNull { item ->
-                                    val vid = item.id.videoId ?: return@mapNotNull null
-                                    YoutubeVideo(
-                                        videoId = vid,
-                                        title = item.snippet.title,
-                                        channelTitle = item.snippet.channelTitle,
-                                        channelId = item.snippet.channelId,
-                                        publishedAt = item.snippet.publishedAt,
-                                        thumbnailUrl = item.snippet.thumbnails.medium?.url
-                                            ?: item.snippet.thumbnails.default?.url ?: "",
-                                    )
-                                }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to fetch videos for ${channel.channelId}", e)
-                            emptyList()
-                        }
-                    }
+                    async { rssFeedService.getLatestVideos(channel.channelId) }
                 }
                 val all = jobs.awaitAll().flatten().sortedByDescending { it.publishedAt }
                 cachedVideos = all
                 lastFetchTime = System.currentTimeMillis()
                 Result.success(all)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch YouTube videos", e)
+                Log.e(TAG, "Failed to fetch YouTube videos via RSS", e)
                 Result.failure(e)
             }
         }
 
     override suspend fun searchChannels(query: String): Result<List<YoutubeChannel>> =
-        withContext(Dispatchers.IO) {
-            val key = getApiKey()
-            if (key.isBlank()) return@withContext Result.failure(Exception("NO_API_KEY"))
-            try {
-                val response = api.searchChannels(query = query, apiKey = key)
-                val channels = response.items.mapNotNull { item ->
-                    val channelId = item.snippet.channelId.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                    YoutubeChannel(
-                        channelId = channelId,
-                        title = item.snippet.channelTitle,
-                        thumbnailUrl = item.snippet.thumbnails.medium?.url
-                            ?: item.snippet.thumbnails.default?.url ?: "",
-                        isTracked = isChannelTracked(channelId),
-                    )
-                }
-                Result.success(channels)
-            } catch (e: Exception) {
-                Log.e(TAG, "Channel search failed", e)
-                Result.failure(e)
-            }
+        rssFeedService.searchChannels(query).map { channels ->
+            channels.map { it.copy(isTracked = isChannelTracked(it.channelId)) }
         }
 
-    override suspend fun getMySubscriptions(accessToken: String): Result<List<YoutubeChannel>> =
-        withContext(Dispatchers.IO) {
-            val key = getApiKey()
-            if (key.isBlank()) return@withContext Result.failure(Exception("NO_API_KEY"))
-            try {
-                val response = api.getMySubscriptions(apiKey = key, bearerToken = "Bearer $accessToken")
-                val channels = response.items.map { item ->
-                    val channelId = item.snippet.resourceId.channelId
-                    YoutubeChannel(
-                        channelId = channelId,
-                        title = item.snippet.title,
-                        thumbnailUrl = item.snippet.thumbnails.medium?.url
-                            ?: item.snippet.thumbnails.default?.url ?: "",
-                        isTracked = isChannelTracked(channelId),
-                    )
-                }
-                Result.success(channels)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch subscriptions", e)
-                Result.failure(e)
-            }
-        }
+    override suspend fun fetchChannelThumbnails(channelIds: List<String>): Map<String, String> =
+        rssFeedService.fetchChannelThumbnails(channelIds)
+
+    override suspend fun fetchChannelThumbnail(channelId: String): String =
+        rssFeedService.fetchChannelThumbnail(channelId)
 }

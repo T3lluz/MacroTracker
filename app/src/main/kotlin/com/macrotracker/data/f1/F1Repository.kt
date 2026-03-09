@@ -7,6 +7,8 @@ import javax.inject.Singleton
 
 interface F1Repository {
     suspend fun getOverallF1Data(forceRefresh: Boolean = false): Result<F1Standings>
+    /** Epoch-ms of the last actual network fetch (0 if never fetched or only served from cache). */
+    val lastFetchTimeMs: Long
 }
 
 @Singleton
@@ -18,6 +20,8 @@ class F1RepositoryImpl @Inject constructor(
     private var lastFetchTime: Long = 0
     private var cachedYear: Int = 0
     private val CACHE_DURATION = 15 * 60 * 1000 // 15 minutes
+
+    override val lastFetchTimeMs: Long get() = lastFetchTime
 
     override suspend fun getOverallF1Data(forceRefresh: Boolean): Result<F1Standings> {
         val now = System.currentTimeMillis()

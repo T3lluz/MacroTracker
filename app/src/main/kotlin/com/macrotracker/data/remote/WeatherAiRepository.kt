@@ -38,6 +38,9 @@ class WeatherAiRepository @Inject constructor(
     private var cachedTimestamp: Long = 0L
     private var cachedSymbolCode: String? = null
 
+    /** Epoch-ms of when the AI result was last generated (0 if never). */
+    val aiLastFetchTimeMs: Long get() = cachedTimestamp
+
     fun getCachedResult(symbolCode: String): WeatherAiResult? {
         val now = System.currentTimeMillis()
         return if (cachedResult != null &&

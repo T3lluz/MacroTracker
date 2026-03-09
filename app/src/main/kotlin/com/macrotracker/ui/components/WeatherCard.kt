@@ -58,6 +58,7 @@ import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.LastUpdatedText
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.WeatherUiState
 
@@ -254,6 +255,7 @@ fun WeatherCard(
     onRequestPermission: () -> Unit,
     onRetry: () -> Unit,
     onExpand: () -> Unit = {},
+    onRequestPreciseLocation: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -306,23 +308,43 @@ fun WeatherCard(
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         ) {
-                            // Header row — title left, actions + expand button right
+                            // Header row — title left, actions right
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Weather", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    if (weather.locationName.isNotBlank()) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Icon(Icons.Outlined.LocationOn, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-                                        Text(weather.locationName, fontSize = 13.sp, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(start = 2.dp))
+                                // Left: title + location stacked, timestamp below
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Weather", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        if (weather.locationName.isNotBlank()) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Icon(
+                                                if (currentState.isPrecise) Icons.Outlined.LocationOn else Icons.Outlined.LocationOff,
+                                                contentDescription = null,
+                                                tint = if (currentState.isPrecise) accent else Color.White.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(14.dp),
+                                            )
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text(
+                                                weather.locationName,
+                                                fontSize = 12.sp,
+                                                color = Color.White.copy(alpha = 0.7f),
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            )
+                                        }
                                     }
+                                    LastUpdatedText(
+                                        lastUpdatedAt = currentState.lastUpdatedAt,
+                                        color = Color.White.copy(alpha = 0.9f),
+                                    )
                                 }
+                                // Right: refresh + chevron
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                                 ) {
                                     IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
                                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
@@ -352,6 +374,29 @@ fun WeatherCard(
                                             modifier = Modifier.size(22.dp).rotate(weatherChevronRot),
                                         )
                                     }
+                                }
+                            }
+
+                            // Approximate location nudge banner
+                            if (!currentState.isPrecise) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { onRequestPreciseLocation() }
+                                        .background(Color.White.copy(alpha = 0.12f))
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                ) {
+                                    Icon(Icons.Outlined.LocationOff, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Approximate location — tap to enable precise location",
+                                        fontSize = 12.sp,
+                                        color = Color.White.copy(alpha = 0.75f),
+                                        modifier = Modifier.weight(1f),
+                                    )
                                 }
                             }
 
@@ -413,12 +458,22 @@ fun WeatherCard(
                                                     color = Color.White.copy(alpha = 0.6f),
                                                 )
                                             } else if (currentState.aiSummary != null) {
-                                                Text(
-                                                    text = currentState.aiSummary,
-                                                    fontSize = 13.sp,
-                                                    color = Color.White.copy(alpha = 0.85f),
-                                                    lineHeight = 19.sp,
-                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = currentState.aiSummary,
+                                                        fontSize = 13.sp,
+                                                        color = Color.White.copy(alpha = 0.85f),
+                                                        lineHeight = 19.sp,
+                                                    )
+                                                    if (currentState.aiSummaryUpdatedAt != null) {
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        LastUpdatedText(
+                                                            lastUpdatedAt = currentState.aiSummaryUpdatedAt,
+                                                            color = Color.White,
+                                                            modifier = Modifier.align(Alignment.End),
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -576,6 +631,56 @@ fun WeatherCard(
                                 color = LocationAccent,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            is WeatherUiState.ApproximateLocation -> {
+                MacroCard(delayMs = 50) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Weather",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                "Using approximate location — enable precise location for accurate weather",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(onClick = onRequestPreciseLocation)
+                                .background(LocationAccent.copy(alpha = 0.1f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.LocationOn,
+                                contentDescription = null,
+                                tint = LocationAccent,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Precise",
+                                color = LocationAccent,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
                             )
                         }
                     }

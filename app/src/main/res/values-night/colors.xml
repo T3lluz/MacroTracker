@@ -1,10 +1,12 @@
 <resources>
-  <!-- Widget colors (dark) -->
+  <!-- Widget colors (dark) — Material You surface/role tokens -->
   <color name="widget_surface">#1C1B1F</color>
   <color name="widget_on_surface">#E6E1E5</color>
   <color name="widget_subtitle">#CAC4D0</color>
   <color name="widget_calorie">#FFB4AB</color>
   <color name="widget_protein">#A5D6A7</color>
+  <color name="widget_fat">#FFB74D</color>
+  <color name="widget_carb">#90CAF9</color>
   <color name="widget_track_bg">#36343B</color>
   <color name="widget_health">#90CAF9</color>
   <color name="widget_weather">#FFB74D</color>
@@ -15,5 +17,24 @@
   <color name="widget_heart">#EF9A9A</color>
   <color name="widget_accent">#36343B</color>
   <color name="widget_on_accent">#E6E1E5</color>
+  <color name="widget_primary">#D0BCFF</color>
+  <color name="widget_secondary">#CCC2DC</color>
+
+  <!-- F1 widget colors (dark variant — same F1 dark theme works for both) -->
+  <color name="f1_red">#FF1E3C</color>
+  <color name="f1_dark">#0F0F18</color>
+  <color name="f1_surface">#0F0F18</color>
+  <color name="f1_card">#1E1E2E</color>
+  <color name="f1_card_alt">#191927</color>
+  <color name="f1_pill">#282840</color>
+  <color name="f1_divider">#30304A</color>
+  <color name="f1_text">#F0F0FF</color>
+  <color name="f1_sub">#8080A0</color>
+  <color name="f1_gold">#F5C842</color>
+  <color name="f1_silver">#C8C8D4</color>
+  <color name="f1_bronze">#D4835A</color>
+  <color name="f1_accent">#FF1E3C</color>
+  <color name="f1_green">#39B54A</color>
+  <color name="f1_blue">#0090D0</color>
 </resources>
 

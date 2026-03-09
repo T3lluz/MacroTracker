@@ -33,51 +33,47 @@ class LocationProvider @Inject constructor(
     }
 
     /**
-     * Returns the device's current location, or null if unavailable.
-     * The caller MUST have already acquired location permission.
+     * Returns the device's precise current location, or null if unavailable.
+     * Always requests a fresh GPS fix (PRIORITY_HIGH_ACCURACY), bypassing any
+     * stale or network-only cached location. Falls back to BALANCED_POWER_ACCURACY
+     * if GPS cannot produce a fix (e.g. indoors).
+     * The caller MUST have already acquired ACCESS_FINE_LOCATION permission.
      */
     @SuppressLint("MissingPermission")
-    suspend fun getLocation(): LatLon? = suspendCancellableCoroutine { cont ->
-        // Try lastLocation first — fast & battery-friendly
-        fusedClient.lastLocation
-            .addOnSuccessListener { location: Location? ->
-                if (location != null) {
-                    Log.d(TAG, "lastLocation: ${location.latitude}, ${location.longitude}")
-                    cont.resume(LatLon(location.latitude, location.longitude))
-                } else {
-                    // No cached location — request a fresh one
-                    Log.d(TAG, "lastLocation was null, requesting fresh location")
-                    requestFreshLocation(cont)
-                }
-            }
-            .addOnFailureListener { e: Exception ->
-                Log.e(TAG, "lastLocation failed: ${e.message}")
-                requestFreshLocation(cont)
-            }
+    suspend fun getLocation(): LatLon? {
+        // Try a fresh HIGH_ACCURACY (GPS) fix first
+        val precise = requestLocation(Priority.PRIORITY_HIGH_ACCURACY)
+        if (precise != null) {
+            Log.d(TAG, "GPS fix (accuracy=${precise.accuracy}m): ${precise.latitude}, ${precise.longitude}")
+            return LatLon(precise.latitude, precise.longitude)
+        }
+
+        // GPS unavailable (indoors / no signal) — fall back to network-based fix
+        Log.d(TAG, "GPS fix unavailable, falling back to BALANCED_POWER_ACCURACY")
+        val fallback = requestLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
+        return if (fallback != null) {
+            Log.d(TAG, "Network fix (accuracy=${fallback.accuracy}m): ${fallback.latitude}, ${fallback.longitude}")
+            LatLon(fallback.latitude, fallback.longitude)
+        } else {
+            Log.w(TAG, "Both GPS and network location unavailable")
+            null
+        }
     }
 
     @SuppressLint("MissingPermission")
-    private fun requestFreshLocation(
-        cont: kotlinx.coroutines.CancellableContinuation<LatLon?>,
-    ) {
-        val cts = CancellationTokenSource()
-        fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
-            .addOnSuccessListener { location: Location? ->
-                if (location != null) {
-                    Log.d(TAG, "freshLocation: ${location.latitude}, ${location.longitude}")
-                    cont.resume(LatLon(location.latitude, location.longitude))
-                } else {
-                    Log.w(TAG, "Fresh location was also null")
+    private suspend fun requestLocation(priority: Int): Location? =
+        suspendCancellableCoroutine { cont ->
+            val cts = CancellationTokenSource()
+            fusedClient.getCurrentLocation(priority, cts.token)
+                .addOnSuccessListener { location: Location? ->
+                    cont.resume(location)
+                }
+                .addOnFailureListener { e: Exception ->
+                    Log.e(TAG, "getCurrentLocation($priority) failed: ${e.message}")
                     cont.resume(null)
                 }
-            }
-            .addOnFailureListener { e: Exception ->
-                Log.e(TAG, "Fresh location failed: ${e.message}")
-                cont.resume(null)
-            }
-
-        cont.invokeOnCancellation { cts.cancel() }
-    }
+            cont.invokeOnCancellation { cts.cancel() }
+        }
 
     @Suppress("DEPRECATION")
     suspend fun getLocationName(lat: Double, lon: Double): String = withContext(Dispatchers.IO) {
@@ -86,7 +82,20 @@ class LocationProvider @Inject constructor(
             val addresses = geocoder.getFromLocation(lat, lon, 1)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
-                addr.locality ?: addr.subAdminArea ?: addr.adminArea ?: "Unknown"
+                // Build a precise, human-readable name: neighbourhood/suburb + city, or city + region
+                val neighbourhood = addr.subLocality
+                val city = addr.locality ?: addr.subAdminArea
+                val region = addr.adminArea
+                val country = addr.countryCode
+
+                when {
+                    neighbourhood != null && city != null -> "$neighbourhood, $city"
+                    city != null && region != null && city != region -> "$city, $region"
+                    city != null && country != null -> "$city, $country"
+                    city != null -> city
+                    region != null -> region
+                    else -> "Unknown location"
+                }
             } else {
                 "Unknown location"
             }
@@ -96,5 +105,4 @@ class LocationProvider @Inject constructor(
         }
     }
 }
-
 
