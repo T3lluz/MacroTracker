@@ -32,6 +32,7 @@ fun <T> DraggableWidgetColumn(
     items: List<T>,
     onReorder: (List<T>) -> Unit,
     modifier: Modifier = Modifier,
+    isDraggableItem: (item: T) -> Boolean = { true },
     itemContent: @Composable (index: Int, item: T) -> Unit,
 ) {
     val haptics = rememberHaptics()
@@ -57,6 +58,7 @@ fun <T> DraggableWidgetColumn(
 
     Column(modifier = modifier.fillMaxWidth()) {
         workingList.forEachIndexed { index, item ->
+            val canDrag = isDraggableItem(item)
             val isDragging = index == draggingIndex
             val naturalTop = tops[index]
             val dragTranslation = if (isDragging) (fingerY - grabOffsetY - naturalTop) else 0f
@@ -94,24 +96,25 @@ fun <T> DraggableWidgetColumn(
                             heights[index] = coords.size.height.toFloat()
                         }
                     }
-                    .pointerInput(Unit) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { offset ->
-                                draggingIndex = index
-                                fingerY     = tops[index] + offset.y
-                                grabOffsetY = offset.y
-                                haptics.gestureStart()
-                            },
-                            onDrag = { change, amount ->
-                                change.consume()
-                                fingerY += amount.y
+                    .then(
+                        if (canDrag) Modifier.pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { offset ->
+                                    draggingIndex = index
+                                    fingerY     = tops[index] + offset.y
+                                    grabOffsetY = offset.y
+                                    haptics.gestureStart()
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    fingerY += amount.y
 
-                                val cur = draggingIndex
-                                if (cur < 0 || cur >= workingList.size) return@detectDragGesturesAfterLongPress
+                                    val cur = draggingIndex
+                                    if (cur < 0 || cur >= workingList.size) return@detectDragGesturesAfterLongPress
 
-                                val draggedTop = fingerY - grabOffsetY
-                                val draggedBot = draggedTop + heights[cur]
-                                val draggedCy  = draggedTop + heights[cur] / 2f
+                                    val draggedTop = fingerY - grabOffsetY
+                                    val draggedBot = draggedTop + heights[cur]
+                                    val draggedCy  = draggedTop + heights[cur] / 2f
 
                                 // ── Continuous proportional nudge of neighbours ───────────────
                                 // Each neighbour slides away smoothly in proportion to how much
@@ -235,7 +238,8 @@ fun <T> DraggableWidgetColumn(
                                 draggingIndex = -1
                             },
                         )
-                    },
+                    } else Modifier
+                    ),
             ) {
                 itemContent(index, item)
             }

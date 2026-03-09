@@ -97,6 +97,7 @@ import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroLogItem
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
+import com.macrotracker.ui.components.WidgetConfig
 import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.calculatePercentageChange
 import com.macrotracker.ui.components.encodeWidgetConfig
@@ -276,12 +277,36 @@ fun HealthScreen(
             val visibleConfigs by remember(parsedConfigs) {
                 derivedStateOf { parsedConfigs.filter { it.isVisible } }
             }
+            // Inject a non-draggable HISTORY_DETAIL pseudo-item right after HISTORY
+            // so the detail card always appears immediately below the Weekly Trends widget
+            // in the normal layout flow (avoiding graphicsLayer overlap issues).
+            val showHistoryDetail = healthHistory.isNotEmpty() &&
+                (selectedMetric == HealthMetric.HEART_RATE || selectedMetric == HealthMetric.SLEEP)
+            val augmentedConfigs: List<WidgetConfig> by remember(visibleConfigs, showHistoryDetail) {
+                derivedStateOf<List<WidgetConfig>> {
+                    if (!showHistoryDetail) {
+                        visibleConfigs
+                    } else {
+                        val result = mutableListOf<WidgetConfig>()
+                        for (cfg in visibleConfigs) {
+                            result.add(cfg)
+                            if (cfg.id == "HISTORY") {
+                                result.add(WidgetConfig("HISTORY_DETAIL", "History Detail", true, Icons.Default.ShowChart))
+                            }
+                        }
+                        result
+                    }
+                }
+            }
             DraggableWidgetColumn(
-                items = visibleConfigs,
+                items = augmentedConfigs,
                 onReorder = { reordered ->
+                    // Strip pseudo-item before persisting
+                    val real = reordered.filter { it.id != "HISTORY_DETAIL" }
                     val hidden = parsedConfigs.filter { !it.isVisible }
-                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(reordered + hidden))
+                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(real + hidden))
                 },
+                isDraggableItem = { it.id != "HISTORY_DETAIL" },
                 itemContent = { _, config ->
                     when (config.id) {
                     "BODY_STATS" -> {
@@ -423,14 +448,16 @@ fun HealthScreen(
                                 onPreviousWeek = { healthViewModel.previousWeek() },
                                 onNextWeek = { healthViewModel.nextWeek() }
                             )
-
-                            if (selectedMetric == HealthMetric.HEART_RATE) {
-                                HeartRateDetailCard(intradayHeartRate, selectedDate, haptics)
-                            } else if (selectedMetric == HealthMetric.SLEEP) {
-                                SleepDetailCard(detailedSleep, selectedDate, haptics)
-                            }
                             Spacer(modifier = Modifier.height(20.dp))
                         }
+                    }
+                    "HISTORY_DETAIL" -> {
+                        if (selectedMetric == HealthMetric.HEART_RATE) {
+                            HeartRateDetailCard(intradayHeartRate, selectedDate, haptics)
+                        } else if (selectedMetric == HealthMetric.SLEEP) {
+                            SleepDetailCard(detailedSleep, selectedDate, haptics)
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
                     }
                     "SUMMARY" -> {
                         val s = summary
@@ -1798,3 +1825,4 @@ private fun SelectedDayStatChip(icon: ImageVector, value: String, label: String,
         Text(label, fontSize = 11.sp, color = TextSecondary)
     }
 }
+
