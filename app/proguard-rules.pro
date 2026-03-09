@@ -11,3 +11,5 @@
 # Hilt
 -keep class dagger.hilt.** { *; }
 
+# Keep F1 data classes for Ktor serialization
+-keep class com.macrotracker.data.f1.** { *; }
