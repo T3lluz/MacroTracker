@@ -27,8 +27,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.Toc
+import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -79,13 +89,18 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.data.health.DailyHealthStats
 import com.macrotracker.ui.components.ButtonVariant
+import com.macrotracker.ui.components.HealthConnectCard
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroLogItem
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
+import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.calculatePercentageChange
+import com.macrotracker.ui.components.encodeWidgetConfig
+import com.macrotracker.ui.components.parseWidgetConfig
 import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.MacroMotion
@@ -98,6 +113,7 @@ import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.DashboardViewModel
+import com.macrotracker.ui.viewmodel.HealthConnectUiState
 import com.macrotracker.ui.viewmodel.HealthViewModel
 import java.text.DecimalFormat
 import java.time.DayOfWeek
@@ -137,18 +153,32 @@ fun HealthScreen(
     val logs by healthViewModel.logs.collectAsState()
     val weekHistory by healthViewModel.weekHistory.collectAsState()
     val healthHistory by healthViewModel.healthHistory.collectAsState()
+    val healthWidgetOrder by healthViewModel.healthWidgetOrder.collectAsState()
+    val healthConnectState by healthViewModel.healthConnectState.collectAsState()
 
     val selectedDate by healthViewModel.selectedDate.collectAsState()
     val intradayHeartRate by healthViewModel.intradayHeartRate.collectAsState()
     val detailedSleep by healthViewModel.detailedSleep.collectAsState()
     val weekStartDay by healthViewModel.weekStartDay.collectAsState()
+    val weeksBack by healthViewModel.weeksBack.collectAsState()
 
     var selectedMetric by rememberSaveable { mutableStateOf(HealthMetric.STEPS) }
+    var isEditMode by rememberSaveable { mutableStateOf(false) }
 
     var foodName by rememberSaveable { mutableStateOf("") }
     var calories by rememberSaveable { mutableStateOf("") }
     var protein by rememberSaveable { mutableStateOf("") }
     val haptics = rememberHaptics()
+
+    val defaultHealthWidgets = listOf(
+        Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
+        Triple("HISTORY", "Weekly Trends", Icons.Default.ShowChart),
+        Triple("SUMMARY", "Daily Summary", Icons.Default.ViewDay),
+        Triple("ADD_ENTRY", "Add Entry", Icons.Default.Add),
+        Triple("WEEK_AT_A_GLANCE", "Food Calories", Icons.Default.History),
+        Triple("RECENT_LOGS", "Recent Logs", Icons.Default.List)
+    )
+    val parsedConfigs = parseWidgetConfig(healthWidgetOrder, defaultHealthWidgets)
 
     // Health Connect data states from the new ViewModel
     val heartRateState by dashboardViewModel.heartRateState.collectAsState()
@@ -201,371 +231,414 @@ fun HealthScreen(
         Spacer(modifier = Modifier.height(48.dp))
 
         // Header
-        Text("Health", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
-        Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Health", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
+                Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
+            }
+            IconButton(onClick = { isEditMode = !isEditMode }) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
+            }
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // ── Body Stats (Health Connect) - NEW DYNAMIC VERSION ──────────────
-        val isAnyStatEnabled = heartRateState.isEnabled || restingHeartRateState.isEnabled ||
-                oxygenSaturationState.isEnabled || respiratoryRateState.isEnabled ||
-                stepsState.isEnabled || distanceState.isEnabled ||
-                floorsClimbedState.isEnabled || activeCaloriesState.isEnabled
-
-        if (isAnyStatEnabled) {
-            MacroCard(delayMs = 0) {
-                Text(
-                    "Body Stats",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+        when (healthConnectState) {
+            is HealthConnectUiState.PermissionRequired -> {
+                HealthConnectCard(
+                    onRequestPermission = {
+                        hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+                    }
                 )
-
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    maxItemsInEachRow = 2
-                ) {
-                    if (heartRateState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Heart Rate",
-                            value = "${heartRateState.value} bpm",
-                            percentageChange = calculatePercentageChange(heartRateState.today, heartRateState.yesterday),
-                            icon = Icons.Outlined.FavoriteBorder,
-                            color = Color(0xFFEF5350)
-                        )
-                    }
-                    if (restingHeartRateState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Resting HR",
-                            value = "${restingHeartRateState.value} bpm",
-                            percentageChange = calculatePercentageChange(restingHeartRateState.today, restingHeartRateState.yesterday),
-                            icon = Icons.Outlined.Bedtime,
-                            color = Color(0xFFEF5350)
-                        )
-                    }
-                    if (oxygenSaturationState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "SpO2",
-                            value = "${oxygenSaturationState.value} %",
-                            percentageChange = calculatePercentageChange(oxygenSaturationState.today, oxygenSaturationState.yesterday),
-                            icon = Icons.Outlined.Bloodtype,
-                            color = Color(0xFF42A5F5)
-                        )
-                    }
-                    if (respiratoryRateState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Resp. Rate",
-                            value = "${respiratoryRateState.value} rpm",
-                            percentageChange = calculatePercentageChange(respiratoryRateState.today, respiratoryRateState.yesterday),
-                            icon = Icons.Outlined.Air,
-                            color = Color(0xFF42A5F5)
-                        )
-                    }
-                    if (stepsState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Steps",
-                            value = stepsState.value ?: "0",
-                            percentageChange = calculatePercentageChange(stepsState.today, stepsState.yesterday),
-                            icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
-                            color = Primary
-                        )
-                    }
-                    if (distanceState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Distance",
-                            value = "${distanceState.value} km",
-                            percentageChange = calculatePercentageChange(distanceState.today, distanceState.yesterday),
-                            icon = Icons.Outlined.Route,
-                            color = Primary
-                        )
-                    }
-                    if (floorsClimbedState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Floors",
-                            value = floorsClimbedState.value ?: "0",
-                            percentageChange = calculatePercentageChange(floorsClimbedState.today, floorsClimbedState.yesterday),
-                            icon = Icons.Outlined.Stairs,
-                            color = Color(0xFF66BB6A)
-                        )
-                    }
-                    if (activeCaloriesState.isEnabled) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            metricName = "Active Cals",
-                            value = activeCaloriesState.value ?: "0",
-                            percentageChange = calculatePercentageChange(activeCaloriesState.today, activeCaloriesState.yesterday),
-                            icon = Icons.Outlined.LocalFireDepartment,
-                            color = Color(0xFFFF9800)
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(20.dp))
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
+            else -> {}
         }
 
-        // Health History Card
-        if (healthHistory.isNotEmpty()) {
-            HealthHistoryCard(
-                healthHistory = healthHistory,
-                selectedDate = selectedDate,
-                selectedMetric = selectedMetric,
-                weekStartDay = weekStartDay,
-                haptics = haptics,
-                // Passing the enabled states so we can dynamically show chips
-                isStepsEnabled = stepsState.isEnabled,
-                isHeartRateEnabled = heartRateState.isEnabled,
-                isRestingHeartRateEnabled = restingHeartRateState.isEnabled,
-                isSpo2Enabled = oxygenSaturationState.isEnabled,
-                isRespRateEnabled = respiratoryRateState.isEnabled,
-                isDistanceEnabled = distanceState.isEnabled,
-                isFloorsEnabled = floorsClimbedState.isEnabled,
-                isActiveCaloriesEnabled = activeCaloriesState.isEnabled,
-                onDateSelected = {
-                    healthViewModel.selectDate(it)
+        if (isEditMode) {
+            WidgetEditor(
+                configs = parsedConfigs,
+                onConfigsChanged = { newConfigs ->
+                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(newConfigs))
                 },
-                onMetricSelected = {
-                    selectedMetric = it
-                    haptics.tick()
-                },
-                onWeekStartDaySelected = {
-                    healthViewModel.setWeekStartDay(it)
-                    haptics.tick()
-                }
-            )
-
-            if (selectedMetric == HealthMetric.HEART_RATE) {
-                HeartRateDetailCard(intradayHeartRate, selectedDate, haptics)
-            } else if (selectedMetric == HealthMetric.SLEEP) {
-                SleepDetailCard(detailedSleep, selectedDate, haptics)
-            }
-        }
-
-        // Daily Summary Card
-        val s = summary
-        if (s != null) {
-            MacroCard(delayMs = 100) {
-                Text(
-                    "Daily Summary",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                )
-                val calProgress = if (s.calorieGoal > 0) s.totalCalories.toFloat() / s.calorieGoal else 0f
-                val protProgress = if (s.proteinGoal > 0) s.totalProtein.toFloat() / s.proteinGoal else 0f
-                MacroProgressBar(
-                    progress = calProgress,
-                    label = "${s.totalCalories} / ${s.calorieGoal} kcal",
-                    color = if (calProgress > 1f) Error else Primary,
-                )
-                MacroProgressBar(
-                    progress = protProgress,
-                    label = "${s.totalProtein} / ${s.proteinGoal} g protein",
-                    color = Secondary,
-                )
-            }
-        }
-
-        // Add Entry Card
-        MacroCard(delayMs = 150) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Add Entry",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                )
-                MacroButton(
-                    text = "📷 Scan Label",
-                    onClick = onNavigateToCameraScan,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .width(160.dp),
-                    variant = ButtonVariant.PRIMARY,
-                )
-            }
-
-            MacroTextField(
-                value = foodName,
-                onValueChange = { foodName = it },
-                placeholder = "Food Name (optional)",
-                trailingIcon = {
-                    if (foodName.isNotEmpty()) {
-                        IconButton(onClick = { foodName = "" }) {
-                            Icon(
-                                imageVector = Icons.Filled.Clear,
-                                contentDescription = "Clear",
-                            )
-                        }
-                    }
-                },
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                MacroTextField(
-                    value = calories,
-                    onValueChange = { calories = it },
-                    placeholder = "Calories",
-                    modifier = Modifier.weight(1f),
-                    keyboardType = KeyboardType.Number,
-                    trailingIcon = {
-                        if (calories.isNotEmpty()) {
-                            IconButton(onClick = { calories = "" }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Clear,
-                                    contentDescription = "Clear",
-                                )
-                            }
-                        }
-                    },
-                )
-                MacroTextField(
-                    value = protein,
-                    onValueChange = { protein = it },
-                    placeholder = "Protein (g)",
-                    modifier = Modifier.weight(1f),
-                    keyboardType = KeyboardType.Number,
-                    trailingIcon = {
-                        if (protein.isNotEmpty()) {
-                            IconButton(onClick = { protein = "" }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Clear,
-                                    contentDescription = "Clear",
-                                )
-                            }
-                        }
-                    },
-                )
-            }
-
-            MacroButton(
-                text = "Add Log",
-                onClick = {
-                    val cal = calories.toIntOrNull() ?: 0
-                    val prot = protein.toIntOrNull() ?: 0
-                    if (cal > 0 || prot > 0) {
-                        haptics.confirm()
-                        healthViewModel.addLog(foodName, cal, prot)
-                        foodName = ""
-                        calories = ""
-                        protein = ""
-                        Toast.makeText(context, "✅ Entry added!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        haptics.reject()
-                        Toast.makeText(context, "Enter calories or protein first", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-
-        // Week at a Glance - mini bar chart
-        if (weekHistory.isNotEmpty()) {
-            MacroCard(delayMs = 200) {
-                Text(
-                    "Food Calories",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-
-                val maxCal = weekHistory.maxOf { it.totalCalories }.coerceAtLeast(1)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp), // Increased height to prevent clipping
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    weekHistory.forEach { day ->
-                        val heightFraction = day.totalCalories.toFloat() / maxCal
-                        val targetHeight = (10 + heightFraction * 110).dp
-                        val isToday = day.date == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                        val dayLabel = try {
-                            LocalDate.parse(day.date).dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
-                        } catch (_: Exception) { "?" }
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            if (day.totalCalories > 0) {
-                                Text(
-                                    text = day.totalCalories.toString(),
-                                    fontSize = 10.sp,
-                                    color = if (isToday) TextPrimary else TextSecondary,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
-                            val animatedHeight by animateDpAsState(
-                                targetValue = targetHeight,
-                                animationSpec = MacroMotion.entranceSpring(),
-                                label = "barHeight",
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .width(20.dp)
-                                    .height(animatedHeight)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (isToday) Primary else PrimaryVariant),
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                dayLabel,
-                                fontSize = 11.sp,
-                                color = if (isToday) TextPrimary else TextSecondary,
-                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Recent Logs
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "Recent Logs",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-        )
-
-        if (logs.isEmpty()) {
-            Text(
-                "No logs yet today.",
-                color = TextSecondary,
-                fontStyle = FontStyle.Italic,
-                modifier = Modifier
-                    .padding(top = 20.dp)
-                    .fillMaxWidth(),
+                onClose = { isEditMode = false }
             )
         } else {
-            logs.reversed().forEachIndexed { index, log ->
-                MacroLogItem(log = log, onDelete = { healthViewModel.deleteLog(it) }, index = index)
+            parsedConfigs.filter { it.isVisible }.forEach { config ->
+                when (config.id) {
+                    "BODY_STATS" -> {
+                        val isAnyStatEnabled = heartRateState.isEnabled || restingHeartRateState.isEnabled ||
+                                oxygenSaturationState.isEnabled || respiratoryRateState.isEnabled ||
+                                stepsState.isEnabled || distanceState.isEnabled ||
+                                floorsClimbedState.isEnabled || activeCaloriesState.isEnabled
+
+                        if (isAnyStatEnabled) {
+                            MacroCard(delayMs = 0) {
+                                Text(
+                                    "Body Stats",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                )
+
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    maxItemsInEachRow = 2
+                                ) {
+                                    if (heartRateState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Heart Rate",
+                                            value = "${heartRateState.value} bpm",
+                                            percentageChange = calculatePercentageChange(heartRateState.today, heartRateState.yesterday),
+                                            icon = Icons.Outlined.FavoriteBorder,
+                                            color = Color(0xFFEF5350)
+                                        )
+                                    }
+                                    if (restingHeartRateState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Resting HR",
+                                            value = "${restingHeartRateState.value} bpm",
+                                            percentageChange = calculatePercentageChange(restingHeartRateState.today, restingHeartRateState.yesterday),
+                                            icon = Icons.Outlined.Bedtime,
+                                            color = Color(0xFFEF5350)
+                                        )
+                                    }
+                                    if (oxygenSaturationState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "SpO2",
+                                            value = "${oxygenSaturationState.value} %",
+                                            percentageChange = calculatePercentageChange(oxygenSaturationState.today, oxygenSaturationState.yesterday),
+                                            icon = Icons.Outlined.Bloodtype,
+                                            color = Color(0xFF42A5F5)
+                                        )
+                                    }
+                                    if (respiratoryRateState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Resp. Rate",
+                                            value = "${respiratoryRateState.value} rpm",
+                                            percentageChange = calculatePercentageChange(respiratoryRateState.today, respiratoryRateState.yesterday),
+                                            icon = Icons.Outlined.Air,
+                                            color = Color(0xFF42A5F5)
+                                        )
+                                    }
+                                    if (stepsState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Steps",
+                                            value = stepsState.value ?: "0",
+                                            percentageChange = calculatePercentageChange(stepsState.today, stepsState.yesterday),
+                                            icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
+                                            color = Primary
+                                        )
+                                    }
+                                    if (distanceState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Distance",
+                                            value = "${distanceState.value} km",
+                                            percentageChange = calculatePercentageChange(distanceState.today, distanceState.yesterday),
+                                            icon = Icons.Outlined.Route,
+                                            color = Primary
+                                        )
+                                    }
+                                    if (floorsClimbedState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Floors",
+                                            value = floorsClimbedState.value ?: "0",
+                                            percentageChange = calculatePercentageChange(floorsClimbedState.today, floorsClimbedState.yesterday),
+                                            icon = Icons.Outlined.Stairs,
+                                            color = Color(0xFF66BB6A)
+                                        )
+                                    }
+                                    if (activeCaloriesState.isEnabled) {
+                                        StatCard(
+                                            modifier = Modifier.weight(1f),
+                                            metricName = "Active Cals",
+                                            value = activeCaloriesState.value ?: "0",
+                                            percentageChange = calculatePercentageChange(activeCaloriesState.today, activeCaloriesState.yesterday),
+                                            icon = Icons.Outlined.LocalFireDepartment,
+                                            color = Color(0xFFFF9800)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                    "HISTORY" -> {
+                        if (healthHistory.isNotEmpty()) {
+                            HealthHistoryCard(
+                                healthHistory = healthHistory,
+                                selectedDate = selectedDate,
+                                selectedMetric = selectedMetric,
+                                weekStartDay = weekStartDay,
+                                weeksBack = weeksBack,
+                                haptics = haptics,
+                                isStepsEnabled = stepsState.isEnabled,
+                                isHeartRateEnabled = heartRateState.isEnabled,
+                                isRestingHeartRateEnabled = restingHeartRateState.isEnabled,
+                                isSpo2Enabled = oxygenSaturationState.isEnabled,
+                                isRespRateEnabled = respiratoryRateState.isEnabled,
+                                isDistanceEnabled = distanceState.isEnabled,
+                                isFloorsEnabled = floorsClimbedState.isEnabled,
+                                isActiveCaloriesEnabled = activeCaloriesState.isEnabled,
+                                onDateSelected = {
+                                    healthViewModel.selectDate(it)
+                                },
+                                onMetricSelected = {
+                                    selectedMetric = it
+                                    haptics.tick()
+                                },
+                                onWeekStartDaySelected = {
+                                    healthViewModel.setWeekStartDay(it)
+                                    haptics.tick()
+                                },
+                                onPreviousWeek = { healthViewModel.previousWeek() },
+                                onNextWeek = { healthViewModel.nextWeek() }
+                            )
+
+                            if (selectedMetric == HealthMetric.HEART_RATE) {
+                                HeartRateDetailCard(intradayHeartRate, selectedDate, haptics)
+                            } else if (selectedMetric == HealthMetric.SLEEP) {
+                                SleepDetailCard(detailedSleep, selectedDate, haptics)
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                    "SUMMARY" -> {
+                        val s = summary
+                        if (s != null) {
+                            MacroCard(delayMs = 100) {
+                                Text(
+                                    "Daily Summary",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(bottom = 16.dp),
+                                )
+                                val calProgress = if (s.calorieGoal > 0) s.totalCalories.toFloat() / s.calorieGoal else 0f
+                                val protProgress = if (s.proteinGoal > 0) s.totalProtein.toFloat() / s.proteinGoal else 0f
+                                MacroProgressBar(
+                                    progress = calProgress,
+                                    label = "${s.totalCalories} / ${s.calorieGoal} kcal",
+                                    color = if (calProgress > 1f) Error else Primary,
+                                )
+                                MacroProgressBar(
+                                    progress = protProgress,
+                                    label = "${s.totalProtein} / ${s.proteinGoal} g protein",
+                                    color = Secondary,
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                    "ADD_ENTRY" -> {
+                        MacroCard(delayMs = 150) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "Add Entry",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                )
+                                MacroButton(
+                                    text = "📷 Scan Label",
+                                    onClick = onNavigateToCameraScan,
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .width(160.dp),
+                                    variant = ButtonVariant.PRIMARY,
+                                )
+                            }
+
+                            MacroTextField(
+                                value = foodName,
+                                onValueChange = { foodName = it },
+                                placeholder = "Food Name (optional)",
+                                trailingIcon = {
+                                    if (foodName.isNotEmpty()) {
+                                        IconButton(onClick = { foodName = "" }) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Clear,
+                                                contentDescription = "Clear",
+                                            )
+                                        }
+                                    }
+                                },
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                MacroTextField(
+                                    value = calories,
+                                    onValueChange = { calories = it },
+                                    placeholder = "Calories",
+                                    modifier = Modifier.weight(1f),
+                                    keyboardType = KeyboardType.Number,
+                                    trailingIcon = {
+                                        if (calories.isNotEmpty()) {
+                                            IconButton(onClick = { calories = "" }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Clear,
+                                                    contentDescription = "Clear",
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                                MacroTextField(
+                                    value = protein,
+                                    onValueChange = { protein = it },
+                                    placeholder = "Protein (g)",
+                                    modifier = Modifier.weight(1f),
+                                    keyboardType = KeyboardType.Number,
+                                    trailingIcon = {
+                                        if (protein.isNotEmpty()) {
+                                            IconButton(onClick = { protein = "" }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Clear,
+                                                    contentDescription = "Clear",
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+
+                            MacroButton(
+                                text = "Add Log",
+                                onClick = {
+                                    val cal = calories.toIntOrNull() ?: 0
+                                    val prot = protein.toIntOrNull() ?: 0
+                                    if (cal > 0 || prot > 0) {
+                                        haptics.confirm()
+                                        healthViewModel.addLog(foodName, cal, prot)
+                                        foodName = ""
+                                        calories = ""
+                                        protein = ""
+                                        Toast.makeText(context, "✅ Entry added!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        haptics.reject()
+                                        Toast.makeText(context, "Enter calories or protein first", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+                    "WEEK_AT_A_GLANCE" -> {
+                        if (weekHistory.isNotEmpty()) {
+                            MacroCard(delayMs = 200) {
+                                Text(
+                                    "Food Calories",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(bottom = 12.dp),
+                                )
+
+                                val maxCal = weekHistory.maxOf { it.totalCalories }.coerceAtLeast(1)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(160.dp), // Increased height to prevent clipping
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.Bottom,
+                                ) {
+                                    weekHistory.forEach { day ->
+                                        val heightFraction = day.totalCalories.toFloat() / maxCal
+                                        val targetHeight = (10 + heightFraction * 110).dp
+                                        val isToday = day.date == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                                        val dayLabel = try {
+                                            LocalDate.parse(day.date).dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
+                                        } catch (_: Exception) { "?" }
+
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.weight(1f),
+                                        ) {
+                                            if (day.totalCalories > 0) {
+                                                Text(
+                                                    text = day.totalCalories.toString(),
+                                                    fontSize = 10.sp,
+                                                    color = if (isToday) TextPrimary else TextSecondary,
+                                                    modifier = Modifier.padding(bottom = 4.dp)
+                                                )
+                                            }
+                                            val animatedHeight by animateDpAsState(
+                                                targetValue = targetHeight,
+                                                animationSpec = MacroMotion.entranceSpring(),
+                                                label = "barHeight",
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(20.dp)
+                                                    .height(animatedHeight)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(if (isToday) Primary else PrimaryVariant),
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                dayLabel,
+                                                fontSize = 11.sp,
+                                                color = if (isToday) TextPrimary else TextSecondary,
+                                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                    "RECENT_LOGS" -> {
+                        Text(
+                            "Recent Logs",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                        )
+
+                        if (logs.isEmpty()) {
+                            Text(
+                                "No logs yet today.",
+                                color = TextSecondary,
+                                fontStyle = FontStyle.Italic,
+                                modifier = Modifier
+                                    .padding(top = 20.dp)
+                                    .fillMaxWidth(),
+                            )
+                        } else {
+                            logs.reversed().forEachIndexed { index, log ->
+                                MacroLogItem(log = log, onDelete = { healthViewModel.deleteLog(it) }, index = index)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -666,6 +739,7 @@ private fun HealthHistoryCard(
     selectedDate: LocalDate,
     selectedMetric: HealthMetric,
     weekStartDay: DayOfWeek,
+    weeksBack: Int,
     haptics: HapticHelper,
     isStepsEnabled: Boolean,
     isHeartRateEnabled: Boolean,
@@ -677,7 +751,9 @@ private fun HealthHistoryCard(
     isActiveCaloriesEnabled: Boolean,
     onDateSelected: (LocalDate) -> Unit,
     onMetricSelected: (HealthMetric) -> Unit,
-    onWeekStartDaySelected: (DayOfWeek) -> Unit
+    onWeekStartDaySelected: (DayOfWeek) -> Unit,
+    onPreviousWeek: () -> Unit,
+    onNextWeek: () -> Unit
 ) {
     MacroCard(delayMs = 75) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -686,12 +762,22 @@ private fun HealthHistoryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "Weekly Trends",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onPreviousWeek, enabled = weeksBack < 2, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous week", tint = if (weeksBack < 2) Primary else Border)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (weeksBack == 0) "Weekly Trends" else if (weeksBack == 1) "Last Week" else "2 Weeks Ago",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = onNextWeek, enabled = weeksBack > 0, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next week", tint = if (weeksBack > 0) Primary else Border)
+                    }
+                }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1008,13 +1094,29 @@ private fun HealthHistoryCard(
                             }
 
                             if (value > 0 || isSelected) {
-                                Text(
-                                    text = if (value > 0) displayValue else "—",
-                                    fontSize = if (isSelected) 12.sp else 9.sp,
-                                    color = if (isSelected) TextPrimary else TextSecondary,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    modifier = Modifier.padding(bottom = 2.dp)
-                                )
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(bottom = 2.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(color)
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = if (value > 0) displayValue else "—",
+                                            fontSize = 11.sp,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = if (value > 0) displayValue else "—",
+                                        fontSize = 9.sp,
+                                        color = TextSecondary,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
                             }
 
                             val animatedHeight by animateDpAsState(
@@ -1037,6 +1139,92 @@ private fun HealthHistoryCard(
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             )
                         }
+                    }
+                }
+            }
+
+            // Selected Day Summary Panel
+            val selectedDayStats = healthHistory.find { it.date == selectedDate }
+            if (selectedDayStats != null) {
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                val dayName = if (selectedDate == LocalDate.now()) "Today" else selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+                
+                val selectedDayValue = when (selectedMetric) {
+                    HealthMetric.STEPS -> selectedDayStats.stats.steps.toDouble()
+                    HealthMetric.HEART_RATE -> selectedDayStats.stats.avgHeartRate.toDouble()
+                    HealthMetric.SLEEP -> (selectedDayStats.stats.sleepMinutes / 60.0)
+                    HealthMetric.CALORIES -> selectedDayStats.stats.totalCaloriesBurned
+                    HealthMetric.RESTING_HEART_RATE -> selectedDayStats.stats.restingHeartRate.toDouble()
+                    HealthMetric.OXYGEN_SATURATION -> selectedDayStats.stats.oxygenSaturation
+                    HealthMetric.RESPIRATORY_RATE -> selectedDayStats.stats.respiratoryRate.toDouble()
+                    HealthMetric.DISTANCE -> selectedDayStats.stats.distance
+                    HealthMetric.FLOORS_CLIMBED -> selectedDayStats.stats.floorsClimbed
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = dayName,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    
+                    if (avgValue > 0 && selectedDayValue > 0) {
+                        val diff = ((selectedDayValue - avgValue) / avgValue * 100)
+                        val isPositive = diff >= 0
+                        val diffColor = if (isPositive) Success else Error
+                        val diffIcon = if (isPositive) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(diffIcon, contentDescription = null, tint = diffColor, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", kotlin.math.abs(diff))}% vs avg",
+                                fontSize = 12.sp,
+                                color = diffColor,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (isStepsEnabled && selectedDayStats.stats.steps > 0) {
+                        SelectedDayStatChip(icon = Icons.AutoMirrored.Outlined.DirectionsWalk, value = "${selectedDayStats.stats.steps}", label = "Steps", tint = Primary)
+                    }
+                    if (isHeartRateEnabled && selectedDayStats.stats.avgHeartRate > 0) {
+                        SelectedDayStatChip(icon = Icons.Outlined.FavoriteBorder, value = "${selectedDayStats.stats.avgHeartRate}", label = "Avg HR", tint = Color(0xFFEF5350))
+                    }
+                    if (selectedDayStats.stats.sleepMinutes > 0) {
+                        val h = selectedDayStats.stats.sleepMinutes / 60
+                        val m = selectedDayStats.stats.sleepMinutes % 60
+                        SelectedDayStatChip(icon = Icons.Outlined.Bedtime, value = "${h}h ${m}m", label = "Sleep", tint = Color(0xFF7C4DFF))
+                    }
+                    if (isActiveCaloriesEnabled && selectedDayStats.stats.totalCaloriesBurned > 0) {
+                        SelectedDayStatChip(icon = Icons.Outlined.LocalFireDepartment, value = "${selectedDayStats.stats.totalCaloriesBurned.toInt()}", label = "Active Cals", tint = Color(0xFFFF9800))
+                    }
+                    if (isDistanceEnabled && selectedDayStats.stats.distance > 0) {
+                        SelectedDayStatChip(icon = Icons.Outlined.Route, value = String.format(Locale.US, "%.1f km", selectedDayStats.stats.distance), label = "Distance", tint = Primary)
+                    }
+                    if (isFloorsEnabled && selectedDayStats.stats.floorsClimbed > 0) {
+                         SelectedDayStatChip(icon = Icons.Outlined.Stairs, value = String.format(Locale.US, "%.1f", selectedDayStats.stats.floorsClimbed), label = "Floors", tint = Color(0xFF66BB6A))
+                    }
+                    if (isRestingHeartRateEnabled && selectedDayStats.stats.restingHeartRate > 0) {
+                         SelectedDayStatChip(icon = Icons.Outlined.FavoriteBorder, value = "${selectedDayStats.stats.restingHeartRate}", label = "Resting HR", tint = Color(0xFFEF5350))
+                    }
+                    if (isSpo2Enabled && selectedDayStats.stats.oxygenSaturation > 0) {
+                         SelectedDayStatChip(icon = Icons.Outlined.Bloodtype, value = String.format(Locale.US, "%.1f%%", selectedDayStats.stats.oxygenSaturation), label = "SpO2", tint = Color(0xFF42A5F5))
+                    }
+                    if (isRespRateEnabled && selectedDayStats.stats.respiratoryRate > 0) {
+                         SelectedDayStatChip(icon = Icons.Outlined.Air, value = "${selectedDayStats.stats.respiratoryRate}", label = "Resp Rate", tint = Color(0xFF42A5F5))
                     }
                 }
             }
@@ -1572,5 +1760,23 @@ private fun MetricFilterChip(
             color = if (selected) Color.White else TextPrimary,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun SelectedDayStatChip(icon: ImageVector, value: String, label: String, tint: Color = TextSecondary) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Background)
+            .border(1.dp, Color.Gray.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = tint)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontSize = 11.sp, color = TextSecondary)
     }
 }

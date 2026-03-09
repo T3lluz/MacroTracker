@@ -1,5 +1,9 @@
 package com.macrotracker.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -59,12 +63,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.ui.components.ButtonVariant
@@ -95,6 +101,10 @@ fun SettingsScreen(
     val availableCalendars by viewModel.availableCalendars.collectAsState()
     val selectedCalendarIds by viewModel.selectedCalendarIds.collectAsState()
 
+    val masterHealthConnectEnabled by viewModel.masterHealthConnectEnabled.collectAsState()
+    val masterWeatherEnabled by viewModel.masterWeatherEnabled.collectAsState()
+    val masterCalendarEnabled by viewModel.masterCalendarEnabled.collectAsState()
+
     var draftKey by remember(savedKey) { mutableStateOf(savedKey) }
     var keyVisible by remember { mutableStateOf(false) }
     var keySaved by remember { mutableStateOf(false) }
@@ -107,6 +117,20 @@ fun SettingsScreen(
     val keyFeedback: String? = when {
         draftKey.isNotBlank() && !keyFormatOk -> "⚠ Doesn't look like a Gemini key (should start with AIza…)"
         else -> null
+    }
+
+    val context = LocalContext.current
+
+    fun hasCalendarPermission(): Boolean = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.READ_CALENDAR,
+    ) == PackageManager.PERMISSION_GRANTED
+
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            viewModel.setMasterCalendarEnabled(true)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -158,6 +182,11 @@ fun SettingsScreen(
                 description = "Steps, heart rate, sleep & active calories",
                 connected = healthConnectAvailable,
                 iconTint = Color(0xFFEF5350),
+                enabled = masterHealthConnectEnabled,
+                onToggle = { 
+                    haptics.tick()
+                    viewModel.setMasterHealthConnectEnabled(it) 
+                }
             )
 
             if (healthConnectAvailable) {
@@ -255,6 +284,11 @@ fun SettingsScreen(
                 description = "Location-based weather via Yr.no",
                 connected = weatherConnected,
                 iconTint = Color(0xFF42A5F5),
+                enabled = masterWeatherEnabled,
+                onToggle = { 
+                    haptics.tick()
+                    viewModel.setMasterWeatherEnabled(it) 
+                }
             )
 
             HorizontalDivider(
@@ -268,6 +302,19 @@ fun SettingsScreen(
                 description = "Today's events & schedule on dashboard",
                 connected = calendarConnected,
                 iconTint = Color(0xFF4285F4),
+                enabled = masterCalendarEnabled,
+                onToggle = { enabled ->
+                    haptics.tick()
+                    if (enabled) {
+                        if (hasCalendarPermission()) {
+                            viewModel.setMasterCalendarEnabled(true)
+                        } else {
+                            calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
+                        }
+                    } else {
+                        viewModel.setMasterCalendarEnabled(false)
+                    }
+                }
             )
 
             if (calendarConnected && availableCalendars.isNotEmpty()) {
@@ -307,7 +354,7 @@ fun SettingsScreen(
                 name = "Gemini AI",
                 description = "Food estimates & label scanning",
                 connected = hasKey,
-                iconTint = Color(0xFF7C4DFF),
+                iconTint = Color(0xFF7C4DFF)
             )
         }
 
@@ -540,6 +587,8 @@ private fun ConnectionRow(
     description: String,
     connected: Boolean,
     iconTint: Color,
+    enabled: Boolean = true,
+    onToggle: ((Boolean) -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -568,14 +617,29 @@ private fun ConnectionRow(
                 color = TextSecondary,
                 lineHeight = 16.sp,
             )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (connected) "Connected" else "Not connected",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (connected) Success else TextSecondary,
+            )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = if (connected) "Connected" else "Not connected",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (connected) Success else TextSecondary,
-        )
+        if (onToggle != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle
+            )
+        } else {
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (connected) "Connected" else "Not connected",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (connected) Success else TextSecondary,
+            )
+        }
     }
 }
 

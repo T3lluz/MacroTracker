@@ -107,6 +107,15 @@ class HealthConnectRepository @Inject constructor(
         }
     }
 
+    suspend fun revokeAllPermissions() {
+        val hc = client ?: return
+        try {
+            hc.permissionController.revokeAllPermissions()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to revoke Health Connect permissions: ${e.message}")
+        }
+    }
+
     // ── New Functions for DashboardViewModel ───────────────────────────────
 
     suspend fun getLatestHeartRate(yesterday: Boolean = false): Long? = withContext(Dispatchers.IO) {

@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
 }
 
 android {
@@ -19,7 +20,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // Read Gemini API key from local.properties
+        // Read API keys from local.properties
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")
         if (localPropertiesFile.exists()) {
@@ -27,6 +28,8 @@ android {
         }
         val geminiKey = localProperties.getProperty("GEMINI_API_KEY", "")
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
+        val youtubeKey = localProperties.getProperty("YOUTUBE_API_KEY", "")
+        buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
     }
 
     buildTypes {
@@ -88,6 +91,13 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
+    // F1 Data - Ktor for modern, type-safe networking
+    implementation("io.ktor:ktor-client-core:2.3.12")
+    implementation("io.ktor:ktor-client-okhttp:2.3.12")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0")
+
     // CameraX
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
@@ -110,4 +120,10 @@ dependencies {
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)
+
+
+    // Retrofit for YouTube Data API
+    implementation(libs.retrofit)
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 }

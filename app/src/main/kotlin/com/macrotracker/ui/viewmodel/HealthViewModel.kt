@@ -11,9 +11,12 @@ import com.macrotracker.data.health.HealthStats
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
+import com.macrotracker.data.local.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -32,6 +35,7 @@ sealed class HealthConnectUiState {
 class HealthViewModel @Inject constructor(
     private val repository: MacroRepository,
     private val healthConnectRepository: HealthConnectRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     companion object {
@@ -71,16 +75,48 @@ class HealthViewModel @Inject constructor(
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
     val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay
 
+    private val _weeksBack = MutableStateFlow(0)
+    val weeksBack: StateFlow<Int> = _weeksBack
+
+    val healthWidgetOrder: StateFlow<String> = settingsRepository.healthWidgetOrder
+
+    init {
+        // Reactively load health data when the setting is changed
+        settingsRepository.masterHealthConnectEnabled.onEach { enabled ->
+            loadHealthConnect()
+        }.launchIn(viewModelScope)
+    }
+
+    fun updateHealthWidgetOrder(order: String) {
+        settingsRepository.updateHealthWidgetOrder(order)
+    }
+
     fun setWeekStartDay(day: DayOfWeek) {
         _weekStartDay.value = day
         loadData()
         loadHealthConnect(silent = true)
     }
 
+    fun nextWeek() {
+        if (_weeksBack.value > 0) {
+            _weeksBack.value -= 1
+            loadData()
+            loadHealthConnect(silent = true)
+        }
+    }
+
+    fun previousWeek() {
+        if (_weeksBack.value < 2) { // 2 weeks back max
+            _weeksBack.value += 1
+            loadData()
+            loadHealthConnect(silent = true)
+        }
+    }
+
     private fun getWeekRange(): Pair<LocalDate, LocalDate> {
         val today = LocalDate.now()
         val startDay = _weekStartDay.value
-        var start = today
+        var start = today.minusWeeks(_weeksBack.value.toLong())
         while (start.dayOfWeek != startDay) {
             start = start.minusDays(1)
         }
@@ -113,9 +149,20 @@ class HealthViewModel @Inject constructor(
 
     fun loadHealthConnect(permissionsGranted: Boolean = false, silent: Boolean = false) {
         viewModelScope.launch {
+            if (permissionsGranted) {
+                // If permissions were just granted, make sure the master setting is enabled.
+                settingsRepository.setMasterHealthConnectEnabled(true)
+            }
+
             if (!healthConnectRepository.isAvailable()) {
                 Log.w(TAG, "Health Connect not available")
                 _healthConnectState.value = HealthConnectUiState.NotAvailable
+                return@launch
+            }
+
+            // Also check master toggle
+            if (!settingsRepository.masterHealthConnectEnabled.value) {
+                _healthConnectState.value = HealthConnectUiState.PermissionRequired
                 return@launch
             }
 
@@ -134,7 +181,6 @@ class HealthViewModel @Inject constructor(
 
             try {
                 val stats = healthConnectRepository.readTodayStats()
-                // Safeguard against temporary 0 values if we already had a higher count
                 if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
                     _healthConnectState.value = current.copy(isRefreshing = false, stats = stats)
                 } else {

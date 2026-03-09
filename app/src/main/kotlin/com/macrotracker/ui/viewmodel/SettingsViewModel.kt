@@ -48,6 +48,11 @@ class SettingsViewModel @Inject constructor(
     private val _selectedCalendarIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedCalendarIds: StateFlow<Set<Long>> = _selectedCalendarIds
 
+    // Master toggles
+    val masterHealthConnectEnabled: StateFlow<Boolean> = settings.masterHealthConnectEnabled
+    val masterWeatherEnabled: StateFlow<Boolean> = settings.weatherEnabled
+    val masterCalendarEnabled: StateFlow<Boolean> = settings.calendarEnabled
+
     // Health Connect Metrics from SettingsRepository
     val heartRateEnabled: StateFlow<Boolean> = settings.heartRateEnabled
     val restingHeartRateEnabled: StateFlow<Boolean> = settings.restingHeartRateEnabled
@@ -74,6 +79,36 @@ class SettingsViewModel @Inject constructor(
         prefs.edit()
             .putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet())
             .apply()
+    }
+
+    fun setMasterHealthConnectEnabled(enabled: Boolean) {
+        settings.setMasterHealthConnectEnabled(enabled)
+        if (!enabled) {
+            viewModelScope.launch {
+                try {
+                    // Try to actually revoke permissions if user disables the connection
+                    healthConnectRepository.revokeAllPermissions()
+                } catch (e: Exception) {
+                    Log.e("SettingsViewModel", "Failed to revoke HC permissions", e)
+                }
+            }
+        }
+        refreshConnectionStatus()
+    }
+
+    fun setMasterWeatherEnabled(enabled: Boolean) {
+        settings.setWeatherEnabled(enabled)
+        refreshConnectionStatus()
+    }
+
+    fun setMasterCalendarEnabled(enabled: Boolean) {
+        settings.setCalendarEnabled(enabled)
+        if (!enabled) {
+            // Clear selected calendars
+            _selectedCalendarIds.value = emptySet()
+            saveSelectedCalendarIds(emptySet())
+        }
+        refreshConnectionStatus()
     }
 
     fun setMetricEnabled(metric: String, enabled: Boolean) {
@@ -110,11 +145,12 @@ class SettingsViewModel @Inject constructor(
             if (floorsClimbedEnabled.value) permissions.add("android.permission.health.READ_FLOORS_CLIMBED")
             if (activeCaloriesEnabled.value) permissions.add("android.permission.health.READ_ACTIVE_CALORIES_BURNED")
 
-            _healthConnectConnected.value = healthConnectRepository.isAvailable() &&
+            _healthConnectConnected.value = settings.masterHealthConnectEnabled.value && 
+                healthConnectRepository.isAvailable() &&
                 healthConnectRepository.hasPermissions(permissions)
 
             // Check weather (location permission granted)
-            _weatherConnected.value = ContextCompat.checkSelfPermission(
+            _weatherConnected.value = settings.weatherEnabled.value && ContextCompat.checkSelfPermission(
                 appContext, Manifest.permission.ACCESS_COARSE_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED
 
@@ -122,7 +158,7 @@ class SettingsViewModel @Inject constructor(
             val calPerm = ContextCompat.checkSelfPermission(
                 appContext, Manifest.permission.READ_CALENDAR,
             ) == PackageManager.PERMISSION_GRANTED
-            _calendarConnected.value = calPerm
+            _calendarConnected.value = settings.calendarEnabled.value && calPerm
             
             if (calPerm) {
                 _availableCalendars.value = calendarRepository.getAvailableCalendars()

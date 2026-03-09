@@ -8,6 +8,7 @@ import com.macrotracker.ui.components.HealthMetricUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -19,22 +20,22 @@ class DashboardViewModel @Inject constructor(
 
     private val _heartRateState = MutableStateFlow(HealthMetricUiState())
     val heartRateState: StateFlow<HealthMetricUiState> = _heartRateState
-    
+
     private val _restingHeartRateState = MutableStateFlow(HealthMetricUiState())
     val restingHeartRateState: StateFlow<HealthMetricUiState> = _restingHeartRateState
-    
+
     private val _oxygenSaturationState = MutableStateFlow(HealthMetricUiState())
     val oxygenSaturationState: StateFlow<HealthMetricUiState> = _oxygenSaturationState
-    
+
     private val _respiratoryRateState = MutableStateFlow(HealthMetricUiState())
     val respiratoryRateState: StateFlow<HealthMetricUiState> = _respiratoryRateState
 
     private val _stepsState = MutableStateFlow(HealthMetricUiState())
     val stepsState: StateFlow<HealthMetricUiState> = _stepsState
-    
+
     private val _distanceState = MutableStateFlow(HealthMetricUiState())
     val distanceState: StateFlow<HealthMetricUiState> = _distanceState
-    
+
     private val _floorsClimbedState = MutableStateFlow(HealthMetricUiState())
     val floorsClimbedState: StateFlow<HealthMetricUiState> = _floorsClimbedState
 
@@ -48,7 +49,9 @@ class DashboardViewModel @Inject constructor(
     fun loadData() {
         // Heart Rate
         viewModelScope.launch {
-            settingsRepository.heartRateEnabled.collect { enabled ->
+            combine(settingsRepository.heartRateEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getLatestHeartRate()
                     val yesterday = healthConnectRepository.getLatestHeartRate(yesterday = true)
@@ -63,10 +66,12 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
-        
+
         // Resting Heart Rate
         viewModelScope.launch {
-            settingsRepository.restingHeartRateEnabled.collect { enabled ->
+            combine(settingsRepository.restingHeartRateEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getLatestRestingHeartRate()
                     val yesterday = healthConnectRepository.getLatestRestingHeartRate(yesterday = true)
@@ -81,10 +86,12 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
-        
+
         // Oxygen Saturation
         viewModelScope.launch {
-            settingsRepository.oxygenSaturationEnabled.collect { enabled ->
+            combine(settingsRepository.oxygenSaturationEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getLatestOxygenSaturation()
                     val yesterday = healthConnectRepository.getLatestOxygenSaturation(yesterday = true)
@@ -100,10 +107,12 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
-        
+
         // Respiratory Rate
         viewModelScope.launch {
-            settingsRepository.respiratoryRateEnabled.collect { enabled ->
+            combine(settingsRepository.respiratoryRateEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getLatestRespiratoryRate()
                     val yesterday = healthConnectRepository.getLatestRespiratoryRate(yesterday = true)
@@ -122,7 +131,9 @@ class DashboardViewModel @Inject constructor(
 
         // Steps
         viewModelScope.launch {
-            settingsRepository.stepsEnabled.collect { enabled ->
+            combine(settingsRepository.stepsEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getStepsToday()
                     val yesterday = healthConnectRepository.getStepsYesterday()
@@ -137,10 +148,12 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
-        
+
         // Distance
         viewModelScope.launch {
-            settingsRepository.distanceEnabled.collect { enabled ->
+            combine(settingsRepository.distanceEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getDistanceToday()
                     val yesterday = healthConnectRepository.getDistanceYesterday()
@@ -156,10 +169,12 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
-        
+
         // Floors Climbed
         viewModelScope.launch {
-            settingsRepository.floorsClimbedEnabled.collect { enabled ->
+            combine(settingsRepository.floorsClimbedEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getFloorsClimbedToday()
                     val yesterday = healthConnectRepository.getFloorsClimbedYesterday()
@@ -178,7 +193,9 @@ class DashboardViewModel @Inject constructor(
 
         // Active Calories
         viewModelScope.launch {
-            settingsRepository.activeCaloriesEnabled.collect { enabled ->
+            combine(settingsRepository.activeCaloriesEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
+                metricEnabled && masterEnabled
+            }.collect { enabled ->
                 if (enabled) {
                     val today = healthConnectRepository.getActiveCaloriesToday()
                     val yesterday = healthConnectRepository.getActiveCaloriesYesterday()

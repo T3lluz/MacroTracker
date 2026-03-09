@@ -1,17 +1,22 @@
 package com.macrotracker.ui.viewmodel
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.calendar.CalendarEvent
 import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.data.calendar.CalendarRepository
+import com.macrotracker.data.f1.F1Repository
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.health.HealthStats
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
+import com.macrotracker.data.local.SettingsRepository
 import com.macrotracker.data.remote.LocationProvider
 import com.macrotracker.data.remote.WeatherAiRepository
 import com.macrotracker.data.remote.WeatherInfo
@@ -19,8 +24,11 @@ import com.macrotracker.data.remote.WeatherRepository
 import com.macrotracker.widget.WidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -66,6 +74,8 @@ class HomeViewModel @Inject constructor(
     private val locationProvider: LocationProvider,
     private val healthConnectRepository: HealthConnectRepository,
     private val calendarRepository: CalendarRepository,
+    private val settingsRepository: SettingsRepository,
+    private val f1Repository: F1Repository
 ) : ViewModel() {
 
     companion object {
@@ -93,8 +103,56 @@ class HomeViewModel @Inject constructor(
     private val _calendarState = MutableStateFlow<CalendarUiState>(CalendarUiState.Loading)
     val calendarState: StateFlow<CalendarUiState> = _calendarState
 
+    private val _f1State = MutableStateFlow<F1UiState>(F1UiState.Loading)
+    val f1State: StateFlow<F1UiState> = _f1State
+
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
+    private var f1DataJob: Job? = null
+
+    val homeWidgetOrder: StateFlow<String> = settingsRepository.homeWidgetOrder
+
+    init {
+        // Reactively reload data when connection settings change
+        settingsRepository.masterHealthConnectEnabled.onEach {
+            loadHealthConnect(silent = true)
+        }.launchIn(viewModelScope)
+
+        settingsRepository.weatherEnabled.onEach { enabled ->
+            val hasPermission = ContextCompat.checkSelfPermission(
+                appContext, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (enabled && hasPermission) {
+                loadWeather(true)
+            } else if (!enabled) {
+                loadWeather(false)
+            }
+        }.launchIn(viewModelScope)
+
+        settingsRepository.calendarEnabled.onEach { enabled ->
+            val hasPermission = ContextCompat.checkSelfPermission(
+                appContext, Manifest.permission.READ_CALENDAR
+            ) == PackageManager.PERMISSION_GRANTED
+            if (enabled && hasPermission) {
+                loadCalendar(true)
+            } else if (!enabled) {
+                loadCalendar(false)
+            }
+        }.launchIn(viewModelScope)
+    }
+
+    fun updateHomeWidgetOrder(order: String) {
+        settingsRepository.updateHomeWidgetOrder(order)
+    }
+
+    fun setMasterWeatherEnabled(enabled: Boolean) {
+        settingsRepository.setWeatherEnabled(enabled)
+    }
+
+    fun setMasterCalendarEnabled(enabled: Boolean) {
+        settingsRepository.setCalendarEnabled(enabled)
+    }
 
     private fun getSelectedCalendarIds(): Set<Long> {
         val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
@@ -118,19 +176,38 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshAll(hasLocationPermission: Boolean, hasCalendarPermission: Boolean, hasHealthPermission: Boolean) {
+        if (_isRefreshing.value) return
+        
         viewModelScope.launch {
             _isRefreshing.value = true
             loadData()
             loadWeather(hasLocationPermission)
             loadHealthConnect(silent = true)
             loadCalendar(hasCalendarPermission)
+            loadF1Data()
             _isRefreshing.value = false
+        }
+    }
+
+    fun loadF1Data(forceRefresh: Boolean = false) {
+        if (!forceRefresh && f1DataJob?.isActive == true) return
+        f1DataJob?.cancel()
+
+        f1DataJob = viewModelScope.launch {
+            _f1State.value = F1UiState.Loading
+            f1Repository.getOverallF1Data(forceRefresh)
+                .onSuccess { f1Data ->
+                    _f1State.value = F1UiState.Success(f1Data)
+                }
+                .onFailure { error ->
+                    _f1State.value = F1UiState.Error(error.message ?: "Unknown error")
+                }
         }
     }
 
     fun loadHealthConnect(silent: Boolean = false) {
         viewModelScope.launch {
-            if (!healthConnectRepository.isAvailable() || !healthConnectRepository.hasAllPermissions()) {
+            if (!settingsRepository.masterHealthConnectEnabled.value || !healthConnectRepository.isAvailable() || !healthConnectRepository.hasAllPermissions()) {
                 _healthState.value = HomeHealthState.Unavailable
                 return@launch
             }
@@ -144,7 +221,6 @@ class HomeViewModel @Inject constructor(
 
             try {
                 val stats = healthConnectRepository.readTodayStats()
-                // Ensure we don't overwrite with 0 if we already had data and something went wrong silently
                 if (stats.steps == 0L && current is HomeHealthState.Success && current.stats.steps > 0) {
                      Log.w(TAG, "Health Connect returned 0 steps, keeping previous value to avoid flicker")
                      _healthState.value = current.copy(isRefreshing = false)
@@ -164,14 +240,18 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadCalendar(hasPermission: Boolean) {
-        if (!hasPermission) {
+        if (!settingsRepository.calendarEnabled.value) {
             _calendarState.value = CalendarUiState.PermissionRequired
+            return
+        }
+        if (!hasPermission) {
+             _calendarState.value = CalendarUiState.PermissionRequired
             return
         }
         viewModelScope.launch {
             try {
                 val available = calendarRepository.getAvailableCalendars()
-                val selected = getSelectedCalendarIds().let { 
+                val selected = getSelectedCalendarIds().let {
                     if (it.isEmpty() && available.isNotEmpty()) {
                         val all = available.map { cal -> cal.id }.toSet()
                         saveSelectedCalendarIds(all)
@@ -198,7 +278,7 @@ class HomeViewModel @Inject constructor(
                     availableCalendars = available,
                     selectedCalendarIds = selected
                 )
-                
+
                 WidgetUpdater.updateAllWidgets(appContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Calendar error: ${e.message}", e)
@@ -208,6 +288,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadWeather(hasPermission: Boolean) {
+        if (!settingsRepository.weatherEnabled.value) {
+            _weatherState.value = WeatherUiState.PermissionRequired
+            appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+            viewModelScope.launch { WidgetUpdater.updateAllWidgets(appContext) }
+            return
+        }
         if (!hasPermission) {
             _weatherState.value = WeatherUiState.PermissionRequired
             return
@@ -223,11 +309,10 @@ class HomeViewModel @Inject constructor(
                 }
                 val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
                 val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
-                
+
                 val current = _weatherState.value
                 if (current is WeatherUiState.Success) {
                     _weatherState.value = current.copy(weather = weather)
-                    // Optionally refresh AI if weather significantly changed or cache expired
                     if (current.aiSummary == null) {
                         loadWeatherAiSummary()
                     }
@@ -235,7 +320,7 @@ class HomeViewModel @Inject constructor(
                     _weatherState.value = WeatherUiState.Success(weather)
                     loadWeatherAiSummary()
                 }
-                
+
                 cacheWeatherForWidget(weather)
                 WidgetUpdater.updateAllWidgets(appContext)
             } catch (e: Exception) {
@@ -250,12 +335,9 @@ class HomeViewModel @Inject constructor(
     fun loadWeatherAiSummary(force: Boolean = false) {
         val current = _weatherState.value
         if (current !is WeatherUiState.Success) return
-        
-        // If not forcing, check if we already have it or are loading it
         if (!force && (current.aiSummary != null || current.aiSummaryLoading)) return
         if (!weatherAiRepository.hasApiKey) return
 
-        // Check cache first if not forcing
         if (!force) {
             val cached = weatherAiRepository.getCachedResult(current.weather.symbolCode)
             if (cached != null) {

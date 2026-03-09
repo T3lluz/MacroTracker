@@ -2,6 +2,9 @@ package com.macrotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -43,6 +46,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -241,6 +246,8 @@ private fun weatherAccentColor(symbolCode: String): Color {
     }
 }
 
+private val LocationAccent = Color(0xFF4CAF50)
+
 @Composable
 fun WeatherCard(
     state: WeatherUiState,
@@ -285,17 +292,7 @@ fun WeatherCard(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 6.dp)
-                        .clickable {
-                            val wasExpanded = expanded
-                            expanded = !expanded
-                            if (!wasExpanded) {
-                                haptics.toggleOn()
-                                onExpand()
-                            } else {
-                                haptics.toggleOff()
-                            }
-                        },
+                        .padding(vertical = 6.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     border = BorderStroke(1.dp, Border.copy(alpha = 0.5f)),
@@ -309,7 +306,7 @@ fun WeatherCard(
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         ) {
-                            // Header row
+                            // Header row — title left, actions + expand button right
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -323,16 +320,38 @@ fun WeatherCard(
                                         Text(weather.locationName, fontSize = 13.sp, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(start = 2.dp))
                                     }
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = onRetry, modifier = Modifier.size(28.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
                                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
                                     }
-                                    Icon(
-                                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                        contentDescription = if (expanded) "Collapse" else "Expand",
-                                        tint = Color.White.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(22.dp),
+                                    // Clickable rotating chevron
+                                    val weatherChevronRot by animateFloatAsState(
+                                        targetValue = if (expanded) 180f else 0f,
+                                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                        label = "weather_hdr_chevron",
                                     )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                val wasExpanded = expanded
+                                                expanded = !expanded
+                                                if (!wasExpanded) { haptics.toggleOn(); onExpand() }
+                                                else haptics.toggleOff()
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ExpandMore,
+                                            contentDescription = if (expanded) "Collapse" else "Expand",
+                                            tint = Color.White.copy(alpha = if (expanded) 0.75f else 0.50f),
+                                            modifier = Modifier.size(22.dp).rotate(weatherChevronRot),
+                                        )
+                                    }
                                 }
                             }
 
@@ -489,14 +508,24 @@ fun WeatherCard(
                                     }
 
 
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text("Tap to collapse", fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f), modifier = Modifier.align(Alignment.CenterHorizontally))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    WidgetExpandBar(
+                                        expanded = true,
+                                        onToggle = { expanded = false; haptics.toggleOff() },
+                                        accentColor = Color.White,
+                                        collapseLabel = "Show less",
+                                    )
                                 }
                             }
 
                             if (!expanded) {
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text("Tap for forecast", fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f), modifier = Modifier.align(Alignment.CenterHorizontally))
+                                WidgetExpandBar(
+                                    expanded = false,
+                                    onToggle = { expanded = true; haptics.toggleOn(); onExpand() },
+                                    accentColor = Color.White,
+                                    expandLabel = "Forecast & more",
+                                )
                             }
                         }
                     }
@@ -506,16 +535,49 @@ fun WeatherCard(
             is WeatherUiState.PermissionRequired -> {
                 MacroCard(delayMs = 50) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Weather", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Text("Allow location access to see weather", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+                            Text(
+                                "Weather",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                "Allow location access to see weather",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        MacroButton(text = "📍 Enable", onClick = onRequestPermission, variant = ButtonVariant.PRIMARY)
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(onClick = onRequestPermission)
+                                .background(LocationAccent.copy(alpha = 0.1f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.LocationOn,
+                                contentDescription = null,
+                                tint = LocationAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Enable",
+                                color = LocationAccent,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
             }

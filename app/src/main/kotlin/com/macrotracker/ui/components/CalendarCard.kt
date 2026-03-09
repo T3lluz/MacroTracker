@@ -2,6 +2,9 @@ package com.macrotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontStyle
@@ -53,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.data.calendar.CalendarEvent
 import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -117,11 +122,6 @@ fun CalendarCard(
                 } else {
                     MacroCard(
                         delayMs = 125,
-                        modifier = Modifier.clickable {
-                            val wasExpanded = expanded
-                            expanded = !expanded
-                            if (!wasExpanded) haptics.toggleOn() else haptics.toggleOff()
-                        }
                     ) {
                         Column {
                             // Header
@@ -145,8 +145,11 @@ fun CalendarCard(
                                         color = TextPrimary,
                                     )
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { showDetails = true }, modifier = Modifier.size(28.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    IconButton(onClick = { showDetails = true }, modifier = Modifier.size(36.dp)) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Outlined.EventNote,
                                             contentDescription = "Full View",
@@ -154,12 +157,30 @@ fun CalendarCard(
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
-                                    Icon(
-                                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                        contentDescription = if (expanded) "Collapse" else "Expand",
-                                        tint = TextSecondary,
-                                        modifier = Modifier.size(20.dp),
+                                    // Clickable rotating chevron
+                                    val calChevronRot by animateFloatAsState(
+                                        targetValue = if (expanded) 180f else 0f,
+                                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                        label = "cal_hdr_chevron",
                                     )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                val wasExpanded = expanded
+                                                expanded = !expanded
+                                                if (!wasExpanded) haptics.toggleOn() else haptics.toggleOff()
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ExpandMore,
+                                            contentDescription = if (expanded) "Collapse" else "Expand",
+                                            tint = if (expanded) CalendarAccent.copy(alpha = 0.75f) else TextSecondary.copy(alpha = 0.55f),
+                                            modifier = Modifier.size(22.dp).rotate(calChevronRot),
+                                        )
+                                    }
                                 }
                             }
 
@@ -197,16 +218,27 @@ fun CalendarCard(
                                             modifier = Modifier.padding(start = 22.dp)
                                         )
                                     }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    WidgetExpandBar(
+                                        expanded = true,
+                                        onToggle = { expanded = false; haptics.toggleOff() },
+                                        accentColor = CalendarAccent,
+                                        collapseLabel = "Show less",
+                                    )
                                 }
                             }
 
                             if (!expanded && allVisibleEvents.size > 1) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "Tap to see ${allVisibleEvents.size - 1} more events",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary.copy(alpha = 0.5f),
-                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                WidgetExpandBar(
+                                    expanded = false,
+                                    onToggle = {
+                                        expanded = true
+                                        haptics.toggleOn()
+                                    },
+                                    accentColor = CalendarAccent,
+                                    expandLabel = "${allVisibleEvents.size - 1} more event${if (allVisibleEvents.size - 1 != 1) "s" else ""}",
                                 )
                             }
                         }
@@ -224,7 +256,9 @@ fun CalendarCard(
             is CalendarUiState.PermissionRequired -> {
                 MacroCard(delayMs = 125) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -243,11 +277,28 @@ fun CalendarCard(
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        MacroButton(
-                            text = "📅 Enable",
-                            onClick = onRequestPermission,
-                            variant = ButtonVariant.PRIMARY,
-                        )
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(onClick = onRequestPermission)
+                                .background(CalendarAccent.copy(alpha = 0.1f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CalendarToday,
+                                contentDescription = null,
+                                tint = CalendarAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Enable",
+                                color = CalendarAccent,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
             }
@@ -292,7 +343,7 @@ private fun CalendarDetailsDialog(
                         Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 LazyColumn(
@@ -320,7 +371,7 @@ private fun EventTile(
         CalendarAccent
     }
     val uriHandler = LocalUriHandler.current
-    
+
     val bgColor = if (featured) Background else Background.copy(alpha = 0.5f)
 
     Row(
@@ -377,9 +428,9 @@ private fun EventTile(
             }
             
             Spacer(modifier = Modifier.height(4.dp))
-            
+
             InfoTag(icon = Icons.Outlined.Schedule, text = event.formattedDateAndTime, color = TextSecondary)
-            
+
             if (event.location.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 InfoTag(icon = Icons.Outlined.LocationOn, text = event.location, color = TextSecondary)
@@ -394,8 +445,8 @@ private fun EventTile(
                     else -> "Join Meeting"
                 }
                 InfoTag(
-                    icon = Icons.Outlined.Link, 
-                    text = displayLink, 
+                    icon = Icons.Outlined.Link,
+                    text = displayLink,
                     color = CalendarAccent,
                     onClick = { try { uriHandler.openUri(link) } catch (_: Exception) { } }
                 )
