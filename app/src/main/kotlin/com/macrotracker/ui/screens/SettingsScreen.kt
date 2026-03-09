@@ -85,6 +85,7 @@ import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -92,7 +93,9 @@ import com.macrotracker.ui.viewmodel.SettingsViewModel
 fun SettingsScreen(
     onNavigateToHelp: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
+    onReplayTutorial: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
+    onboardingViewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val savedKey by viewModel.geminiApiKey.collectAsState()
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
@@ -531,6 +534,16 @@ fun SettingsScreen(
                 variant = ButtonVariant.SECONDARY,
             )
         }
+        MacroButton(
+            text = "🎓 Replay Tutorial",
+            onClick = {
+                haptics.click()
+                onboardingViewModel.resetOnboarding()
+                onReplayTutorial()
+            },
+            variant = ButtonVariant.SECONDARY,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

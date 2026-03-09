@@ -6,9 +6,11 @@ import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.local.SettingsRepository
 import com.macrotracker.ui.components.HealthMetricUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -42,16 +44,35 @@ class DashboardViewModel @Inject constructor(
     private val _activeCaloriesState = MutableStateFlow(HealthMetricUiState())
     val activeCaloriesState: StateFlow<HealthMetricUiState> = _activeCaloriesState
 
+    /** Epoch-ms of the last loadData() call, used to throttle ON_RESUME calls. */
+    private var lastLoadMs = 0L
+
+    /** The single running load job — cancelled and replaced on each new load. */
+    private var loadJob: Job? = null
+
     init {
         loadData()
     }
 
+    /** Throttled version for ON_RESUME — skips if called within 30 s of last load. */
+    fun loadDataThrottled() {
+        val now = System.currentTimeMillis()
+        if (lastLoadMs > 0 && now - lastLoadMs < 30_000L) return
+        loadData()
+    }
+
     fun loadData() {
-        // Heart Rate
-        viewModelScope.launch {
-            combine(settingsRepository.heartRateEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+        // Cancel any in-flight load before starting a new one — prevents job pile-up
+        loadJob?.cancel()
+        lastLoadMs = System.currentTimeMillis()
+
+        loadJob = viewModelScope.launch {
+            // Read the master toggle + per-metric settings once (not a continuous collect)
+            val masterEnabled = settingsRepository.masterHealthConnectEnabled.first()
+
+            // Heart Rate
+            launch {
+                val enabled = masterEnabled && settingsRepository.heartRateEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getLatestHeartRate()
                     val yesterday = healthConnectRepository.getLatestHeartRate(yesterday = true)
@@ -65,13 +86,10 @@ class DashboardViewModel @Inject constructor(
                     _heartRateState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Resting Heart Rate
-        viewModelScope.launch {
-            combine(settingsRepository.restingHeartRateEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Resting Heart Rate
+            launch {
+                val enabled = masterEnabled && settingsRepository.restingHeartRateEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getLatestRestingHeartRate()
                     val yesterday = healthConnectRepository.getLatestRestingHeartRate(yesterday = true)
@@ -85,13 +103,10 @@ class DashboardViewModel @Inject constructor(
                     _restingHeartRateState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Oxygen Saturation
-        viewModelScope.launch {
-            combine(settingsRepository.oxygenSaturationEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Oxygen Saturation
+            launch {
+                val enabled = masterEnabled && settingsRepository.oxygenSaturationEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getLatestOxygenSaturation()
                     val yesterday = healthConnectRepository.getLatestOxygenSaturation(yesterday = true)
@@ -106,13 +121,10 @@ class DashboardViewModel @Inject constructor(
                     _oxygenSaturationState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Respiratory Rate
-        viewModelScope.launch {
-            combine(settingsRepository.respiratoryRateEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Respiratory Rate
+            launch {
+                val enabled = masterEnabled && settingsRepository.respiratoryRateEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getLatestRespiratoryRate()
                     val yesterday = healthConnectRepository.getLatestRespiratoryRate(yesterday = true)
@@ -127,13 +139,10 @@ class DashboardViewModel @Inject constructor(
                     _respiratoryRateState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Steps
-        viewModelScope.launch {
-            combine(settingsRepository.stepsEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Steps
+            launch {
+                val enabled = masterEnabled && settingsRepository.stepsEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getStepsToday()
                     val yesterday = healthConnectRepository.getStepsYesterday()
@@ -147,13 +156,10 @@ class DashboardViewModel @Inject constructor(
                     _stepsState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Distance
-        viewModelScope.launch {
-            combine(settingsRepository.distanceEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Distance
+            launch {
+                val enabled = masterEnabled && settingsRepository.distanceEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getDistanceToday()
                     val yesterday = healthConnectRepository.getDistanceYesterday()
@@ -168,13 +174,10 @@ class DashboardViewModel @Inject constructor(
                     _distanceState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Floors Climbed
-        viewModelScope.launch {
-            combine(settingsRepository.floorsClimbedEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Floors Climbed
+            launch {
+                val enabled = masterEnabled && settingsRepository.floorsClimbedEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getFloorsClimbedToday()
                     val yesterday = healthConnectRepository.getFloorsClimbedYesterday()
@@ -189,13 +192,10 @@ class DashboardViewModel @Inject constructor(
                     _floorsClimbedState.value = HealthMetricUiState(isEnabled = false)
                 }
             }
-        }
 
-        // Active Calories
-        viewModelScope.launch {
-            combine(settingsRepository.activeCaloriesEnabled, settingsRepository.masterHealthConnectEnabled) { metricEnabled, masterEnabled ->
-                metricEnabled && masterEnabled
-            }.collect { enabled ->
+            // Active Calories
+            launch {
+                val enabled = masterEnabled && settingsRepository.activeCaloriesEnabled.first()
                 if (enabled) {
                     val today = healthConnectRepository.getActiveCaloriesToday()
                     val yesterday = healthConnectRepository.getActiveCaloriesYesterday()

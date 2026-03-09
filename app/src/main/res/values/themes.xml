@@ -6,5 +6,10 @@
         <item name="android:navigationBarColor">#080D18</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+
+    <!-- Splash theme shown during cold start before Compose is ready -->
+    <style name="Theme.DailyDash.Splash" parent="Theme.DailyDash">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
 </resources>
 

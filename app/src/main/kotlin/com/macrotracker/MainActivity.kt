@@ -11,6 +11,8 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Switch away from the splash theme before Compose draws its first frame
+        setTheme(R.style.Theme_DailyDash)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {

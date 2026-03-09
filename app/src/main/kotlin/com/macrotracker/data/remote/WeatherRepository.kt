@@ -48,11 +48,29 @@ class WeatherRepository @Inject constructor(
         private const val TAG = "WeatherRepo"
         private const val BASE_URL =
             "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-        // Yr.no requires a descriptive User-Agent
         private const val USER_AGENT = "DailyDash/1.0 (Android; daily-dash-app)"
+        private const val CACHE_TTL_MS = 30 * 60 * 1000L // 30 minutes
     }
 
+    // In-memory cache — keyed by rounded lat/lon so nearby locations reuse the same result
+    private var cachedWeather: WeatherInfo? = null
+    private var cachedLat: Double = Double.NaN
+    private var cachedLon: Double = Double.NaN
+    private var cacheTimestamp: Long = 0L
+
     suspend fun fetchWeather(lat: Double, lon: Double, locationName: String = ""): WeatherInfo = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        // Round to 2 decimal places (~1 km) for cache key comparison
+        val roundedLat = Math.round(lat * 100).toDouble() / 100
+        val roundedLon = Math.round(lon * 100).toDouble() / 100
+        if (cachedWeather != null &&
+            roundedLat == cachedLat && roundedLon == cachedLon &&
+            now - cacheTimestamp < CACHE_TTL_MS
+        ) {
+            Log.d(TAG, "Returning cached weather")
+            return@withContext cachedWeather!!
+        }
+
         val url = "$BASE_URL?lat=${String.format(Locale.US, "%.4f", lat)}&lon=${String.format(Locale.US, "%.4f", lon)}"
         Log.d(TAG, "Fetching weather: $url")
 
@@ -70,7 +88,12 @@ class WeatherRepository @Inject constructor(
             throw Exception("Weather API error: ${response.code}")
         }
 
-        parseWeatherResponse(body, locationName)
+        val result = parseWeatherResponse(body, locationName)
+        cachedWeather = result
+        cachedLat = roundedLat
+        cachedLon = roundedLon
+        cacheTimestamp = now
+        result
     }
 
     private fun parseWeatherResponse(json: String, locationName: String): WeatherInfo {

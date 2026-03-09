@@ -13,22 +13,91 @@ import com.macrotracker.ui.screens.HistoryScreen
 import com.macrotracker.ui.screens.HomeScreen
 import com.macrotracker.ui.screens.SettingsScreen
 import com.macrotracker.ui.screens.StatsScreen
+import com.macrotracker.ui.screens.onboarding.PermissionsScreen
+import com.macrotracker.ui.screens.onboarding.SplashScreen
+import com.macrotracker.ui.screens.onboarding.TutorialScreen
+import com.macrotracker.ui.screens.onboarding.WelcomeScreen
 import com.macrotracker.ui.theme.MacroMotion
 
 @Composable
 fun DailyDashNavHost(
     navController: NavHostController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    startDestination: String = Screen.Home.route,
+    onOnboardingComplete: () -> Unit = {},
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route,
+        startDestination = startDestination,
         modifier = modifier,
         enterTransition = { MacroMotion.contentEnter },
         exitTransition = { MacroMotion.contentExit },
         popEnterTransition = { MacroMotion.contentEnter },
         popExitTransition = { MacroMotion.contentExit }
     ) {
+        // ── Onboarding flow ──────────────────────────────────────────────
+        composable(
+            route = OnboardingRoutes.SPLASH,
+            enterTransition = { MacroMotion.contentEnter },
+            exitTransition = { MacroMotion.contentExit },
+            popEnterTransition = { MacroMotion.contentEnter },
+            popExitTransition = { MacroMotion.contentExit },
+        ) {
+            SplashScreen(
+                onSplashFinished = {
+                    navController.navigate(OnboardingRoutes.WELCOME) {
+                        popUpTo(OnboardingRoutes.SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = OnboardingRoutes.WELCOME,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            WelcomeScreen(
+                onGetStarted = {
+                    navController.navigate(OnboardingRoutes.PERMISSIONS)
+                }
+            )
+        }
+
+        composable(
+            route = OnboardingRoutes.PERMISSIONS,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            PermissionsScreen(
+                onContinue = {
+                    navController.navigate(OnboardingRoutes.TUTORIAL)
+                }
+            )
+        }
+
+        composable(
+            route = OnboardingRoutes.TUTORIAL,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            TutorialScreen(
+                onFinish = {
+                    onOnboardingComplete()
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(OnboardingRoutes.SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // ── Main screens ─────────────────────────────────────────────────
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToHealth = { navController.navigate(Screen.Health.route) },
@@ -56,7 +125,12 @@ fun DailyDashNavHost(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateToHelp = { navController.navigate("help") },
-                onNavigateToStats = { navController.navigate("stats") }
+                onNavigateToStats = { navController.navigate("stats") },
+                onReplayTutorial = {
+                    navController.navigate(OnboardingRoutes.SPLASH) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
+                },
             )
         }
 

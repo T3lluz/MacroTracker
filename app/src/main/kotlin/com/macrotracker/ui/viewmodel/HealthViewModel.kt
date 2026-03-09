@@ -80,11 +80,26 @@ class HealthViewModel @Inject constructor(
 
     val healthWidgetOrder: StateFlow<String> = settingsRepository.healthWidgetOrder
 
+    /** Epoch-ms of the last ON_RESUME data load; used to skip redundant loads during tab switches. */
+    private var lastResumeLoadMs = 0L
+
     init {
         // Reactively load health data when the setting is changed
         settingsRepository.masterHealthConnectEnabled.onEach { enabled ->
             loadHealthConnect()
         }.launchIn(viewModelScope)
+    }
+
+    /**
+     * Call from ON_RESUME. Skips if called within 30 s of the previous load unless [force] is true,
+     * preventing jank from heavy data fetches during every tab-switch transition.
+     */
+    fun loadDataOnResume(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && lastResumeLoadMs > 0 && now - lastResumeLoadMs < 30_000L) return
+        lastResumeLoadMs = now
+        loadData()
+        loadHealthConnect(silent = true)
     }
 
     fun updateHealthWidgetOrder(order: String) {

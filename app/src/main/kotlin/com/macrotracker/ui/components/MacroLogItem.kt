@@ -20,7 +20,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -44,12 +48,16 @@ fun MacroLogItem(
 ) {
     val haptics = rememberHaptics()
 
-    // Simple staggered fade-in — no translate/scale to fight the page transition.
-    val alpha = remember { Animatable(0f) }
+    // Only animate on first appearance; skip re-animation when navigating back.
+    var hasAnimated by rememberSaveable { mutableStateOf(false) }
+    val alpha = remember { Animatable(if (hasAnimated) 1f else 0f) }
 
     LaunchedEffect(Unit) {
-        delay(minOf(index * 30L, 150L))
-        alpha.animateTo(1f, animationSpec = tween(180))
+        if (!hasAnimated) {
+            delay(minOf(index * 30L, 150L))
+            alpha.animateTo(1f, animationSpec = tween(180))
+            hasAnimated = true
+        }
     }
 
     Card(

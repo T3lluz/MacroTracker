@@ -51,33 +51,38 @@ private data class HelpStep(
 private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.Home,
-        title = "Log Tab — Add Food",
-        body = "Tap the Log tab to see today's progress. Enter a food name (optional), calories and protein, then tap \"Add Log\". Your totals update instantly.",
+        title = "Home Screen — Quick Add",
+        body = "The Home screen shows a live greeting with today's date and all your widgets. Use the Quick Add widget to enter a food name (optional), calories and protein, then tap \"Add\". Tap \"View All Logs\" to jump to the full Health tab.",
+    ),
+    HelpStep(
+        icon = Icons.Outlined.Rocket,
+        title = "Customise Your Home Screen",
+        body = "Tap the pencil icon (top-right of Home) to enter edit mode. Toggle widgets on or off, then close the editor to save. Long-press and drag any widget to reorder them.",
     ),
     HelpStep(
         icon = Icons.Outlined.CameraAlt,
         title = "Scan a Nutrition Label",
-        body = "On the Log tab tap \"📷 Scan Label\" to open the camera. Point it at a nutrition facts label and the app will auto-fill calories and protein for you.",
+        body = "Go to the AI tab and tap \"Open Camera Label Scan\". Point the camera at any nutrition facts label and the app will auto-fill calories and protein from the label.",
     ),
     HelpStep(
         icon = Icons.Outlined.AutoAwesome,
-        title = "AI Estimate",
-        body = "Go to the AI tab and type something like \"2 scrambled eggs\" or \"bowl of oatmeal\". The AI returns a calorie and protein estimate you can log in one tap.",
+        title = "AI Food Estimates",
+        body = "On the AI tab, type a description such as \"1 medium avocado\" or \"bowl of oatmeal with banana\" and tap \"Estimate with AI\". A Gemini-powered estimate with calories, protein and a confidence level will appear — tap once to log it.",
     ),
     HelpStep(
         icon = Icons.Outlined.BarChart,
         title = "History Tab",
-        body = "The History tab shows a bar chart of your last 7, 14, or 30 days. Tap any bar to see the individual food logs for that day.",
+        body = "The History tab shows a bar chart of your last 7, 14 or 30 days. Use the range chips (7d / 14d / 30d) and the Calories / Protein toggle to switch views. Tap any bar to see the individual food logs for that day.",
     ),
     HelpStep(
         icon = Icons.Outlined.Flag,
-        title = "Setting Daily Goals",
-        body = "Go to the Stats tab → Daily Goals. Enter your calorie and protein targets and tap \"Save Goals\". Progress bars on the Log screen will reflect your targets.",
+        title = "Set Daily Goals",
+        body = "Tap the dumbbell icon on the Home Progress widget, or go to Settings → \"Stats & Goals\". Enter your calorie and protein targets and tap \"Save Goals\". Progress bars turn red when you exceed a goal.",
     ),
     HelpStep(
         icon = Icons.Outlined.Delete,
-        title = "Deleting a Log",
-        body = "On the Log tab, swipe left on any food entry in the \"Recent Logs\" list to reveal a delete button.",
+        title = "Delete a Log Entry",
+        body = "On the Health tab, click the X on any food entry in the Recent Logs list to delete it. You can also navigate back to a past date in the Health tab and delete entries from there.",
     ),
 )
 
@@ -86,15 +91,27 @@ private data class FaqItem(val question: String, val answer: String)
 private val FAQ = listOf(
     FaqItem(
         question = "Where is my data stored?",
-        answer = "All data is stored locally on your device. Nothing is sent to a server (AI requests go to Google Gemini but do not store food data).",
+        answer = "All data is stored locally on your device using a local database. Nothing is uploaded to a server. AI requests are sent to Google Gemini but your food logs are never included.",
     ),
     FaqItem(
         question = "Why is my progress bar red?",
-        answer = "The calorie bar turns red when you have exceeded your daily calorie goal.",
+        answer = "The calorie progress bar turns red when your total calories for the day exceed your calorie goal. Set or adjust your goal in Settings → Stats & Goals.",
+    ),
+    FaqItem(
+        question = "How do I add a Gemini API key?",
+        answer = "Go to Settings, find the Gemini API Key card, paste your key (it should start with \"AIza\") and tap \"Save Key\". Get a free key at aistudio.google.com. The app uses gemini-2.0-flash on the free tier.",
+    ),
+    FaqItem(
+        question = "How do I connect Health Connect?",
+        answer = "Go to Settings → Connections and toggle on Health Connect. Grant the permissions when prompted. You can then enable individual metrics (steps, heart rate, sleep, active calories, etc.) independently.",
+    ),
+    FaqItem(
+        question = "How do I connect Weather or Calendar?",
+        answer = "Go to Settings → Connections and toggle on Weather Data (requires location permission) or Google Calendar (requires calendar permission). Weather uses your device location via Yr.no. Calendar shows today's events from any calendars you select.",
     ),
     FaqItem(
         question = "How accurate are AI estimates?",
-        answer = "AI estimates are approximations. For precise tracking always use scanned labels or known values when available. The confidence level shown tells you how certain the AI is.",
+        answer = "AI estimates are approximations. The confidence level (high / medium / low) shown in the result tells you how certain the AI is. For precise tracking, use scanned nutrition labels or manually entered values when available.",
     ),
 )
 

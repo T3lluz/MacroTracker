@@ -45,8 +45,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +67,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.ui.components.BodyStats
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.CalendarCard
+import com.macrotracker.ui.components.DraggableWidgetColumn
 import com.macrotracker.ui.components.F1Card
 import com.macrotracker.ui.components.HealthMetricUiState
 import com.macrotracker.ui.components.MacroButton
@@ -115,15 +118,17 @@ fun HomeScreen(
     var isEditMode by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
 
-    val defaultHomeWidgets = listOf(
-        Triple("F1", "F1 Standings", Icons.Default.Flag),
-        Triple("YOUTUBE", "YouTube Feed", Icons.Default.PlayArrow),
-        Triple("WEATHER", "Weather", Icons.Default.Cloud),
-        Triple("CALENDAR", "Calendar", Icons.Default.CalendarMonth),
-        Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
-        Triple("PROGRESS", "Today's Progress", Icons.Default.PieChart),
-        Triple("QUICK_ADD", "Quick Add", Icons.Default.Add)
-    )
+    val defaultHomeWidgets = remember {
+        listOf(
+            Triple("F1", "F1 Standings", Icons.Default.Flag),
+            Triple("YOUTUBE", "YouTube Feed", Icons.Default.PlayArrow),
+            Triple("WEATHER", "Weather", Icons.Default.Cloud),
+            Triple("CALENDAR", "Calendar", Icons.Default.CalendarMonth),
+            Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
+            Triple("PROGRESS", "Today's Progress", Icons.Default.PieChart),
+            Triple("QUICK_ADD", "Quick Add", Icons.Default.Add)
+        )
+    }
 
     fun hasLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(
@@ -180,15 +185,19 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
-    val greeting = when (java.time.LocalTime.now().hour) {
-        in 0..11 -> "Good Morning"
-        in 12..16 -> "Good Afternoon"
-        in 17..20 -> "Good Evening"
-        else -> "Good Night"
+    val todayFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d")) }
+    val greeting = remember {
+        when (java.time.LocalTime.now().hour) {
+            in 0..11 -> "Good Morning"
+            in 12..16 -> "Good Afternoon"
+            in 17..20 -> "Good Evening"
+            else -> "Good Night"
+        }
     }
 
-    val parsedConfigs = parseWidgetConfig(homeWidgetOrder, defaultHomeWidgets)
+    val parsedConfigs by remember(homeWidgetOrder) {
+        derivedStateOf { parseWidgetConfig(homeWidgetOrder, defaultHomeWidgets) }
+    }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -235,8 +244,18 @@ fun HomeScreen(
                     onClose = { isEditMode = false }
                 )
             } else {
-                parsedConfigs.filter { it.isVisible }.forEach { config ->
-                    when (config.id) {
+                val visibleConfigs by remember(parsedConfigs) {
+                    derivedStateOf { parsedConfigs.filter { it.isVisible } }
+                }
+                DraggableWidgetColumn(
+                    items = visibleConfigs,
+                    onReorder = { reordered ->
+                        // Merge reordered visible items back with hidden items (appended at end)
+                        val hidden = parsedConfigs.filter { !it.isVisible }
+                        viewModel.updateHomeWidgetOrder(encodeWidgetConfig(reordered + hidden))
+                    },
+                    itemContent = { _, config ->
+                        when (config.id) {
                         "F1" -> {
                             F1Card(
                                 state = f1State,
@@ -592,7 +611,8 @@ fun HomeScreen(
                             }
                         }
                     }
-                }
+                    }
+                )
             }
         }
     }

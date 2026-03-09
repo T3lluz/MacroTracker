@@ -95,7 +95,13 @@ class CalendarRepository @Inject constructor(
     companion object {
         private const val TAG = "CalendarRepo"
         const val PERMISSION = Manifest.permission.READ_CALENDAR
+        private const val CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
     }
+
+    // In-memory cache for calendar events
+    private var cachedEvents: List<CalendarEvent>? = null
+    private var cacheCalendarIds: Set<Long>? = null
+    private var cacheTimestamp: Long = 0L
 
     fun hasPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -157,6 +163,14 @@ class CalendarRepository @Inject constructor(
         if (!hasPermission()) {
             Log.w(TAG, "Calendar permission not granted")
             return@withContext emptyList()
+        }
+
+        val now = System.currentTimeMillis()
+        if (cachedEvents != null &&
+            cacheCalendarIds == calendarIds &&
+            now - cacheTimestamp < CACHE_TTL_MS
+        ) {
+            return@withContext cachedEvents!!
         }
 
         val zone = ZoneId.systemDefault()
@@ -240,6 +254,9 @@ class CalendarRepository @Inject constructor(
             cursor?.close()
         }
 
+        cachedEvents = events
+        cacheCalendarIds = calendarIds
+        cacheTimestamp = System.currentTimeMillis()
         events
     }
 }

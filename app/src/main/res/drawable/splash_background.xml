@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Deep navy background -->
+    <item android:drawable="@color/splash_bg" />
+    <!-- Logo centred — round crop is handled by the Compose SplashScreen -->
+    <item
+        android:gravity="center"
+        android:width="130dp"
+        android:height="130dp">
+        <bitmap
+            android:src="@drawable/ic_logo"
+            android:gravity="center"
+            android:tileMode="disabled" />
+    </item>
+</layer-list>
+
+
+
+
+

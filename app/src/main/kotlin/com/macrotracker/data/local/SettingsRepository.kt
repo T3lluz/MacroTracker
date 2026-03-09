@@ -18,6 +18,9 @@ class SettingsRepository @Inject constructor(
     private val _geminiApiKey = MutableStateFlow(prefs.getString(KEY_GEMINI_API_KEY, "") ?: "")
     val geminiApiKey: StateFlow<String> = _geminiApiKey
 
+    private val _onboardingCompleted = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false))
+    val onboardingCompleted: StateFlow<Boolean> = _onboardingCompleted
+
     private val _masterHealthConnectEnabled = MutableStateFlow(healthPrefs.getBoolean("master_health_connect_enabled", true))
     val masterHealthConnectEnabled: StateFlow<Boolean> = _masterHealthConnectEnabled
 
@@ -71,6 +74,11 @@ class SettingsRepository @Inject constructor(
         _geminiApiKey.value = key.trim()
     }
 
+    fun setOnboardingCompleted(completed: Boolean = true) {
+        prefs.edit { putBoolean(KEY_ONBOARDING_COMPLETED, completed) }
+        _onboardingCompleted.value = completed
+    }
+
     fun getGeminiApiKey(): String = _geminiApiKey.value
 
     fun updateHomeWidgetOrder(order: String) {
@@ -115,5 +123,6 @@ class SettingsRepository @Inject constructor(
 
     companion object {
         private const val KEY_GEMINI_API_KEY = "gemini_api_key"
+        const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }
 }

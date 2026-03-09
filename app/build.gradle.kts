@@ -9,6 +9,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
 }
 
+// Enable Compose strong skipping mode — skips recomposition when inputs haven't changed,
+// even for composables with "unstable" parameters (e.g. List, data classes from other modules).
+composeCompiler {
+    enableStrongSkippingMode = true
+}
+
 android {
     namespace = "com.macrotracker"
     compileSdk = 35
@@ -47,8 +53,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            optIn.add("kotlin.RequiresOptIn")
+        }
     }
 
     buildFeatures {

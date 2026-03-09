@@ -202,9 +202,21 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun refreshAll(hasLocationPermission: Boolean, hasCalendarPermission: Boolean, hasHealthPermission: Boolean) {
+    /** Epoch-ms of the last completed refreshAll, used to throttle ON_RESUME calls. */
+    private var lastRefreshMs = 0L
+
+    fun refreshAll(
+        hasLocationPermission: Boolean,
+        hasCalendarPermission: Boolean,
+        hasHealthPermission: Boolean,
+        force: Boolean = false,
+    ) {
         if (_isRefreshing.value) return
-        
+        // Skip automatic ON_RESUME refreshes that fire within 30 s of the last one.
+        // This prevents heavy work from running during every tab-switch transition.
+        val now = System.currentTimeMillis()
+        if (!force && lastRefreshMs > 0 && now - lastRefreshMs < 30_000L) return
+
         viewModelScope.launch {
             _isRefreshing.value = true
             loadData()
@@ -212,6 +224,7 @@ class HomeViewModel @Inject constructor(
             loadHealthConnect(silent = true)
             loadCalendar(hasCalendarPermission)
             loadF1Data()
+            lastRefreshMs = System.currentTimeMillis()
             _isRefreshing.value = false
         }
     }

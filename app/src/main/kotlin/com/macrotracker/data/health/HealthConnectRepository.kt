@@ -85,6 +85,25 @@ class HealthConnectRepository @Inject constructor(
 
     fun isAvailable(): Boolean = client != null
 
+    // ── Lightweight in-memory cache for individual metric reads ───────────
+    // Avoids hammering the Health Connect IPC on every DashboardViewModel refresh.
+    private val METRIC_CACHE_TTL = 5 * 60 * 1000L // 5 minutes
+    private val metricCache = mutableMapOf<String, Pair<Long, Any?>>()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> getCached(key: String): T? {
+        val (ts, value) = metricCache[key] ?: return null
+        return if (System.currentTimeMillis() - ts < METRIC_CACHE_TTL) value as? T else null
+    }
+
+    private fun putCache(key: String, value: Any?) {
+        metricCache[key] = System.currentTimeMillis() to value
+    }
+
+    fun invalidateMetricCache() {
+        metricCache.clear()
+    }
+
     suspend fun hasAllPermissions(): Boolean {
         val hc = client ?: return false
         return try {
@@ -119,6 +138,8 @@ class HealthConnectRepository @Inject constructor(
     // ── New Functions for DashboardViewModel ───────────────────────────────
 
     suspend fun getLatestHeartRate(yesterday: Boolean = false): Long? = withContext(Dispatchers.IO) {
+        val cacheKey = "hr_${if (yesterday) "yesterday" else "today"}"
+        getCached<Long>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
         try {
@@ -128,8 +149,9 @@ class HealthConnectRepository @Inject constructor(
                 ascendingOrder = false,
                 pageSize = 1
             )
-            val response = hc.readRecords(request)
-            response.records.firstOrNull()?.samples?.lastOrNull()?.beatsPerMinute
+            val result = hc.readRecords(request).records.firstOrNull()?.samples?.lastOrNull()?.beatsPerMinute
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get latest heart rate", e)
             null
@@ -137,6 +159,8 @@ class HealthConnectRepository @Inject constructor(
     }
 
     suspend fun getLatestRestingHeartRate(yesterday: Boolean = false): Long? = withContext(Dispatchers.IO) {
+        val cacheKey = "rhr_${if (yesterday) "yesterday" else "today"}"
+        getCached<Long>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
         try {
@@ -146,8 +170,9 @@ class HealthConnectRepository @Inject constructor(
                 ascendingOrder = false,
                 pageSize = 1
             )
-            val response = hc.readRecords(request)
-            response.records.firstOrNull()?.beatsPerMinute
+            val result = hc.readRecords(request).records.firstOrNull()?.beatsPerMinute
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get latest resting heart rate", e)
             null
@@ -155,6 +180,8 @@ class HealthConnectRepository @Inject constructor(
     }
 
     suspend fun getLatestOxygenSaturation(yesterday: Boolean = false): Double? = withContext(Dispatchers.IO) {
+        val cacheKey = "spo2_${if (yesterday) "yesterday" else "today"}"
+        getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
         try {
@@ -164,8 +191,9 @@ class HealthConnectRepository @Inject constructor(
                 ascendingOrder = false,
                 pageSize = 1
             )
-            val response = hc.readRecords(request)
-            response.records.firstOrNull()?.percentage?.value
+            val result = hc.readRecords(request).records.firstOrNull()?.percentage?.value
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get latest Oxygen Saturation", e)
             null
@@ -173,6 +201,8 @@ class HealthConnectRepository @Inject constructor(
     }
 
     suspend fun getLatestRespiratoryRate(yesterday: Boolean = false): Double? = withContext(Dispatchers.IO) {
+        val cacheKey = "resp_${if (yesterday) "yesterday" else "today"}"
+        getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
         try {
@@ -182,8 +212,9 @@ class HealthConnectRepository @Inject constructor(
                 ascendingOrder = false,
                 pageSize = 1
             )
-            val response = hc.readRecords(request)
-            response.records.firstOrNull()?.rate
+            val result = hc.readRecords(request).records.firstOrNull()?.rate
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get latest Respiratory Rate", e)
             null
@@ -206,6 +237,8 @@ class HealthConnectRepository @Inject constructor(
     // ── Private Helpers for New Functions ──────────────────────────────────
 
     private suspend fun getStepsForDate(date: LocalDate): Long? = withContext(Dispatchers.IO) {
+        val cacheKey = "steps_$date"
+        getCached<Long>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = getTimeRangeForDate(date)
         try {
@@ -215,7 +248,9 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            response[StepsRecord.COUNT_TOTAL]
+            val result = response[StepsRecord.COUNT_TOTAL]
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get steps for $date", e)
             null
@@ -223,6 +258,8 @@ class HealthConnectRepository @Inject constructor(
     }
 
     private suspend fun getActiveCaloriesForDate(date: LocalDate): Double? = withContext(Dispatchers.IO) {
+        val cacheKey = "cals_$date"
+        getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = getTimeRangeForDate(date)
         try {
@@ -232,7 +269,9 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+            val result = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get active calories for $date", e)
             null
@@ -240,6 +279,8 @@ class HealthConnectRepository @Inject constructor(
     }
 
     private suspend fun getDistanceForDate(date: LocalDate): Double? = withContext(Dispatchers.IO) {
+        val cacheKey = "dist_$date"
+        getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = getTimeRangeForDate(date)
         try {
@@ -249,7 +290,9 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            response[DistanceRecord.DISTANCE_TOTAL]?.inKilometers
+            val result = response[DistanceRecord.DISTANCE_TOTAL]?.inKilometers
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get distance for $date", e)
             null
@@ -257,6 +300,8 @@ class HealthConnectRepository @Inject constructor(
     }
 
     private suspend fun getFloorsClimbedForDate(date: LocalDate): Double? = withContext(Dispatchers.IO) {
+        val cacheKey = "floors_$date"
+        getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
         val (start, end) = getTimeRangeForDate(date)
         try {
@@ -266,7 +311,9 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            response[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]
+            val result = response[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]
+            putCache(cacheKey, result)
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get floors climbed for $date", e)
             null

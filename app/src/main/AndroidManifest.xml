@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Needed for AccountManager account picker to list Google accounts -->
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
+    <!-- Android 13+ post-notification permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -38,13 +40,16 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
         android:theme="@style/Theme.DailyDash">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.DailyDash">
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.DailyDash.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

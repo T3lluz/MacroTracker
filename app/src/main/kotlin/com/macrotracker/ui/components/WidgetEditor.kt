@@ -1,7 +1,8 @@
 package com.macrotracker.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,31 +16,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.MonitorHeart
-import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.ShowChart
-import androidx.compose.material.icons.filled.Toc
-import androidx.compose.material.icons.filled.ViewDay
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +44,7 @@ import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 
 data class WidgetConfig(val id: String, val label: String, val isVisible: Boolean, val icon: ImageVector)
 
@@ -89,6 +87,14 @@ fun WidgetEditor(
     onConfigsChanged: (List<WidgetConfig>) -> Unit,
     onClose: () -> Unit,
 ) {
+    val haptics = rememberHaptics()
+
+    // Drag state
+    var draggingIndex by remember { mutableIntStateOf(-1) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    // Heights of each row (in pixels) for hit-testing during drag
+    val rowHeights = remember { mutableStateOf(FloatArray(configs.size)) }
+
     MacroCard(delayMs = 0) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -106,7 +112,7 @@ fun WidgetEditor(
             }
         }
         Text(
-            "Toggle visibility and reorder items.",
+            "Toggle visibility · hold ☰ and drag to reorder.",
             fontSize = 14.sp,
             color = TextSecondary,
             modifier = Modifier.padding(bottom = 16.dp)
@@ -114,15 +120,89 @@ fun WidgetEditor(
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             configs.forEachIndexed { index, config ->
+                val isDragging = draggingIndex == index
+                val elevation by animateFloatAsState(
+                    targetValue = if (isDragging) 8f else 0f,
+                    label = "drag_elevation_$index"
+                )
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onGloballyPositioned { coords ->
+                            if (index < rowHeights.value.size) {
+                                rowHeights.value[index] = coords.size.height.toFloat()
+                            }
+                        }
+                        .shadow(
+                            elevation = elevation.dp,
+                            shape = RoundedCornerShape(12.dp),
+                            clip = false
+                        )
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Background)
+                        .background(
+                            if (isDragging) Primary.copy(alpha = 0.12f) else Background
+                        )
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Icon inside a circle
+                    // Drag handle
+                    Icon(
+                        imageVector = Icons.Default.DragHandle,
+                        contentDescription = "Drag to reorder",
+                        tint = if (isDragging) Primary else TextSecondary,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .pointerInput(configs) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggingIndex = index
+                                        dragOffsetY = 0f
+                                        haptics.gestureStart()
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffsetY += dragAmount.y
+
+                                        // Calculate which index we've dragged into
+                                        val currentDragging = draggingIndex
+                                        if (currentDragging < 0) return@detectDragGesturesAfterLongPress
+
+                                        // Estimate target index based on accumulated offset
+                                        val heights = rowHeights.value
+                                        val itemHeight = if (currentDragging < heights.size) heights[currentDragging] else 0f
+                                        if (itemHeight <= 0f) return@detectDragGesturesAfterLongPress
+
+                                        val steps = (dragOffsetY / itemHeight).toInt()
+                                        val targetIndex = (currentDragging + steps).coerceIn(0, configs.size - 1)
+
+                                        if (targetIndex != currentDragging) {
+                                            val newList = configs.toMutableList()
+                                            val item = newList.removeAt(currentDragging)
+                                            newList.add(targetIndex, item)
+                                            onConfigsChanged(newList)
+                                            haptics.tick()
+                                            // Reset offset relative to new position
+                                            dragOffsetY -= steps * itemHeight
+                                            draggingIndex = targetIndex
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        haptics.gestureEnd()
+                                        draggingIndex = -1
+                                        dragOffsetY = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggingIndex = -1
+                                        dragOffsetY = 0f
+                                    }
+                                )
+                            }
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Widget icon in circle
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -138,7 +218,7 @@ fun WidgetEditor(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
                     Text(
                         text = config.label,
@@ -148,49 +228,13 @@ fun WidgetEditor(
                         modifier = Modifier.weight(1f)
                     )
 
-                    // Compact Reorder Buttons
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "Move Up",
-                            tint = if (index > 0) TextSecondary else TextSecondary.copy(alpha = 0.3f),
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clickable(enabled = index > 0) {
-                                    val newList = configs.toMutableList()
-                                    val temp = newList[index]
-                                    newList[index] = newList[index - 1]
-                                    newList[index - 1] = temp
-                                    onConfigsChanged(newList)
-                                }
-                        )
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Move Down",
-                            tint = if (index < configs.size - 1) TextSecondary else TextSecondary.copy(alpha = 0.3f),
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clickable(enabled = index < configs.size - 1) {
-                                    val newList = configs.toMutableList()
-                                    val temp = newList[index]
-                                    newList[index] = newList[index + 1]
-                                    newList[index + 1] = temp
-                                    onConfigsChanged(newList)
-                                }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-                    
                     Switch(
                         checked = config.isVisible,
                         onCheckedChange = { isChecked ->
                             val newList = configs.toMutableList()
                             newList[index] = config.copy(isVisible = isChecked)
                             onConfigsChanged(newList)
+                            if (isChecked) haptics.toggleOn() else haptics.toggleOff()
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Background,
@@ -198,7 +242,7 @@ fun WidgetEditor(
                             uncheckedThumbColor = TextSecondary,
                             uncheckedTrackColor = Background
                         ),
-                        modifier = Modifier.height(24.dp) // Make the switch slightly more compact
+                        modifier = Modifier.height(24.dp)
                     )
                 }
             }

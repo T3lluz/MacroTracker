@@ -55,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,6 +90,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.data.health.DailyHealthStats
 import com.macrotracker.ui.components.ButtonVariant
+import com.macrotracker.ui.components.DraggableWidgetColumn
 import com.macrotracker.ui.components.HealthConnectCard
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
@@ -170,15 +172,19 @@ fun HealthScreen(
     var protein by rememberSaveable { mutableStateOf("") }
     val haptics = rememberHaptics()
 
-    val defaultHealthWidgets = listOf(
-        Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
-        Triple("HISTORY", "Weekly Trends", Icons.Default.ShowChart),
-        Triple("SUMMARY", "Daily Summary", Icons.Default.ViewDay),
-        Triple("ADD_ENTRY", "Add Entry", Icons.Default.Add),
-        Triple("WEEK_AT_A_GLANCE", "Food Calories", Icons.Default.History),
-        Triple("RECENT_LOGS", "Recent Logs", Icons.Default.List)
-    )
-    val parsedConfigs = parseWidgetConfig(healthWidgetOrder, defaultHealthWidgets)
+    val defaultHealthWidgets = remember {
+        listOf(
+            Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
+            Triple("HISTORY", "Weekly Trends", Icons.Default.ShowChart),
+            Triple("SUMMARY", "Daily Summary", Icons.Default.ViewDay),
+            Triple("ADD_ENTRY", "Add Entry", Icons.Default.Add),
+            Triple("WEEK_AT_A_GLANCE", "Food Calories", Icons.Default.History),
+            Triple("RECENT_LOGS", "Recent Logs", Icons.Default.List)
+        )
+    }
+    val parsedConfigs by remember(healthWidgetOrder) {
+        derivedStateOf { parseWidgetConfig(healthWidgetOrder, defaultHealthWidgets) }
+    }
 
     // Health Connect data states from the new ViewModel
     val heartRateState by dashboardViewModel.heartRateState.collectAsState()
@@ -203,9 +209,8 @@ fun HealthScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                healthViewModel.loadData()
-                healthViewModel.loadHealthConnect()
-                dashboardViewModel.loadData()
+                healthViewModel.loadDataOnResume()
+                dashboardViewModel.loadDataThrottled()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -219,7 +224,7 @@ fun HealthScreen(
         if (scannedProtein != null) protein = scannedProtein.toString()
     }
 
-    val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+    val todayFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d")) }
 
     Column(
         modifier = Modifier
@@ -268,8 +273,17 @@ fun HealthScreen(
                 onClose = { isEditMode = false }
             )
         } else {
-            parsedConfigs.filter { it.isVisible }.forEach { config ->
-                when (config.id) {
+            val visibleConfigs by remember(parsedConfigs) {
+                derivedStateOf { parsedConfigs.filter { it.isVisible } }
+            }
+            DraggableWidgetColumn(
+                items = visibleConfigs,
+                onReorder = { reordered ->
+                    val hidden = parsedConfigs.filter { !it.isVisible }
+                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(reordered + hidden))
+                },
+                itemContent = { _, config ->
+                    when (config.id) {
                     "BODY_STATS" -> {
                         val isAnyStatEnabled = heartRateState.isEnabled || restingHeartRateState.isEnabled ||
                                 oxygenSaturationState.isEnabled || respiratoryRateState.isEnabled ||
@@ -615,31 +629,35 @@ fun HealthScreen(
                         }
                     }
                     "RECENT_LOGS" -> {
-                        Text(
-                            "Recent Logs",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                        )
-
-                        if (logs.isEmpty()) {
+                        MacroCard(delayMs = 250) {
                             Text(
-                                "No logs yet today.",
-                                color = TextSecondary,
-                                fontStyle = FontStyle.Italic,
-                                modifier = Modifier
-                                    .padding(top = 20.dp)
-                                    .fillMaxWidth(),
+                                "Recent Logs",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(bottom = 8.dp),
                             )
-                        } else {
-                            logs.reversed().forEachIndexed { index, log ->
-                                MacroLogItem(log = log, onDelete = { healthViewModel.deleteLog(it) }, index = index)
+
+                            if (logs.isEmpty()) {
+                                Text(
+                                    "No logs yet today.",
+                                    color = TextSecondary,
+                                    fontStyle = FontStyle.Italic,
+                                    modifier = Modifier
+                                        .padding(top = 12.dp)
+                                        .fillMaxWidth(),
+                                )
+                            } else {
+                                logs.reversed().forEachIndexed { index, log ->
+                                    MacroLogItem(log = log, onDelete = { healthViewModel.deleteLog(it) }, index = index)
+                                }
                             }
                         }
+                        Spacer(modifier = Modifier.height(20.dp))
                     }
                 }
-            }
+            },
+        )
         }
     }
 }
