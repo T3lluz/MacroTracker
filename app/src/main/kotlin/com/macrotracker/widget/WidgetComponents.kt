@@ -208,11 +208,14 @@ private fun TextUnit.scale(f: Float): TextUnit = (value * f).sp
 //  COLOUR TOKENS
 // ─────────────────────────────────────────────────────────────────
 class WidgetClr {
-    val bg: ColorProvider        = ColorProvider(R.color.widget_surface)
+    // Use the same R.color.f1_* resources as the F1 widgets so that both
+    // light and dark-mode variants (values-night/colors.xml) resolve
+    // identically across all widget types.
+    val bg: ColorProvider        = ColorProvider(R.color.f1_surface)
+    val card: ColorProvider      = ColorProvider(R.color.f1_card)
+    val cardAlt: ColorProvider   = ColorProvider(R.color.f1_card_alt)
     val text: ColorProvider      = ColorProvider(R.color.widget_on_surface)
     val sub: ColorProvider       = ColorProvider(R.color.widget_subtitle)
-    val card: ColorProvider      = ColorProvider(R.color.widget_card_bg)
-    val cardAlt: ColorProvider   = ColorProvider(R.color.f1_card_alt)
     val pill: ColorProvider      = ColorProvider(R.color.f1_pill)
     val divider: ColorProvider   = ColorProvider(R.color.f1_divider)
     val cal: ColorProvider       = ColorProvider(R.color.widget_calorie)

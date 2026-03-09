@@ -27,6 +27,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -125,12 +126,14 @@ class HomeViewModel @Inject constructor(
     val homeWidgetOrder: StateFlow<String> = settingsRepository.homeWidgetOrder
 
     init {
-        // Reactively reload data when connection settings change
-        settingsRepository.masterHealthConnectEnabled.onEach {
+        // drop(1) skips the initial replay emission — these only need to react
+        // to user-driven *changes* in settings, not fire on every cold start.
+        // refreshAll() called from the screen covers the initial load.
+        settingsRepository.masterHealthConnectEnabled.drop(1).onEach {
             loadHealthConnect(silent = true)
         }.launchIn(viewModelScope)
 
-        settingsRepository.weatherEnabled.onEach { enabled ->
+        settingsRepository.weatherEnabled.drop(1).onEach { enabled ->
             val hasPermission = ContextCompat.checkSelfPermission(
                 appContext, Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED ||
@@ -144,7 +147,7 @@ class HomeViewModel @Inject constructor(
             }
         }.launchIn(viewModelScope)
 
-        settingsRepository.calendarEnabled.onEach { enabled ->
+        settingsRepository.calendarEnabled.drop(1).onEach { enabled ->
             val hasPermission = ContextCompat.checkSelfPermission(
                 appContext, Manifest.permission.READ_CALENDAR
             ) == PackageManager.PERMISSION_GRANTED

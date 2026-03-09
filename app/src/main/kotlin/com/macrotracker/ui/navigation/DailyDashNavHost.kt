@@ -1,5 +1,7 @@
 package com.macrotracker.ui.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -14,7 +16,6 @@ import com.macrotracker.ui.screens.HomeScreen
 import com.macrotracker.ui.screens.SettingsScreen
 import com.macrotracker.ui.screens.StatsScreen
 import com.macrotracker.ui.screens.onboarding.PermissionsScreen
-import com.macrotracker.ui.screens.onboarding.SplashScreen
 import com.macrotracker.ui.screens.onboarding.TutorialScreen
 import com.macrotracker.ui.screens.onboarding.WelcomeScreen
 import com.macrotracker.ui.theme.MacroMotion
@@ -24,45 +25,28 @@ fun DailyDashNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
     startDestination: String = Screen.Home.route,
+    onboardingCompleted: Boolean = false,
     onOnboardingComplete: () -> Unit = {},
 ) {
     NavHost(
-        navController = navController,
+        navController    = navController,
         startDestination = startDestination,
-        modifier = modifier,
-        enterTransition = { MacroMotion.contentEnter },
-        exitTransition = { MacroMotion.contentExit },
+        modifier         = modifier,
+        enterTransition  = { MacroMotion.contentEnter },
+        exitTransition   = { MacroMotion.contentExit },
         popEnterTransition = { MacroMotion.contentEnter },
-        popExitTransition = { MacroMotion.contentExit }
+        popExitTransition  = { MacroMotion.contentExit },
     ) {
         // ── Onboarding flow ──────────────────────────────────────────────
         composable(
-            route = OnboardingRoutes.SPLASH,
-            enterTransition = { MacroMotion.contentEnter },
-            exitTransition = { MacroMotion.contentExit },
-            popEnterTransition = { MacroMotion.contentEnter },
-            popExitTransition = { MacroMotion.contentExit },
-        ) {
-            SplashScreen(
-                onSplashFinished = {
-                    navController.navigate(OnboardingRoutes.WELCOME) {
-                        popUpTo(OnboardingRoutes.SPLASH) { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable(
-            route = OnboardingRoutes.WELCOME,
-            enterTransition = { MacroMotion.subScreenEnter },
-            exitTransition = { MacroMotion.subScreenExit },
+            route          = OnboardingRoutes.WELCOME,
+            enterTransition = { EnterTransition.None },
+            exitTransition  = { MacroMotion.subScreenExit },
             popEnterTransition = { MacroMotion.subScreenPopEnter },
-            popExitTransition = { MacroMotion.subScreenPopExit },
+            popExitTransition  = { MacroMotion.subScreenPopExit },
         ) {
             WelcomeScreen(
-                onGetStarted = {
-                    navController.navigate(OnboardingRoutes.PERMISSIONS)
-                }
+                onGetStarted = { navController.navigate(OnboardingRoutes.PERMISSIONS) }
             )
         }
 
@@ -127,7 +111,7 @@ fun DailyDashNavHost(
                 onNavigateToHelp = { navController.navigate("help") },
                 onNavigateToStats = { navController.navigate("stats") },
                 onReplayTutorial = {
-                    navController.navigate(OnboardingRoutes.SPLASH) {
+                    navController.navigate(OnboardingRoutes.WELCOME) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                     }
                 },
