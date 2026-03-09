@@ -2,18 +2,18 @@ package com.macrotracker.ui.screens
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,12 +29,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.outlined.Air
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.Bloodtype
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LocalFireDepartment
-import androidx.compose.material.icons.outlined.MonitorHeart
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.SyncDisabled
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.outlined.Route
+import androidx.compose.material.icons.outlined.Stairs
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -64,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.PermissionController
@@ -80,6 +84,7 @@ import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroLogItem
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
+import com.macrotracker.ui.components.calculatePercentageChange
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.HeaderColor
@@ -87,12 +92,14 @@ import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Secondary
+import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.rememberHaptics
-import com.macrotracker.ui.viewmodel.HealthConnectUiState
+import com.macrotracker.ui.viewmodel.DashboardViewModel
 import com.macrotracker.ui.viewmodel.HealthViewModel
+import java.text.DecimalFormat
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
@@ -101,29 +108,41 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
+import kotlin.math.abs
 
-enum class HealthMetric { STEPS, HEART_RATE, SLEEP, CALORIES }
+enum class HealthMetric {
+    STEPS,
+    HEART_RATE,
+    SLEEP,
+    CALORIES,
+    RESTING_HEART_RATE,
+    OXYGEN_SATURATION,
+    RESPIRATORY_RATE,
+    DISTANCE,
+    FLOORS_CLIMBED,
+}
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HealthScreen(
     onNavigateToCameraScan: () -> Unit,
     scannedFoodName: String? = null,
     scannedCalories: Int? = null,
     scannedProtein: Int? = null,
-    viewModel: HealthViewModel = hiltViewModel(),
+    healthViewModel: HealthViewModel = hiltViewModel(),
+    dashboardViewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val summary by viewModel.summary.collectAsState()
-    val logs by viewModel.logs.collectAsState()
-    val weekHistory by viewModel.weekHistory.collectAsState()
-    val healthConnectState by viewModel.healthConnectState.collectAsState()
-    val healthHistory by viewModel.healthHistory.collectAsState()
+    val summary by healthViewModel.summary.collectAsState()
+    val logs by healthViewModel.logs.collectAsState()
+    val weekHistory by healthViewModel.weekHistory.collectAsState()
+    val healthHistory by healthViewModel.healthHistory.collectAsState()
 
-    val selectedDate by viewModel.selectedDate.collectAsState()
-    val intradayHeartRate by viewModel.intradayHeartRate.collectAsState()
-    val detailedSleep by viewModel.detailedSleep.collectAsState()
-    val weekStartDay by viewModel.weekStartDay.collectAsState()
-    
+    val selectedDate by healthViewModel.selectedDate.collectAsState()
+    val intradayHeartRate by healthViewModel.intradayHeartRate.collectAsState()
+    val detailedSleep by healthViewModel.detailedSleep.collectAsState()
+    val weekStartDay by healthViewModel.weekStartDay.collectAsState()
+
     var selectedMetric by rememberSaveable { mutableStateOf(HealthMetric.STEPS) }
 
     var foodName by rememberSaveable { mutableStateOf("") }
@@ -131,25 +150,32 @@ fun HealthScreen(
     var protein by rememberSaveable { mutableStateOf("") }
     val haptics = rememberHaptics()
 
+    // Health Connect data states from the new ViewModel
+    val heartRateState by dashboardViewModel.heartRateState.collectAsState()
+    val restingHeartRateState by dashboardViewModel.restingHeartRateState.collectAsState()
+    val oxygenSaturationState by dashboardViewModel.oxygenSaturationState.collectAsState()
+    val respiratoryRateState by dashboardViewModel.respiratoryRateState.collectAsState()
+    val stepsState by dashboardViewModel.stepsState.collectAsState()
+    val distanceState by dashboardViewModel.distanceState.collectAsState()
+    val floorsClimbedState by dashboardViewModel.floorsClimbedState.collectAsState()
+    val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
+
     // Health Connect permission launcher
     val hcPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { granted ->
-        viewModel.loadHealthConnect(permissionsGranted = granted.containsAll(viewModel.healthConnectPermissions))
+        healthViewModel.loadHealthConnect(permissionsGranted = granted.containsAll(healthViewModel.healthConnectPermissions))
+        dashboardViewModel.loadData() // Reload new dashboard data after permissions change
     }
 
-    // Load Health Connect on first composition
-    LaunchedEffect(Unit) {
-        viewModel.loadHealthConnect()
-    }
-
-    // Reload data every time the screen comes into view
+    // Load data on first composition and on resume
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.loadData()
-                viewModel.loadHealthConnect()
+                healthViewModel.loadData()
+                healthViewModel.loadHealthConnect()
+                dashboardViewModel.loadData()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -180,40 +206,140 @@ fun HealthScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // ── Body Stats (Health Connect) ──────────────────────────────
-        HealthConnectCard(
-            state = healthConnectState,
-            onRequestPermission = {
-                try {
-                    hcPermissionLauncher.launch(viewModel.healthConnectPermissions)
-                } catch (e: Exception) {
-                    Toast.makeText(
-                        context,
-                        "Could not open Health Connect: ${e.message}",
-                        Toast.LENGTH_LONG,
-                    ).show()
+        // ── Body Stats (Health Connect) - NEW DYNAMIC VERSION ──────────────
+        val isAnyStatEnabled = heartRateState.isEnabled || restingHeartRateState.isEnabled ||
+                oxygenSaturationState.isEnabled || respiratoryRateState.isEnabled ||
+                stepsState.isEnabled || distanceState.isEnabled ||
+                floorsClimbedState.isEnabled || activeCaloriesState.isEnabled
+
+        if (isAnyStatEnabled) {
+            MacroCard(delayMs = 0) {
+                Text(
+                    "Body Stats",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = 2
+                ) {
+                    if (heartRateState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Heart Rate",
+                            value = "${heartRateState.value} bpm",
+                            percentageChange = calculatePercentageChange(heartRateState.today, heartRateState.yesterday),
+                            icon = Icons.Outlined.FavoriteBorder,
+                            color = Color(0xFFEF5350)
+                        )
+                    }
+                    if (restingHeartRateState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Resting HR",
+                            value = "${restingHeartRateState.value} bpm",
+                            percentageChange = calculatePercentageChange(restingHeartRateState.today, restingHeartRateState.yesterday),
+                            icon = Icons.Outlined.Bedtime,
+                            color = Color(0xFFEF5350)
+                        )
+                    }
+                    if (oxygenSaturationState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "SpO2",
+                            value = "${oxygenSaturationState.value} %",
+                            percentageChange = calculatePercentageChange(oxygenSaturationState.today, oxygenSaturationState.yesterday),
+                            icon = Icons.Outlined.Bloodtype,
+                            color = Color(0xFF42A5F5)
+                        )
+                    }
+                    if (respiratoryRateState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Resp. Rate",
+                            value = "${respiratoryRateState.value} rpm",
+                            percentageChange = calculatePercentageChange(respiratoryRateState.today, respiratoryRateState.yesterday),
+                            icon = Icons.Outlined.Air,
+                            color = Color(0xFF42A5F5)
+                        )
+                    }
+                    if (stepsState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Steps",
+                            value = stepsState.value ?: "0",
+                            percentageChange = calculatePercentageChange(stepsState.today, stepsState.yesterday),
+                            icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
+                            color = Primary
+                        )
+                    }
+                    if (distanceState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Distance",
+                            value = "${distanceState.value} km",
+                            percentageChange = calculatePercentageChange(distanceState.today, distanceState.yesterday),
+                            icon = Icons.Outlined.Route,
+                            color = Primary
+                        )
+                    }
+                    if (floorsClimbedState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Floors",
+                            value = floorsClimbedState.value ?: "0",
+                            percentageChange = calculatePercentageChange(floorsClimbedState.today, floorsClimbedState.yesterday),
+                            icon = Icons.Outlined.Stairs,
+                            color = Color(0xFF66BB6A)
+                        )
+                    }
+                    if (activeCaloriesState.isEnabled) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            metricName = "Active Cals",
+                            value = activeCaloriesState.value ?: "0",
+                            percentageChange = calculatePercentageChange(activeCaloriesState.today, activeCaloriesState.yesterday),
+                            icon = Icons.Outlined.LocalFireDepartment,
+                            color = Color(0xFFFF9800)
+                        )
+                    }
                 }
-            },
-            onRetry = { viewModel.loadHealthConnect() },
-        )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+        }
 
         // Health History Card
-        if (healthConnectState is HealthConnectUiState.Success && healthHistory.isNotEmpty()) {
+        if (healthHistory.isNotEmpty()) {
             HealthHistoryCard(
                 healthHistory = healthHistory,
                 selectedDate = selectedDate,
                 selectedMetric = selectedMetric,
                 weekStartDay = weekStartDay,
                 haptics = haptics,
-                onDateSelected = { 
-                    viewModel.selectDate(it)
+                // Passing the enabled states so we can dynamically show chips
+                isStepsEnabled = stepsState.isEnabled,
+                isHeartRateEnabled = heartRateState.isEnabled,
+                isRestingHeartRateEnabled = restingHeartRateState.isEnabled,
+                isSpo2Enabled = oxygenSaturationState.isEnabled,
+                isRespRateEnabled = respiratoryRateState.isEnabled,
+                isDistanceEnabled = distanceState.isEnabled,
+                isFloorsEnabled = floorsClimbedState.isEnabled,
+                isActiveCaloriesEnabled = activeCaloriesState.isEnabled,
+                onDateSelected = {
+                    healthViewModel.selectDate(it)
                 },
-                onMetricSelected = { 
+                onMetricSelected = {
                     selectedMetric = it
                     haptics.tick()
                 },
                 onWeekStartDaySelected = {
-                    viewModel.setWeekStartDay(it)
+                    healthViewModel.setWeekStartDay(it)
                     haptics.tick()
                 }
             )
@@ -339,7 +465,7 @@ fun HealthScreen(
                     val prot = protein.toIntOrNull() ?: 0
                     if (cal > 0 || prot > 0) {
                         haptics.confirm()
-                        viewModel.addLog(foodName, cal, prot)
+                        healthViewModel.addLog(foodName, cal, prot)
                         foodName = ""
                         calories = ""
                         protein = ""
@@ -439,218 +565,101 @@ fun HealthScreen(
             )
         } else {
             logs.reversed().forEachIndexed { index, log ->
-                MacroLogItem(log = log, onDelete = { viewModel.deleteLog(it) }, index = index)
+                MacroLogItem(log = log, onDelete = { healthViewModel.deleteLog(it) }, index = index)
             }
         }
     }
 }
 
-// ── Health Connect Card ──────────────────────────────────────────────
+// ── New Stat Card Composables ──────────────────────────────────────────
 
 @Composable
-private fun HealthConnectCard(
-    state: HealthConnectUiState,
-    onRequestPermission: () -> Unit,
-    onRetry: () -> Unit,
+private fun StatCard(
+    modifier: Modifier = Modifier,
+    metricName: String,
+    value: String,
+    percentageChange: Double?,
+    icon: ImageVector,
+    color: Color,
 ) {
-    MacroCard(delayMs = 50) {
-        AnimatedContent(
-            targetState = state,
-            transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
-            label = "hcContent",
-        ) { currentState ->
-            when (currentState) {
-                is HealthConnectUiState.Loading -> {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = Primary,
-                            strokeWidth = 2.dp,
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Loading health data…", color = TextSecondary, fontSize = 14.sp)
-                    }
-                }
+    Box(
+        modifier = modifier
+            .height(90.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Background)
+            .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(10.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = metricName,
+                    tint = color,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = metricName,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
-                is HealthConnectUiState.Success -> {
-                    val stats = currentState.stats
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "Body Stats",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                            )
-                            IconButton(onClick = onRetry, modifier = Modifier.size(32.dp)) {
-                                Icon(
-                                    Icons.Outlined.Refresh,
-                                    contentDescription = "Refresh",
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-
-                        Text(
-                            "via Health Connect",
-                            fontSize = 12.sp,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(bottom = 14.dp),
-                        )
-
-                        // 2×2 grid of stat tiles
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            HealthStatTile(
-                                icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
-                                value = "%,d".format(stats.steps),
-                                label = "Steps",
-                                iconTint = Primary,
-                                modifier = Modifier.weight(1f),
-                            )
-                            HealthStatTile(
-                                icon = Icons.Outlined.MonitorHeart,
-                                value = if (stats.avgHeartRate > 0) "${stats.avgHeartRate} bpm" else "—",
-                                label = "Avg Heart Rate",
-                                iconTint = Color(0xFFEF5350),
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            val sleepDisplay = if (stats.sleepMinutes > 0) {
-                                val h = stats.sleepMinutes / 60
-                                val m = stats.sleepMinutes % 60
-                                "${h}h ${m}m"
-                            } else "—"
-
-                            HealthStatTile(
-                                icon = Icons.Outlined.Bedtime,
-                                value = sleepDisplay,
-                                label = "Sleep",
-                                iconTint = Color(0xFF7C4DFF),
-                                modifier = Modifier.weight(1f),
-                            )
-                            HealthStatTile(
-                                icon = Icons.Outlined.LocalFireDepartment,
-                                value = if (stats.totalCaloriesBurned > 0) {
-                                    "${stats.totalCaloriesBurned.toInt()} kcal"
-                                } else "—",
-                                label = "Total Calories",
-                                iconTint = Color(0xFFFF9800),
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-
-                is HealthConnectUiState.PermissionRequired -> {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "Body Stats",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                        )
-                        Text(
-                            "Connect to Health Connect to see your steps, heart rate, sleep & calories.",
-                            fontSize = 13.sp,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                            lineHeight = 18.sp,
-                        )
-                        MacroButton(
-                            text = "🔗 Connect Health Data",
-                            onClick = onRequestPermission,
-                            variant = ButtonVariant.PRIMARY,
-                        )
-                    }
-                }
-
-                is HealthConnectUiState.NotAvailable -> {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Outlined.SyncDisabled,
-                            contentDescription = null,
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                "Body Stats",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                            )
-                            Text(
-                                "Health Connect is not available on this device.\nInstall it from the Play Store.",
-                                fontSize = 12.sp,
-                                color = TextSecondary,
-                                lineHeight = 16.sp,
-                            )
-                        }
-                    }
-                }
-
-                is HealthConnectUiState.Error -> {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Body Stats",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                            )
-                            Text(
-                                currentState.message,
-                                fontSize = 12.sp,
-                                color = TextSecondary,
-                            )
-                        }
-                        MacroButton(
-                            text = "Retry",
-                            onClick = onRetry,
-                            variant = ButtonVariant.SECONDARY,
-                        )
-                    }
+            Column {
+                Text(
+                    text = value,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (percentageChange != null) {
+                    PercentageChange(percentageChange)
                 }
             }
         }
     }
 }
+
+@Composable
+private fun PercentageChange(percentage: Double) {
+    val isPositive = percentage >= 0
+    val color = if (isPositive) Success else Error
+    val icon = if (isPositive) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward
+    val formatter = DecimalFormat("0.0'%'")
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = if (isPositive) "Increase" else "Decrease",
+            tint = color,
+            modifier = Modifier.size(12.dp)
+        )
+        Spacer(modifier = Modifier.width(2.dp))
+        Text(
+            text = formatter.format(abs(percentage)),
+            fontSize = 11.sp,
+            color = color,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible
+        )
+    }
+}
+
 
 // ── Health History Graph ──────────────────────────────────────────────
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HealthHistoryCard(
     healthHistory: List<DailyHealthStats>,
@@ -658,6 +667,14 @@ private fun HealthHistoryCard(
     selectedMetric: HealthMetric,
     weekStartDay: DayOfWeek,
     haptics: HapticHelper,
+    isStepsEnabled: Boolean,
+    isHeartRateEnabled: Boolean,
+    isRestingHeartRateEnabled: Boolean,
+    isSpo2Enabled: Boolean,
+    isRespRateEnabled: Boolean,
+    isDistanceEnabled: Boolean,
+    isFloorsEnabled: Boolean,
+    isActiveCaloriesEnabled: Boolean,
     onDateSelected: (LocalDate) -> Unit,
     onMetricSelected: (HealthMetric) -> Unit,
     onWeekStartDaySelected: (DayOfWeek) -> Unit
@@ -675,7 +692,7 @@ private fun HealthHistoryCard(
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
                 )
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Starts:",
@@ -707,35 +724,75 @@ private fun HealthHistoryCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Metric Selector
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MetricFilterChip(
-                    text = "Steps",
-                    selected = selectedMetric == HealthMetric.STEPS,
-                    onClick = { onMetricSelected(HealthMetric.STEPS) },
-                    modifier = Modifier.weight(1f)
-                )
-                MetricFilterChip(
-                    text = "HR",
-                    selected = selectedMetric == HealthMetric.HEART_RATE,
-                    onClick = { onMetricSelected(HealthMetric.HEART_RATE) },
-                    modifier = Modifier.weight(1f)
-                )
+                if (isStepsEnabled) {
+                    MetricFilterChip(
+                        text = "Steps",
+                        selected = selectedMetric == HealthMetric.STEPS,
+                        onClick = { onMetricSelected(HealthMetric.STEPS) }
+                    )
+                }
+                if (isHeartRateEnabled) {
+                    MetricFilterChip(
+                        text = "HR",
+                        selected = selectedMetric == HealthMetric.HEART_RATE,
+                        onClick = { onMetricSelected(HealthMetric.HEART_RATE) }
+                    )
+                }
+                // Always show Sleep
                 MetricFilterChip(
                     text = "Sleep",
                     selected = selectedMetric == HealthMetric.SLEEP,
-                    onClick = { onMetricSelected(HealthMetric.SLEEP) },
-                    modifier = Modifier.weight(1f)
+                    onClick = { onMetricSelected(HealthMetric.SLEEP) }
                 )
-                MetricFilterChip(
-                    text = "Cals",
-                    selected = selectedMetric == HealthMetric.CALORIES,
-                    onClick = { onMetricSelected(HealthMetric.CALORIES) },
-                    modifier = Modifier.weight(1f)
-                )
+                if (isActiveCaloriesEnabled) {
+                    MetricFilterChip(
+                        text = "Cals",
+                        selected = selectedMetric == HealthMetric.CALORIES,
+                        onClick = { onMetricSelected(HealthMetric.CALORIES) }
+                    )
+                }
+                if (isRestingHeartRateEnabled) {
+                    MetricFilterChip(
+                        text = "Resting HR",
+                        selected = selectedMetric == HealthMetric.RESTING_HEART_RATE,
+                        onClick = { onMetricSelected(HealthMetric.RESTING_HEART_RATE) }
+                    )
+                }
+                if (isSpo2Enabled) {
+                    MetricFilterChip(
+                        text = "SpO2",
+                        selected = selectedMetric == HealthMetric.OXYGEN_SATURATION,
+                        onClick = { onMetricSelected(HealthMetric.OXYGEN_SATURATION) }
+                    )
+                }
+                if (isRespRateEnabled) {
+                    MetricFilterChip(
+                        text = "Resp. Rate",
+                        selected = selectedMetric == HealthMetric.RESPIRATORY_RATE,
+                        onClick = { onMetricSelected(HealthMetric.RESPIRATORY_RATE) }
+                    )
+                }
+                if (isDistanceEnabled) {
+                    MetricFilterChip(
+                        text = "Distance",
+                        selected = selectedMetric == HealthMetric.DISTANCE,
+                        onClick = { onMetricSelected(HealthMetric.DISTANCE) }
+                    )
+                }
+                if (isFloorsEnabled) {
+                    MetricFilterChip(
+                        text = "Floors",
+                        selected = selectedMetric == HealthMetric.FLOORS_CLIMBED,
+                        onClick = { onMetricSelected(HealthMetric.FLOORS_CLIMBED) }
+                    )
+                }
             }
+
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -744,6 +801,11 @@ private fun HealthHistoryCard(
                 HealthMetric.HEART_RATE -> Color(0xFFEF5350)
                 HealthMetric.SLEEP -> Color(0xFF7C4DFF)
                 HealthMetric.CALORIES -> Color(0xFFFF9800)
+                HealthMetric.RESTING_HEART_RATE -> Color(0xFFEF5350)
+                HealthMetric.OXYGEN_SATURATION -> Color(0xFF42A5F5)
+                HealthMetric.RESPIRATORY_RATE -> Color(0xFF42A5F5)
+                HealthMetric.DISTANCE -> Primary
+                HealthMetric.FLOORS_CLIMBED -> Color(0xFF66BB6A)
             }
 
             // Calculate Weekly Averages/Totals for enrichment
@@ -753,9 +815,14 @@ private fun HealthHistoryCard(
                     HealthMetric.HEART_RATE -> it.stats.avgHeartRate > 0
                     HealthMetric.SLEEP -> it.stats.sleepMinutes > 0
                     HealthMetric.CALORIES -> it.stats.totalCaloriesBurned > 0
+                    HealthMetric.RESTING_HEART_RATE -> it.stats.restingHeartRate > 0
+                    HealthMetric.OXYGEN_SATURATION -> it.stats.oxygenSaturation > 0
+                    HealthMetric.RESPIRATORY_RATE -> it.stats.respiratoryRate > 0
+                    HealthMetric.DISTANCE -> it.stats.distance > 0
+                    HealthMetric.FLOORS_CLIMBED -> it.stats.floorsClimbed > 0
                 }
             }
-            
+
             val avgValue = if (validStats.isNotEmpty()) {
                 validStats.sumOf {
                     when (selectedMetric) {
@@ -763,6 +830,11 @@ private fun HealthHistoryCard(
                         HealthMetric.HEART_RATE -> it.stats.avgHeartRate.toDouble()
                         HealthMetric.SLEEP -> (it.stats.sleepMinutes / 60.0)
                         HealthMetric.CALORIES -> it.stats.totalCaloriesBurned
+                        HealthMetric.RESTING_HEART_RATE -> it.stats.restingHeartRate.toDouble()
+                        HealthMetric.OXYGEN_SATURATION -> it.stats.oxygenSaturation
+                        HealthMetric.RESPIRATORY_RATE -> it.stats.respiratoryRate.toDouble()
+                        HealthMetric.DISTANCE -> it.stats.distance
+                        HealthMetric.FLOORS_CLIMBED -> it.stats.floorsClimbed
                     }
                 } / validStats.size
             } else 0.0
@@ -776,12 +848,19 @@ private fun HealthHistoryCard(
                     "Avg: ${h}h ${m}m"
                 }
                 HealthMetric.CALORIES -> "Avg: ${String.format(Locale.US, "%,d", avgValue.toInt())} kcal"
+                HealthMetric.RESTING_HEART_RATE -> "Avg: ${avgValue.toInt()} bpm"
+                HealthMetric.OXYGEN_SATURATION -> "Avg: ${String.format(Locale.US, "%.1f", avgValue)}%"
+                HealthMetric.RESPIRATORY_RATE -> "Avg: ${avgValue.toInt()} rpm"
+                HealthMetric.DISTANCE -> "Avg: ${String.format(Locale.US, "%.2f", avgValue)} km"
+                HealthMetric.FLOORS_CLIMBED -> "Avg: ${String.format(Locale.US, "%.1f", avgValue)} floors"
             }
 
             // Display Summary Text Above Graph
             if (avgValue > 0) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -808,10 +887,19 @@ private fun HealthHistoryCard(
                     HealthMetric.HEART_RATE -> it.stats.avgHeartRate.toDouble()
                     HealthMetric.SLEEP -> (it.stats.sleepMinutes / 60.0) // hours
                     HealthMetric.CALORIES -> it.stats.totalCaloriesBurned
+                    HealthMetric.RESTING_HEART_RATE -> it.stats.restingHeartRate.toDouble()
+                    HealthMetric.OXYGEN_SATURATION -> it.stats.oxygenSaturation
+                    HealthMetric.RESPIRATORY_RATE -> it.stats.respiratoryRate.toDouble()
+                    HealthMetric.DISTANCE -> it.stats.distance
+                    HealthMetric.FLOORS_CLIMBED -> it.stats.floorsClimbed
                 }
             }.coerceAtLeast(1.0)
 
-            Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.BottomStart) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp), contentAlignment = Alignment.BottomStart
+            ) {
                 // Background Average Line Indicator
                 if (avgValue > 0 && maxValue > 0) {
                     val heightFraction = (avgValue / maxValue).toFloat()
@@ -838,10 +926,12 @@ private fun HealthHistoryCard(
                             var lastIndex = -1
                             detectDragGestures(
                                 onDragStart = { _ -> },
-                                onDrag = { change, _ -> 
+                                onDrag = { change, _ ->
                                     if (healthHistory.isNotEmpty()) {
                                         val widthPerItem = size.width / healthHistory.size.toFloat()
-                                        val index = (change.position.x / widthPerItem).toInt().coerceIn(0, healthHistory.size - 1)
+                                        val index = (change.position.x / widthPerItem)
+                                            .toInt()
+                                            .coerceIn(0, healthHistory.size - 1)
                                         if (index != lastIndex) {
                                             haptics.tick()
                                             onDateSelected(healthHistory[index].date)
@@ -853,10 +943,12 @@ private fun HealthHistoryCard(
                         }
                         .pointerInput(healthHistory) {
                             detectTapGestures(
-                                onPress = { touch -> 
+                                onPress = { touch ->
                                     if (healthHistory.isNotEmpty()) {
                                         val widthPerItem = size.width / healthHistory.size.toFloat()
-                                        val index = (touch.x / widthPerItem).toInt().coerceIn(0, healthHistory.size - 1)
+                                        val index = (touch.x / widthPerItem)
+                                            .toInt()
+                                            .coerceIn(0, healthHistory.size - 1)
                                         haptics.tick()
                                         onDateSelected(healthHistory[index].date)
                                     }
@@ -872,13 +964,20 @@ private fun HealthHistoryCard(
                             HealthMetric.HEART_RATE -> day.stats.avgHeartRate.toDouble()
                             HealthMetric.SLEEP -> (day.stats.sleepMinutes / 60.0)
                             HealthMetric.CALORIES -> day.stats.totalCaloriesBurned
+                            HealthMetric.RESTING_HEART_RATE -> day.stats.restingHeartRate.toDouble()
+                            HealthMetric.OXYGEN_SATURATION -> day.stats.oxygenSaturation
+                            HealthMetric.RESPIRATORY_RATE -> day.stats.respiratoryRate.toDouble()
+                            HealthMetric.DISTANCE -> day.stats.distance
+                            HealthMetric.FLOORS_CLIMBED -> day.stats.floorsClimbed
                         }
                         val heightFraction = (value / maxValue).toFloat()
                         val targetHeight = (10 + heightFraction * 120).dp // Adjusted to scale better with 180dp row
                         val isSelected = day.date == selectedDate
                         val dayLabel = try {
                             day.date.dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
-                        } catch (_: Exception) { "?" }
+                        } catch (_: Exception) {
+                            "?"
+                        }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -889,12 +988,25 @@ private fun HealthHistoryCard(
                         ) {
                             // Display value on top of bar, prominently if selected
                             val displayValue = when (selectedMetric) {
-                                HealthMetric.STEPS -> if (value >= 1000) String.format(Locale.US, "%.1fk", value/1000.0) else value.toInt().toString()
-                                HealthMetric.HEART_RATE -> value.toInt().toString()
+                                HealthMetric.STEPS -> if (value >= 1000) String.format(Locale.US, "%.1fk", value / 1000.0) else value
+                                    .toInt()
+                                    .toString()
+                                HealthMetric.HEART_RATE -> value
+                                    .toInt()
+                                    .toString()
                                 HealthMetric.SLEEP -> String.format(Locale.US, "%.1fh", value)
-                                HealthMetric.CALORIES -> value.toInt().toString()
+                                HealthMetric.CALORIES -> value
+                                    .toInt()
+                                    .toString()
+                                HealthMetric.RESTING_HEART_RATE -> value
+                                    .toInt()
+                                    .toString()
+                                HealthMetric.OXYGEN_SATURATION -> String.format(Locale.US, "%.1f", value)
+                                HealthMetric.RESPIRATORY_RATE -> value.toInt().toString()
+                                HealthMetric.DISTANCE -> String.format(Locale.US, "%.2f", value)
+                                HealthMetric.FLOORS_CLIMBED -> String.format(Locale.US, "%.1f", value)
                             }
-                            
+
                             if (value > 0 || isSelected) {
                                 Text(
                                     text = if (value > 0) displayValue else "—",
@@ -957,18 +1069,20 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                     .pointerInput(samples) {
                         var lastClosestIndex = -1
                         val width = size.width.toFloat()
-                        
+
                         detectDragGestures(
                             onDragStart = { touchX = it.x },
-                            onDrag = { change, _ -> 
-                                touchX = change.position.x 
-                                val closestIndex = samples.withIndex().minByOrNull {
-                                    val zdt = it.value.time.atZone(java.time.ZoneId.systemDefault())
-                                    val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
-                                    val px = (hourFraction / 24f) * width
-                                    kotlin.math.abs(px - change.position.x)
-                                }?.index ?: -1
-                                
+                            onDrag = { change, _ ->
+                                touchX = change.position.x
+                                val closestIndex = samples
+                                    .withIndex()
+                                    .minByOrNull {
+                                        val zdt = it.value.time.atZone(java.time.ZoneId.systemDefault())
+                                        val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
+                                        val px = (hourFraction / 24f) * width
+                                        kotlin.math.abs(px - change.position.x)
+                                    }?.index ?: -1
+
                                 if (closestIndex != -1 && closestIndex != lastClosestIndex) {
                                     haptics.tick()
                                     lastClosestIndex = closestIndex
@@ -980,8 +1094,8 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                     }
                     .pointerInput(samples) {
                         detectTapGestures(
-                            onPress = { 
-                                touchX = it.x 
+                            onPress = {
+                                touchX = it.x
                                 haptics.tick()
                                 tryAwaitRelease()
                                 touchX = null
@@ -1007,7 +1121,7 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                         val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
                         val x = (hourFraction / 24f) * width
                         val y = topMargin + graphHeight - ((sample.beatsPerMinute - minHr) / hrRange) * graphHeight
-                        
+
                         val point = Offset(x, y)
                         points.add(point to sample)
 
@@ -1019,8 +1133,8 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                         path = path,
                         color = Color(0xFFEF5350),
                         style = androidx.compose.ui.graphics.drawscope.Stroke(
-                            width = 2.dp.toPx(), 
-                            cap = androidx.compose.ui.graphics.StrokeCap.Round, 
+                            width = 2.dp.toPx(),
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
                             join = androidx.compose.ui.graphics.StrokeJoin.Round
                         )
                     )
@@ -1091,7 +1205,7 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                         }
                     }
                 }
-                
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1126,11 +1240,13 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                 val stages = sessions.flatMap { it.stages }.sortedBy { it.startTime }
                 var touchX by remember { mutableStateOf<Float?>(null) }
                 val textMeasurer = rememberTextMeasurer()
-                
+
                 // Detailed Hypnogram for Sleep Stages
-                Row(modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                ) {
                     // Y-axis labels
                     Column(
                         modifier = Modifier
@@ -1138,10 +1254,22 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Awake", fontSize = 10.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            "Awake",
+                            fontSize = 10.sp,
+                            color = Color(0xFFFF9800),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                         Text("REM", fontSize = 10.sp, color = Color(0xFF03A9F4), fontWeight = FontWeight.Bold)
                         Text("Light", fontSize = 10.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
-                        Text("Deep", fontSize = 10.sp, color = Color(0xFF3F51B5), fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                        Text(
+                            "Deep",
+                            fontSize = 10.sp,
+                            color = Color(0xFF3F51B5),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1151,17 +1279,19 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                     val timeRange = maxTime - minTime
 
                     // Hypnogram Canvas
-                    Box(modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
                         Canvas(modifier = Modifier
                             .fillMaxSize()
                             .pointerInput(stages) {
                                 var lastStage: SleepSessionRecord.Stage? = null
                                 detectDragGestures(
                                     onDragStart = { touchX = it.x },
-                                    onDrag = { change, _ -> 
-                                        touchX = change.position.x 
+                                    onDrag = { change, _ ->
+                                        touchX = change.position.x
                                         if (timeRange > 0) {
                                             val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
                                             val touchTime = minTime + (fraction * timeRange).toLong()
@@ -1178,8 +1308,8 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                             }
                             .pointerInput(stages) {
                                 detectTapGestures(
-                                    onPress = { 
-                                        touchX = it.x 
+                                    onPress = {
+                                        touchX = it.x
                                         haptics.tick()
                                         tryAwaitRelease()
                                         touchX = null
@@ -1200,10 +1330,30 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
 
                             // Background dotted grid lines for readability
                             val pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, awakeY), androidx.compose.ui.geometry.Offset(width, awakeY), pathEffect = pathEffect)
-                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, remY), androidx.compose.ui.geometry.Offset(width, remY), pathEffect = pathEffect)
-                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, lightY), androidx.compose.ui.geometry.Offset(width, lightY), pathEffect = pathEffect)
-                            drawLine(Color.Gray.copy(alpha = 0.2f), androidx.compose.ui.geometry.Offset(0f, deepY), androidx.compose.ui.geometry.Offset(width, deepY), pathEffect = pathEffect)
+                            drawLine(
+                                Color.Gray.copy(alpha = 0.2f),
+                                androidx.compose.ui.geometry.Offset(0f, awakeY),
+                                androidx.compose.ui.geometry.Offset(width, awakeY),
+                                pathEffect = pathEffect
+                            )
+                            drawLine(
+                                Color.Gray.copy(alpha = 0.2f),
+                                androidx.compose.ui.geometry.Offset(0f, remY),
+                                androidx.compose.ui.geometry.Offset(width, remY),
+                                pathEffect = pathEffect
+                            )
+                            drawLine(
+                                Color.Gray.copy(alpha = 0.2f),
+                                androidx.compose.ui.geometry.Offset(0f, lightY),
+                                androidx.compose.ui.geometry.Offset(width, lightY),
+                                pathEffect = pathEffect
+                            )
+                            drawLine(
+                                Color.Gray.copy(alpha = 0.2f),
+                                androidx.compose.ui.geometry.Offset(0f, deepY),
+                                androidx.compose.ui.geometry.Offset(width, deepY),
+                                pathEffect = pathEffect
+                            )
 
                             if (timeRange > 0) {
                                 stages.forEachIndexed { index, stage ->
@@ -1251,9 +1401,9 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                                     val fraction = (touchX!! / width).coerceIn(0f, 1f)
                                     val touchTime = minTime + (fraction * timeRange).toLong()
                                     val activeStage = stages.find { touchTime in it.startTime.toEpochMilli()..it.endTime.toEpochMilli() }
-                                    
+
                                     if (activeStage != null) {
-                                        val stageName = when(activeStage.stage) {
+                                        val stageName = when (activeStage.stage) {
                                             SleepSessionRecord.STAGE_TYPE_AWAKE -> "Awake"
                                             SleepSessionRecord.STAGE_TYPE_REM -> "REM"
                                             SleepSessionRecord.STAGE_TYPE_LIGHT -> "Light"
@@ -1284,8 +1434,14 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                                         )
 
                                         val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
-                                        val startStr = Instant.ofEpochMilli(activeStage.startTime.toEpochMilli()).atZone(ZoneId.systemDefault()).format(timeFmt)
-                                        val endStr = Instant.ofEpochMilli(activeStage.endTime.toEpochMilli()).atZone(ZoneId.systemDefault()).format(timeFmt)
+                                        val startStr = Instant
+                                            .ofEpochMilli(activeStage.startTime.toEpochMilli())
+                                            .atZone(ZoneId.systemDefault())
+                                            .format(timeFmt)
+                                        val endStr = Instant
+                                            .ofEpochMilli(activeStage.endTime.toEpochMilli())
+                                            .atZone(ZoneId.systemDefault())
+                                            .format(timeFmt)
                                         val durationMins = Duration.between(activeStage.startTime, activeStage.endTime).toMinutes()
 
                                         val text = "$stageName: ${durationMins}m\n$startStr - $endStr"
@@ -1335,20 +1491,32 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                             .padding(start = 58.dp, top = 8.dp), // Pushed to right past the 50dp Y-Axis labels
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        val startZdt = java.time.Instant.ofEpochMilli(minTime).atZone(java.time.ZoneId.systemDefault())
-                        val endZdt = java.time.Instant.ofEpochMilli(maxTime).atZone(java.time.ZoneId.systemDefault())
+                        val startZdt = java.time.Instant
+                            .ofEpochMilli(minTime)
+                            .atZone(java.time.ZoneId.systemDefault())
+                        val endZdt = java.time.Instant
+                            .ofEpochMilli(maxTime)
+                            .atZone(java.time.ZoneId.systemDefault())
                         val fmt = DateTimeFormatter.ofPattern("h:mm a")
                         Text(startZdt.format(fmt), fontSize = 10.sp, color = TextSecondary)
                         Text(endZdt.format(fmt), fontSize = 10.sp, color = TextSecondary)
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
 
-                val deepTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_DEEP }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
-                val lightTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_LIGHT }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
-                val remTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_REM }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
-                val awakeTime = stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE }.sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val deepTime = stages
+                    .filter { it.stage == SleepSessionRecord.STAGE_TYPE_DEEP }
+                    .sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val lightTime = stages
+                    .filter { it.stage == SleepSessionRecord.STAGE_TYPE_LIGHT }
+                    .sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val remTime = stages
+                    .filter { it.stage == SleepSessionRecord.STAGE_TYPE_REM }
+                    .sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
+                val awakeTime = stages
+                    .filter { it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE }
+                    .sumOf { java.time.Duration.between(it.startTime, it.endTime).toMinutes() }
 
                 SleepStageRow("Awake", awakeTime, Color(0xFFFF9800))
                 SleepStageRow("REM", remTime, Color(0xFF03A9F4))
@@ -1370,10 +1538,12 @@ private fun SleepStageRow(label: String, minutes: Long, color: Color) {
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier
-            .size(12.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(color))
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(color)
+        )
         Spacer(modifier = Modifier.width(8.dp))
         Text(label, color = TextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
         Text(if (h > 0) "${h}h ${m}m" else "${m}m", color = TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -1392,7 +1562,7 @@ private fun MetricFilterChip(
             .clip(RoundedCornerShape(16.dp))
             .background(if (selected) Primary else Background)
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -1401,42 +1571,6 @@ private fun MetricFilterChip(
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = if (selected) Color.White else TextPrimary,
             textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun HealthStatTile(
-    icon: ImageVector,
-    value: String,
-    label: String,
-    iconTint: Color,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .background(Background, RoundedCornerShape(12.dp))
-            .padding(14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = iconTint,
-            modifier = Modifier.size(26.dp),
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            value,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            label,
-            fontSize = 11.sp,
-            color = TextSecondary,
         )
     }
 }

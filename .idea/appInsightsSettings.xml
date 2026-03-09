@@ -9,10 +9,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.macrotracker" />
-                  <option name="mobileSdkAppId" value="1:1051384925550:android:8dfe6dada1c20ee6a7c57f" />
-                  <option name="projectId" value="dailydash-e1507" />
-                  <option name="projectNumber" value="1051384925550" />
+                  <option name="appId" value="PLACEHOLDER" />
+                  <option name="mobileSdkAppId" value="" />
+                  <option name="projectId" value="" />
+                  <option name="projectNumber" value="" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

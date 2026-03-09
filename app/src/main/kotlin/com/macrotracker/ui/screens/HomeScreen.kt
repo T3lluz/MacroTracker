@@ -44,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -55,12 +54,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.macrotracker.ui.components.BodyStats
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.CalendarCard
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
+import com.macrotracker.ui.components.MetricInfo
 import com.macrotracker.ui.components.WeatherCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
@@ -70,23 +71,11 @@ import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.ui.components.HealthMetricUiState
 import com.macrotracker.ui.viewmodel.HomeHealthState
 import com.macrotracker.ui.viewmodel.HomeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-
-private val dashboardTips = listOf(
-    "💡 Aim for 25-30g of protein per meal for optimal absorption.",
-    "💧 Don't forget hydration — aim for at least 8 glasses of water today.",
-    "🥦 Try to get 5 portions of fruits and vegetables each day.",
-    "🏃 Even a 15-minute walk after meals helps with digestion.",
-    "😴 Good sleep is essential — aim for 7-9 hours tonight.",
-    "🎯 Consistency beats perfection. Small steps add up!",
-    "🥚 Protein-rich breakfasts help control hunger throughout the day.",
-    "📊 Track regularly — awareness is the first step to change.",
-    "🍎 Whole foods over processed — your body will thank you.",
-    "⏰ Try eating at regular times to support your metabolism.",
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -219,7 +208,7 @@ fun HomeScreen(
             val hs = healthState
             if (hs is HomeHealthState.Success) {
                 val stats = hs.stats
-                MacroCard(delayMs = 75) {
+                MacroCard(delayMs = 50) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -245,50 +234,46 @@ fun HomeScreen(
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        HomeStatTile(
-                            icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
-                            value = "%,d".format(stats.steps),
-                            label = "Steps",
-                            iconTint = Primary,
-                            modifier = Modifier.weight(1f),
+                    val sleepDisplay = if (stats.sleepMinutes > 0) {
+                        val h = stats.sleepMinutes / 60
+                        val m = stats.sleepMinutes % 60
+                        "${h}h ${m}m"
+                    } else "—"
+
+                    val homeMetrics = listOf(
+                        Pair(
+                            MetricInfo("Steps", "", Icons.AutoMirrored.Outlined.DirectionsWalk, Primary),
+                            HealthMetricUiState(value = "%,d".format(stats.steps), isEnabled = true)
+                        ),
+                        Pair(
+                            MetricInfo("Avg HR", "bpm", Icons.Outlined.MonitorHeart, Color(0xFFEF5350)),
+                            HealthMetricUiState(
+                                value = if (stats.avgHeartRate > 0) "${stats.avgHeartRate}" else "—",
+                                isEnabled = true
+                            )
+                        ),
+                        Pair(
+                            MetricInfo("Sleep", "", Icons.Outlined.Bedtime, Color(0xFF7C4DFF)),
+                            HealthMetricUiState(value = sleepDisplay, isEnabled = true)
+                        ),
+                        Pair(
+                            MetricInfo("Total Cal", "kcal", Icons.Outlined.LocalFireDepartment, Color(0xFFFF9800)),
+                            HealthMetricUiState(
+                                value = if (stats.totalCaloriesBurned > 0) "${stats.totalCaloriesBurned.toInt()}" else "—",
+                                isEnabled = true
+                            )
                         )
-                        HomeStatTile(
-                            icon = Icons.Outlined.MonitorHeart,
-                            value = if (stats.avgHeartRate > 0) "${stats.avgHeartRate}" else "—",
-                            label = "Avg HR",
-                            iconTint = Color(0xFFEF5350),
-                            modifier = Modifier.weight(1f),
-                        )
-                        val sleepDisplay = if (stats.sleepMinutes > 0) {
-                            val h = stats.sleepMinutes / 60
-                            val m = stats.sleepMinutes % 60
-                            "${h}h ${m}m"
-                        } else "—"
-                        HomeStatTile(
-                            icon = Icons.Outlined.Bedtime,
-                            value = sleepDisplay,
-                            label = "Sleep",
-                            iconTint = Color(0xFF7C4DFF),
-                            modifier = Modifier.weight(1f),
-                        )
-                        HomeStatTile(
-                            icon = Icons.Outlined.LocalFireDepartment,
-                            value = if (stats.totalCaloriesBurned > 0) {
-                                "${stats.totalCaloriesBurned.toInt()}"
-                            } else "—",
-                            label = "Total Cal",
-                            iconTint = Color(0xFFFF9800),
-                            modifier = Modifier.weight(1f),
-                        )
+                    )
+                    // The BodyStats composable internally pads and backgrounds the items
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                         BodyStats(metrics = homeMetrics, isCompact = true)
                     }
                 }
             } else if (hs is HomeHealthState.Loading) {
                 MacroCard(delayMs = 75) {
-                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Primary)
                     }
                 }
@@ -298,13 +283,22 @@ fun HomeScreen(
             val s = summary
             if (s != null) {
                 MacroCard(delayMs = 100) {
-                    Text(
-                        "Today's Progress",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Today's Progress",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                        IconButton(onClick = onNavigateToStats, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Outlined.FitnessCenter, contentDescription = "Stats", tint = Secondary)
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -507,41 +501,5 @@ fun HomeScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun HomeStatTile(
-    icon: ImageVector,
-    value: String,
-    label: String,
-    iconTint: Color,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .background(Background, RoundedCornerShape(10.dp))
-            .padding(10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = iconTint,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            value,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            label,
-            fontSize = 10.sp,
-            color = TextSecondary,
-        )
     }
 }

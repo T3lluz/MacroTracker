@@ -48,6 +48,16 @@ class SettingsViewModel @Inject constructor(
     private val _selectedCalendarIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedCalendarIds: StateFlow<Set<Long>> = _selectedCalendarIds
 
+    // Health Connect Metrics from SettingsRepository
+    val heartRateEnabled: StateFlow<Boolean> = settings.heartRateEnabled
+    val restingHeartRateEnabled: StateFlow<Boolean> = settings.restingHeartRateEnabled
+    val oxygenSaturationEnabled: StateFlow<Boolean> = settings.oxygenSaturationEnabled
+    val respiratoryRateEnabled: StateFlow<Boolean> = settings.respiratoryRateEnabled
+    val stepsEnabled: StateFlow<Boolean> = settings.stepsEnabled
+    val distanceEnabled: StateFlow<Boolean> = settings.distanceEnabled
+    val floorsClimbedEnabled: StateFlow<Boolean> = settings.floorsClimbedEnabled
+    val activeCaloriesEnabled: StateFlow<Boolean> = settings.activeCaloriesEnabled
+
     init {
         _selectedCalendarIds.value = getSelectedCalendarIds()
     }
@@ -64,6 +74,11 @@ class SettingsViewModel @Inject constructor(
         prefs.edit()
             .putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet())
             .apply()
+    }
+
+    fun setMetricEnabled(metric: String, enabled: Boolean) {
+        settings.setMetricEnabled(metric, enabled)
+        refreshConnectionStatus()
     }
 
     fun toggleCalendar(id: Long) {
@@ -85,8 +100,18 @@ class SettingsViewModel @Inject constructor(
     fun refreshConnectionStatus() {
         viewModelScope.launch {
             // Check Health Connect
+            val permissions = mutableSetOf<String>()
+            if (heartRateEnabled.value) permissions.add("android.permission.health.READ_HEART_RATE")
+            if (restingHeartRateEnabled.value) permissions.add("android.permission.health.READ_RESTING_HEART_RATE")
+            if (oxygenSaturationEnabled.value) permissions.add("android.permission.health.READ_OXYGEN_SATURATION")
+            if (respiratoryRateEnabled.value) permissions.add("android.permission.health.READ_RESPIRATORY_RATE")
+            if (stepsEnabled.value) permissions.add("android.permission.health.READ_STEPS")
+            if (distanceEnabled.value) permissions.add("android.permission.health.READ_DISTANCE")
+            if (floorsClimbedEnabled.value) permissions.add("android.permission.health.READ_FLOORS_CLIMBED")
+            if (activeCaloriesEnabled.value) permissions.add("android.permission.health.READ_ACTIVE_CALORIES_BURNED")
+
             _healthConnectConnected.value = healthConnectRepository.isAvailable() &&
-                healthConnectRepository.hasAllPermissions()
+                healthConnectRepository.hasPermissions(permissions)
 
             // Check weather (location permission granted)
             _weatherConnected.value = ContextCompat.checkSelfPermission(

@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 val Background = Color(0xFF080D18)
 val Surface = Color(0xFF111827)
 val Primary = Color(0xFF4F7CFF)
+val SaturatedBlue = Color(0xFF0047FF)
 val PrimaryVariant = Color(0xFF3D67DB)
 val Secondary = Color(0xFF22C55E)
 val Error = Color(0xFFEF4444)
@@ -16,4 +17,3 @@ val Success = Color(0xFF22C55E)
 
 // Semantic alias for screen-level headers — keeps every screen in sync
 val HeaderColor = TextPrimary
-

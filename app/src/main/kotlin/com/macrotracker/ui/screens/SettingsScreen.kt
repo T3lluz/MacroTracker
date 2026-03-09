@@ -22,14 +22,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.outlined.Air
+import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.LocalFireDepartment
+import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Stairs
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -151,6 +160,90 @@ fun SettingsScreen(
                 iconTint = Color(0xFFEF5350),
             )
 
+            if (healthConnectAvailable) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Health Connect Metrics",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                MetricToggleRow(
+                    icon = Icons.Outlined.FavoriteBorder,
+                    name = "Heart Rate",
+                    enabled = viewModel.heartRateEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("heart_rate_enabled", it)
+                    }
+                )
+                MetricToggleRow(
+                    icon = Icons.Outlined.Bedtime,
+                    name = "Resting Heart Rate",
+                    enabled = viewModel.restingHeartRateEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("resting_heart_rate_enabled", it)
+                    }
+                )
+
+                MetricToggleRow(
+                    icon = Icons.Outlined.Bloodtype,
+                    name = "Oxygen Saturation",
+                    enabled = viewModel.oxygenSaturationEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("oxygen_saturation_enabled", it)
+                    }
+                )
+                MetricToggleRow(
+                    icon = Icons.Outlined.Air,
+                    name = "Respiratory Rate",
+                    enabled = viewModel.respiratoryRateEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("respiratory_rate_enabled", it)
+                    }
+                )
+                MetricToggleRow(
+                    icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
+                    name = "Steps",
+                    enabled = viewModel.stepsEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("steps_enabled", it)
+                    }
+                )
+                MetricToggleRow(
+                    icon = Icons.Outlined.Route,
+                    name = "Distance",
+                    enabled = viewModel.distanceEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("distance_enabled", it)
+                    }
+                )
+                MetricToggleRow(
+                    icon = Icons.Outlined.Stairs,
+                    name = "Floors Climbed",
+                    enabled = viewModel.floorsClimbedEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("floors_climbed_enabled", it)
+                    }
+                )
+                MetricToggleRow(
+                    icon = Icons.Outlined.LocalFireDepartment,
+                    name = "Active Calories",
+                    enabled = viewModel.activeCaloriesEnabled.collectAsState().value,
+                    onCheckedChange = {
+                        haptics.tick()
+                        viewModel.setMetricEnabled("active_calories_enabled", it)
+                    }
+                )
+            }
+
             HorizontalDivider(
                 color = Border.copy(alpha = 0.3f),
                 modifier = Modifier.padding(vertical = 10.dp),
@@ -195,14 +288,17 @@ fun SettingsScreen(
                         CalendarChip(
                             calendar = cal,
                             isSelected = selectedCalendarIds.contains(cal.id),
-                            onToggle = { viewModel.toggleCalendar(cal.id) }
+                            onToggle = {
+                                haptics.tick()
+                                viewModel.toggleCalendar(cal.id)
+                            }
                         )
                     }
                 }
             }
 
             HorizontalDivider(
-                color = Border.copy(alpha = 0.3f),
+                color = Border.copy(.3f),
                 modifier = Modifier.padding(vertical = 10.dp),
             )
 
@@ -479,6 +575,39 @@ private fun ConnectionRow(
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = if (connected) Success else TextSecondary,
+        )
+    }
+}
+
+@Composable
+private fun MetricToggleRow(
+    name: String,
+    enabled: Boolean,
+    icon: ImageVector,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = name,
+            tint = TextSecondary,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = name,
+            fontSize = 14.sp,
+            color = TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = enabled,
+            onCheckedChange = onCheckedChange
         )
     }
 }

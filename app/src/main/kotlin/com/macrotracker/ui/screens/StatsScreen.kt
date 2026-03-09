@@ -61,11 +61,9 @@ fun StatsScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-            .padding(bottom = 120.dp),
+            .padding(horizontal = 16.dp)
+            .padding(top = 24.dp, bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
-
         // Header with back button
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -146,11 +144,11 @@ fun StatsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 12.dp)
                         .then(
                             Modifier
                                 .background(Background, shape = RoundedCornerShape(8.dp))
-                                .padding(12.dp)
+                                .padding(8.dp)
                         ),
                 ) {
                     Text(dayName, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(bottom = 8.dp))

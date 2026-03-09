@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.macrotracker.ui.theme.Border
@@ -24,10 +25,9 @@ import kotlinx.coroutines.delay
 fun MacroCard(
     modifier: Modifier = Modifier,
     delayMs: Long = 0,
+    borderColor: Color = Border,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Simple staggered fade-in. The page transition handles positional
-    // movement — cards only fade so there's no double-bounce.
     val alpha = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
@@ -42,7 +42,7 @@ fun MacroCard(
             .graphicsLayer { this.alpha = alpha.value },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
-        border = BorderStroke(1.dp, Border),
+        border = BorderStroke(1.dp, borderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
@@ -51,4 +51,3 @@ fun MacroCard(
         )
     }
 }
-

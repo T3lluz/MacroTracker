@@ -136,7 +136,7 @@ class HealthViewModel @Inject constructor(
                 val stats = healthConnectRepository.readTodayStats()
                 // Safeguard against temporary 0 values if we already had a higher count
                 if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
-                    _healthConnectState.value = current.copy(isRefreshing = false)
+                    _healthConnectState.value = current.copy(isRefreshing = false, stats = stats)
                 } else {
                     _healthConnectState.value = HealthConnectUiState.Success(stats)
                 }
