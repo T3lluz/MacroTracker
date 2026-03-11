@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
@@ -166,7 +166,6 @@ fun HomeScreen(
         viewModel.refreshAll(
             hasLocationPermission = hasLocationPermission(),
             hasCalendarPermission = hasCalendarPermission(),
-            hasHealthPermission = true
         )
     }
 
@@ -185,14 +184,13 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val todayFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d")) }
-    val greeting = remember {
-        when (java.time.LocalTime.now().hour) {
-            in 0..11 -> "Good Morning"
-            in 12..16 -> "Good Afternoon"
-            in 17..20 -> "Good Evening"
-            else -> "Good Night"
-        }
+    // Recomputed on every recomposition — cheap, and always reflects the actual current time.
+    val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+    val greeting = when (java.time.LocalTime.now().hour) {
+        in 0..11 -> "Good Morning"
+        in 12..16 -> "Good Afternoon"
+        in 17..20 -> "Good Evening"
+        else -> "Good Night"
     }
 
     val parsedConfigs by remember(homeWidgetOrder) {
@@ -204,53 +202,60 @@ fun HomeScreen(
         onRefresh = { onRefresh() },
         modifier = Modifier.fillMaxSize()
     ) {
-        Column(
+        val visibleConfigs by remember(parsedConfigs) {
+            derivedStateOf { parsedConfigs.filter { it.isVisible } }
+        }
+
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-                .padding(bottom = 120.dp),
+                .padding(horizontal = 16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                top = 16.dp,
+                bottom = 120.dp,
+            ),
         ) {
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // Greeting Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(greeting, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
-                    Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 8.dp), strokeWidth = 2.dp, color = Primary)
+            // ── Greeting header ──────────────────────────────────────────────
+            item(key = "header") {
+                Spacer(modifier = Modifier.height(48.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(greeting, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
+                        Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
                     }
-                    IconButton(onClick = { isEditMode = !isEditMode }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 8.dp), strokeWidth = 2.dp, color = Primary)
+                        }
+                        IconButton(onClick = { isEditMode = !isEditMode }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
+                        }
                     }
                 }
+                Spacer(modifier = Modifier.height(20.dp))
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
+            // ── Edit mode ────────────────────────────────────────────────────
             if (isEditMode) {
-                WidgetEditor(
-                    configs = parsedConfigs,
-                    onConfigsChanged = { newConfigs ->
-                        viewModel.updateHomeWidgetOrder(encodeWidgetConfig(newConfigs))
-                    },
-                    onClose = { isEditMode = false }
-                )
-            } else {
-                val visibleConfigs by remember(parsedConfigs) {
-                    derivedStateOf { parsedConfigs.filter { it.isVisible } }
+                item(key = "editor") {
+                    WidgetEditor(
+                        configs = parsedConfigs,
+                        onConfigsChanged = { newConfigs ->
+                            viewModel.updateHomeWidgetOrder(encodeWidgetConfig(newConfigs))
+                        },
+                        onClose = { isEditMode = false }
+                    )
                 }
+            } else {
+                // ── Draggable widget list ────────────────────────────────────
+                item(key = "widgets") {
                 DraggableWidgetColumn(
                     items = visibleConfigs,
                     onReorder = { reordered ->
-                        // Merge reordered visible items back with hidden items (appended at end)
                         val hidden = parsedConfigs.filter { !it.isVisible }
                         viewModel.updateHomeWidgetOrder(encodeWidgetConfig(reordered + hidden))
                     },
@@ -613,7 +618,8 @@ fun HomeScreen(
                     }
                     }
                 )
-            }
-        }
-    }
+                } // end item("widgets")
+            } // end else (not edit mode)
+        } // end LazyColumn
+    } // end PullToRefreshBox
 }

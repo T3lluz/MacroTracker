@@ -30,7 +30,6 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// (Keep existing data classes: HealthStats, DailyHealthStats)
 data class HealthStats(
     val steps: Long = 0,
     val avgHeartRate: Long = 0,
@@ -100,9 +99,6 @@ class HealthConnectRepository @Inject constructor(
         metricCache[key] = System.currentTimeMillis() to value
     }
 
-    fun invalidateMetricCache() {
-        metricCache.clear()
-    }
 
     suspend fun hasAllPermissions(): Boolean {
         val hc = client ?: return false
@@ -398,12 +394,6 @@ class HealthConnectRepository @Inject constructor(
     /**
      * Reads historical stats up to [days] ago using the AggregateGroupByPeriod API.
      */
-    suspend fun readHistoryStats(days: Int = 7): List<DailyHealthStats> = withContext(Dispatchers.IO) {
-        val zone = ZoneId.systemDefault()
-        val today = LocalDate.now(zone)
-        val startDate = today.minusDays(days - 1L)
-        readHistoryStatsBetween(startDate, today)
-    }
 
     suspend fun readHistoryStatsBetween(startDate: LocalDate, endDate: LocalDate): List<DailyHealthStats> = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext emptyList()

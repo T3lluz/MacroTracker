@@ -55,12 +55,6 @@ data class CalendarEvent(
             return "${startTime.format(fmt)} – ${endTime.format(fmt)}"
         }
 
-    val formattedStartTime: String
-        get() {
-            if (isAllDay) return "All day"
-            return startTime.format(DateTimeFormatter.ofPattern("h:mm a"))
-        }
-
     val isHappeningNow: Boolean
         get() {
             val now = LocalDateTime.now()
@@ -198,7 +192,6 @@ class CalendarRepository @Inject constructor(
         ContentUris.appendId(builder, endOfRange)
 
         var selection: String? = null
-        var selectionArgs: Array<String>? = null
 
         if (calendarIds != null && calendarIds.isNotEmpty()) {
             selection = "${CalendarContract.Instances.CALENDAR_ID} IN (${calendarIds.joinToString(",")})"
@@ -210,7 +203,7 @@ class CalendarRepository @Inject constructor(
                 builder.build(),
                 projection,
                 selection,
-                selectionArgs,
+                null,
                 "${CalendarContract.Instances.BEGIN} ASC",
             )
 

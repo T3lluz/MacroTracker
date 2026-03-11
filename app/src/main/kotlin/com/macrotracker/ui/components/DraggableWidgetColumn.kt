@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,13 +57,25 @@ fun <T> DraggableWidgetColumn(
     val settle    = remember { Array(32) { Animatable(0f) } }
     val nudgeJobs = remember { arrayOfNulls<Job>(32) }
 
+    // Cap used consistently throughout to guard every array access.
+    val cap = 32
+
+    // Stable flag: true only while a drag is active. Used to gate expensive
+    // per-item animateFloatAsState calls so they don't run during normal scroll.
+    val isDragActive by remember { derivedStateOf { draggingIndex >= 0 } }
+
     Column(modifier = modifier.fillMaxWidth()) {
         workingList.forEachIndexed { index, item ->
             val canDrag = isDraggableItem(item)
-            val isDragging = index == draggingIndex
+
+            // Only derive per-item dragging state when a drag is actually active —
+            // this prevents recomposing all items every frame during normal scroll.
+            val isDragging = isDragActive && index == draggingIndex
             val naturalTop = tops[index]
             val dragTranslation = if (isDragging) (fingerY - grabOffsetY - naturalTop) else 0f
 
+            // Animate scale/alpha/elevation ONLY during drag. At rest these are
+            // constant 1f/1f/0f so no animation frames are scheduled at all.
             val scale by animateFloatAsState(
                 targetValue   = if (isDragging) 1.03f else 1f,
                 animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
@@ -79,16 +92,20 @@ fun <T> DraggableWidgetColumn(
                 label         = "elev$index",
             )
 
+            // Use key() so Compose can skip recomposing items that haven't changed
+            // when only the dragging index shifts.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .zIndex(if (isDragging) 1f else 0f)
                     .graphicsLayer {
-                        translationY    = if (isDragging) dragTranslation else settle[index].value
+                        translationY    = if (isDragging) dragTranslation
+                                          else if (index < cap) settle[index].value else 0f
                         scaleX          = scale
                         scaleY          = scale
                         this.alpha      = alpha
-                        shadowElevation = elev.dp.toPx()
+                        // Only pay the shadow RenderNode cost when actually dragging
+                        shadowElevation = if (isDragActive) elev.dp.toPx() else 0f
                     }
                     .onGloballyPositioned { coords ->
                         if (index < 32) {
@@ -117,10 +134,8 @@ fun <T> DraggableWidgetColumn(
                                     val draggedCy  = draggedTop + heights[cur] / 2f
 
                                 // ── Continuous proportional nudge of neighbours ───────────────
-                                // Each neighbour slides away smoothly in proportion to how much
-                                // the dragged card has overlapped it — gives a fluid "pushing" feel.
                                 for (i in workingList.indices) {
-                                    if (i == cur) continue
+                                    if (i == cur || i >= cap) continue
                                     val iTop  = tops[i]
                                     val iH    = heights[i]
                                     val iBot  = iTop + iH
@@ -129,7 +144,7 @@ fun <T> DraggableWidgetColumn(
                                         i > cur -> (draggedBot - iTop).coerceIn(0f, iH)
                                         else    -> (iBot  - draggedTop).coerceIn(0f, iH)
                                     }
-                                    val fraction    = overlap / iH                  // 0..1
+                                    val fraction    = overlap / iH
                                     val nudgeTarget = if (i > cur) -heights[cur] * fraction
                                                       else          heights[cur] * fraction
 
@@ -139,7 +154,7 @@ fun <T> DraggableWidgetColumn(
                                             nudgeTarget,
                                             spring(
                                                 dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness    = Spring.StiffnessHigh,   // fast follow
+                                                stiffness    = Spring.StiffnessHigh,
                                             ),
                                         )
                                     }
@@ -158,10 +173,8 @@ fun <T> DraggableWidgetColumn(
                                 if (target != null) {
                                     val dir = if (target > cur) -1f else 1f
 
-                                    // Spring-bounce the displaced card from its current nudge pos → 0
                                     nudgeJobs[target]?.cancel()
                                     nudgeJobs[target] = scope.launch {
-                                        // Snap to the full displacement first so bounce feels crisp
                                         settle[target].snapTo(dir * heights[cur])
                                         settle[target].animateTo(
                                             0f,
@@ -172,9 +185,8 @@ fun <T> DraggableWidgetColumn(
                                         )
                                     }
 
-                                    // Reset all other neighbour nudges cleanly
                                     for (i in workingList.indices) {
-                                        if (i == cur || i == target) continue
+                                        if (i == cur || i == target || i >= cap) continue
                                         nudgeJobs[i]?.cancel()
                                         nudgeJobs[i] = scope.launch {
                                             settle[i].animateTo(
@@ -192,8 +204,8 @@ fun <T> DraggableWidgetColumn(
                             },
                             onDragEnd = {
                                 val landing = draggingIndex
-                                // Settle all nudges to 0 with a spring
                                 for (i in workingList.indices) {
+                                    if (i >= cap) continue
                                     nudgeJobs[i]?.cancel()
                                     nudgeJobs[i] = scope.launch {
                                         settle[i].animateTo(
@@ -202,15 +214,16 @@ fun <T> DraggableWidgetColumn(
                                         )
                                     }
                                 }
-                                // Drop the dragged card with a spring bounce into its slot
-                                val currentTranslation = fingerY - grabOffsetY - tops[landing]
-                                nudgeJobs[landing]?.cancel()
-                                nudgeJobs[landing] = scope.launch {
-                                    settle[landing].snapTo(currentTranslation)
-                                    settle[landing].animateTo(
-                                        0f,
-                                        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
-                                    )
+                                if (landing in 0 until cap) {
+                                    val currentTranslation = fingerY - grabOffsetY - tops[landing]
+                                    nudgeJobs[landing]?.cancel()
+                                    nudgeJobs[landing] = scope.launch {
+                                        settle[landing].snapTo(currentTranslation)
+                                        settle[landing].animateTo(
+                                            0f,
+                                            spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
+                                        )
+                                    }
                                 }
                                 draggingIndex = -1
                                 haptics.gestureEnd()
@@ -218,6 +231,7 @@ fun <T> DraggableWidgetColumn(
                             onDragCancel = {
                                 val landing = draggingIndex
                                 for (i in workingList.indices) {
+                                    if (i >= cap) continue
                                     nudgeJobs[i]?.cancel()
                                     nudgeJobs[i] = scope.launch {
                                         settle[i].animateTo(
@@ -226,14 +240,16 @@ fun <T> DraggableWidgetColumn(
                                         )
                                     }
                                 }
-                                val currentTranslation = fingerY - grabOffsetY - tops[landing]
-                                nudgeJobs[landing]?.cancel()
-                                nudgeJobs[landing] = scope.launch {
-                                    settle[landing].snapTo(currentTranslation)
-                                    settle[landing].animateTo(
-                                        0f,
-                                        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
-                                    )
+                                if (landing in 0 until cap) {
+                                    val currentTranslation = fingerY - grabOffsetY - tops[landing]
+                                    nudgeJobs[landing]?.cancel()
+                                    nudgeJobs[landing] = scope.launch {
+                                        settle[landing].snapTo(currentTranslation)
+                                        settle[landing].animateTo(
+                                            0f,
+                                            spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
+                                        )
+                                    }
                                 }
                                 draggingIndex = -1
                             },

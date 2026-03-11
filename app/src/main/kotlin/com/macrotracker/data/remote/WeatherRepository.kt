@@ -9,6 +9,7 @@ import org.json.JSONObject
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToLong
 
 data class HourlyForecast(
     val time: String,       // e.g. "14:00"
@@ -61,8 +62,8 @@ class WeatherRepository @Inject constructor(
     suspend fun fetchWeather(lat: Double, lon: Double, locationName: String = ""): WeatherInfo = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         // Round to 2 decimal places (~1 km) for cache key comparison
-        val roundedLat = Math.round(lat * 100).toDouble() / 100
-        val roundedLon = Math.round(lon * 100).toDouble() / 100
+        val roundedLat = (lat * 100).roundToLong().toDouble() / 100
+        val roundedLon = (lon * 100).roundToLong().toDouble() / 100
         if (cachedWeather != null &&
             roundedLat == cachedLat && roundedLon == cachedLon &&
             now - cacheTimestamp < CACHE_TTL_MS
@@ -80,15 +81,14 @@ class WeatherRepository @Inject constructor(
             .get()
             .build()
 
-        val response = httpClient.newCall(request).execute()
-        val body = response.body?.string() ?: throw Exception("Empty response from Yr.no")
-
-        if (!response.isSuccessful) {
-            Log.e(TAG, "Weather API error ${response.code}: $body")
-            throw Exception("Weather API error: ${response.code}")
+        val result = httpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: throw Exception("Empty response from Yr.no")
+            if (!response.isSuccessful) {
+                Log.e(TAG, "Weather API error ${response.code}: $body")
+                throw Exception("Weather API error: ${response.code}")
+            }
+            parseWeatherResponse(body, locationName)
         }
-
-        val result = parseWeatherResponse(body, locationName)
         cachedWeather = result
         cachedLat = roundedLat
         cachedLon = roundedLon

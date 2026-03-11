@@ -2,14 +2,9 @@ package com.macrotracker.widget
 
 import android.content.Context
 import android.util.Log
-import com.macrotracker.data.f1.F1ApiServiceImpl
 import com.macrotracker.data.f1.F1Standings
 import com.macrotracker.data.f1.RaceScheduleEntry
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.json.Json
+import com.macrotracker.data.f1.f1Repository
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -17,49 +12,53 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 private const val TAG = "F1WidgetData"
-private const val F1_PREFS = "daily_dash_f1_cache"
-private const val CACHE_TTL = 15 * 60 * 1000L // 15 min
+private const val MEMORY_TTL = 60 * 1000L
+private const val REFRESH_AFTER = 15 * 60 * 1000L
 
 /**
  * Lightweight data holder for F1 widgets.
- * Fetched directly (no Hilt) and cached in SharedPreferences.
+ * Backed by the shared F1 repository so widgets and the app always render the same snapshot.
  */
 data class F1WidgetData(
-    // Next race countdown
     val nextRaceName: String? = null,
     val nextRaceCountry: String? = null,
     val nextRaceFlag: String? = null,
-    val nextRaceDate: String? = null,       // "yyyy-MM-dd"
-    val nextRaceTime: String? = null,       // "HH:mm:ssZ"
+    val nextRaceDate: String? = null,
+    val nextRaceTime: String? = null,
     val daysUntil: Long = -1,
     val hoursUntil: Long = -1,
     val minutesUntil: Long = -1,
-    val isRaceWeekend: Boolean = false,     // quali or race within next 3 days
-    val nextSessionLabel: String? = null,   // "Qualifying", "Sprint", "Race"
+    val secondsUntil: Long = -1,
+    val isRaceWeekend: Boolean = false,
+    val nextSessionLabel: String? = null,
     val nextSessionDate: String? = null,
-    val nextSessionTime: String? = null,    // "HH:mm:ssZ" UTC
+    val nextSessionTime: String? = null,
     val circuitName: String? = null,
     val circuitId: String? = null,
     val laps: Int? = null,
     val lapRecord: String? = null,
     val lapRecordHolder: String? = null,
     val round: Int? = null,
-    // Full weekend session schedule
     val weekendSessions: List<SessionRow> = emptyList(),
-    // Driver standings (top N)
     val driverStandings: List<DriverStandingRow> = emptyList(),
-    // Constructor standings (top N)
     val constructorStandings: List<ConstructorStandingRow> = emptyList(),
-    // Schedule (upcoming races)
     val schedule: List<ScheduleRow> = emptyList(),
+    /** Top-5 finishers from the most-recent completed race. */
+    val lastRaceResults: List<LastRaceResultRow> = emptyList(),
+    val lastRaceName: String? = null,
+    val lastRaceFlag: String? = null,
+    /** Qualifying grid (top-10) from the last qualifying session. */
+    val lastQualiResults: List<LastQualiResultRow> = emptyList(),
     val lastUpdatedAt: Long = 0L,
     val hasData: Boolean = false,
+    val isStale: Boolean = false,
+    val isLoading: Boolean = false,
 )
 
 data class SessionRow(
-    val label: String,      // "FP1", "FP2", "FP3", "Sprint Quali", "Sprint", "Qualifying", "Race"
-    val date: String,       // "yyyy-MM-dd"
-    val time: String? = null, // "HH:mm:ssZ" UTC — null if unknown
+    val label: String,
+    val date: String,
+    val time: String? = null,
     val isPast: Boolean,
     val isNext: Boolean,
 )
@@ -71,7 +70,16 @@ data class DriverStandingRow(
     val team: String,
     val points: Double,
     val wins: Int,
-    val teamColor: String,   // hex without #
+    val teamColor: String,
+    val podiums: Int = 0,
+    val fastestLaps: Int = 0,
+    /** Points gap from championship leader, e.g. "-42". Empty string for P1. */
+    val gapToLeader: String = "",
+    val driverNumber: String? = null,
+    /** Finish position in the most recent race (0 = no data). */
+    val lastRacePos: Int = 0,
+    /** Points scored in the most recent race. */
+    val lastRacePoints: Double = 0.0,
 )
 
 data class ConstructorStandingRow(
@@ -80,6 +88,11 @@ data class ConstructorStandingRow(
     val points: Double,
     val wins: Int,
     val teamColor: String,
+    /** Top-2 driver acronyms for this constructor (best scorer first). */
+    val driver1: String = "",
+    val driver2: String = "",
+    val driver1Pts: Double = 0.0,
+    val driver2Pts: Double = 0.0,
 )
 
 data class ScheduleRow(
@@ -89,9 +102,31 @@ data class ScheduleRow(
     val locality: String,
     val country: String,
     val raceDate: String,
+    val raceTime: String? = null,
     val isPast: Boolean,
     val isNext: Boolean,
     val hasSprint: Boolean,
+)
+
+/** Compact result row for the last race podium display. */
+data class LastRaceResultRow(
+    val position: Int,
+    val acronym: String,
+    val driverName: String,
+    val teamColor: String,
+    val timeOrStatus: String?,
+    val fastestLap: Boolean = false,
+    /** Positions gained during the race (positive = moved forward, negative = fell back). */
+    val positionsGained: Int = 0,
+)
+
+/** Compact qualifying grid row. */
+data class LastQualiResultRow(
+    val position: Int,
+    val acronym: String,
+    val teamColor: String,
+    val bestTime: String?,   // Q3 > Q2 > Q1
+    val gapToP1: String?,    // null for pole sitter
 )
 
 // ── Singleton provider ────────────────────────────────────────────
@@ -101,56 +136,118 @@ object F1WidgetDataProvider {
     @Volatile private var cachedAt: Long = 0L
 
     fun invalidate() {
+        cached = null
         cachedAt = 0L
     }
 
+    fun hasCachedData(context: Context): Boolean = context.f1Repository().getCachedF1Data() != null
+
     suspend fun loadData(context: Context): F1WidgetData {
         val now = System.currentTimeMillis()
-        if (cached != null && now - cachedAt < CACHE_TTL) return cached!!
+        cached?.takeIf { now - cachedAt < MEMORY_TTL }?.let { return it }
 
-        // Restore from prefs fast-path while network call runs (not implemented here—direct fetch)
-        return try {
-            val client = HttpClient(OkHttp) {
-                install(ContentNegotiation) {
-                    json(Json { ignoreUnknownKeys = true })
-                }
+        val repo = context.f1Repository()
+        val repoCache = repo.getCachedF1Data()
+        if (repoCache != null) {
+            val data = buildWidgetData(repoCache, repo.lastFetchTimeMs)
+            cache(data)
+            if (data.isStale) {
+                WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
             }
-            val api = F1ApiServiceImpl(client)
-            val standings = api.getSeasonDriverStandings()
-            val schedule  = api.getSchedule()
-            client.close()
-
-            val data = buildWidgetData(standings.map {
-                DriverStandingRow(
-                    position   = it.position,
-                    name       = it.driverName,
-                    acronym    = it.driverAcronym,
-                    team       = it.constructorName,
-                    points     = it.points,
-                    wins       = it.wins,
-                    teamColor  = it.teamColor,
-                )
-            }, schedule)
-
-            cached = data
-            cachedAt = now
-            data
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch F1 data: ${e.message}")
-            cached ?: F1WidgetData()
+            return data
         }
+
+        WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
+        return F1WidgetData(
+            lastUpdatedAt = repo.lastFetchTimeMs,
+            hasData = false,
+            isStale = repo.lastFetchTimeMs > 0L,
+            isLoading = true,
+        ).also(::cache)
+    }
+
+    suspend fun refreshNow(context: Context, force: Boolean = true): Boolean {
+        val repo = context.f1Repository()
+        val before = repo.lastFetchTimeMs
+        val result = repo.getOverallF1Data(forceRefresh = force)
+        val after = repo.lastFetchTimeMs
+        result.getOrNull()?.let { buildWidgetData(it, after).also(::cache) }
+        return after > before
+    }
+
+    private fun cache(data: F1WidgetData) {
+        cached = data
+        cachedAt = System.currentTimeMillis()
     }
 
     private fun buildWidgetData(
-        drivers: List<DriverStandingRow>,
-        schedule: List<RaceScheduleEntry>,
+        standings: F1Standings,
+        fetchedAt: Long,
     ): F1WidgetData {
         val today = LocalDate.now()
-        val zone  = ZoneId.systemDefault()
-        val fmt   = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
+        val zone = ZoneId.systemDefault()
+        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        val schedule = standings.schedule
+        val p1Points = standings.driverStandings.firstOrNull()?.points ?: 0.0
+        // Build lookup maps from last race results for enriching driver rows
+        val lastRacePosMap: Map<String, Int> = standings.lastRaceResults
+            ?.associate { (it.driverAcronym ?: "") to it.position } ?: emptyMap()
+        val lastRacePointsMap: Map<String, Double> = standings.lastRaceResults
+            ?.associate { (it.driverAcronym ?: "") to it.points } ?: emptyMap()
+        val drivers = standings.driverStandings.map {
+            val gapPts = if (it.position <= 1) 0.0 else p1Points - it.points
+            DriverStandingRow(
+                position = it.position,
+                name = it.driverName,
+                acronym = it.driverAcronym,
+                team = it.constructorName,
+                points = it.points,
+                wins = it.wins,
+                teamColor = it.teamColor,
+                podiums = it.podiums,
+                fastestLaps = it.fastestLaps,
+                gapToLeader = if (it.position == 1) "" else "-${gapPts.toInt()}",
+                driverNumber = it.driverNumber,
+                lastRacePos = lastRacePosMap[it.driverAcronym] ?: 0,
+                lastRacePoints = lastRacePointsMap[it.driverAcronym] ?: 0.0,
+            )
+        }
+        val driversByTeam: Map<String, List<DriverStandingRow>> = drivers.groupBy { it.team }
+        val constructors = standings.constructorStandings
+            .takeIf { it.isNotEmpty() }
+            ?.map {
+                val teamDrivers = driversByTeam[it.constructorName]
+                    ?.sortedByDescending { d -> d.points } ?: emptyList()
+                ConstructorStandingRow(
+                    position = it.position,
+                    name = it.constructorName,
+                    points = it.points,
+                    wins = it.wins,
+                    teamColor = it.teamColor,
+                    driver1 = teamDrivers.getOrNull(0)?.acronym ?: "",
+                    driver2 = teamDrivers.getOrNull(1)?.acronym ?: "",
+                    driver1Pts = teamDrivers.getOrNull(0)?.points ?: 0.0,
+                    driver2Pts = teamDrivers.getOrNull(1)?.points ?: 0.0,
+                )
+            }
+            ?: drivers.groupBy { it.team }
+                .map { (team, td) ->
+                    val sorted = td.sortedByDescending { it.points }
+                    ConstructorStandingRow(
+                        position = 0,
+                        name = team,
+                        points = td.sumOf { it.points },
+                        wins = td.sumOf { it.wins },
+                        teamColor = td.first().teamColor,
+                        driver1 = sorted.getOrNull(0)?.acronym ?: "",
+                        driver2 = sorted.getOrNull(1)?.acronym ?: "",
+                        driver1Pts = sorted.getOrNull(0)?.points ?: 0.0,
+                        driver2Pts = sorted.getOrNull(1)?.points ?: 0.0,
+                    )
+                }
+                .sortedByDescending { it.points }
+                .mapIndexed { i, c -> c.copy(position = i + 1) }
 
-        // ── Find next race + compute countdown ──────────────────────
         val upcoming = schedule.filter {
             try { LocalDate.parse(it.raceDate, fmt) >= today } catch (_: Exception) { false }
         }.sortedBy { it.raceDate }
@@ -160,6 +257,7 @@ object F1WidgetDataProvider {
         var daysUntil = -1L
         var hoursUntil = -1L
         var minutesUntil = -1L
+        var secondsUntil = -1L
         var isRaceWeekend = false
         var nextSessionLabel: String? = null
         var nextSessionDate: String? = null
@@ -168,130 +266,175 @@ object F1WidgetDataProvider {
         if (nextEntry != null) {
             val raceDate = try { LocalDate.parse(nextEntry.raceDate, fmt) } catch (_: Exception) { null }
             if (raceDate != null) {
-                daysUntil = ChronoUnit.DAYS.between(today, raceDate)
+                val sessions = buildSessions(nextEntry).sortedBy { it.second }
+                val nowDt = LocalDateTime.now(zone)
 
-                // All sessions with their times
-                val sessions = listOfNotNull(
-                    nextEntry.fp1Date?.let { Triple("FP1", it, null as String?) },
-                    nextEntry.fp2Date?.let { Triple("FP2", it, null) },
-                    nextEntry.fp3Date?.let { Triple("FP3", it, null) },
-                    nextEntry.sprintDate?.let { Triple("Sprint", it, nextEntry.sprintTime) },
-                    nextEntry.qualifyingDate?.let { Triple("Qualifying", it, nextEntry.qualifyingTime) },
-                    Triple("Race", nextEntry.raceDate, nextEntry.raceTime),
-                ).sortedBy { it.second }
-
-                val nextSession = sessions.firstOrNull {
-                    try { LocalDate.parse(it.second, fmt) >= today } catch (_: Exception) { false }
+                // Find next upcoming session (future based on datetime if available, else date)
+                val nextSession = sessions.firstOrNull { (_, date, time) ->
+                    try {
+                        if (time != null) {
+                            val clean = time.trimEnd('Z')
+                            val dt = LocalDateTime.parse("${date}T$clean", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                            dt.atZone(ZoneId.of("UTC")).withZoneSameInstant(zone).toLocalDateTime().isAfter(nowDt)
+                        } else {
+                            LocalDate.parse(date, fmt) >= today
+                        }
+                    } catch (_: Exception) { false }
                 }
+
                 if (nextSession != null) {
                     nextSessionLabel = nextSession.first
-                    nextSessionDate  = nextSession.second
-                    nextSessionTime  = nextSession.third
+                    nextSessionDate = nextSession.second
+                    nextSessionTime = nextSession.third
                     val sessionDate = try { LocalDate.parse(nextSession.second, fmt) } catch (_: Exception) { null }
                     if (sessionDate != null) {
                         val sessionDays = ChronoUnit.DAYS.between(today, sessionDate)
                         isRaceWeekend = sessionDays <= 3
-                        if (sessionDays == 0L) {
-                            // Use hours/minutes for same-day
-                            val time = nextSession.third?.removeSuffix("Z")
-                            if (time != null) {
-                                try {
-                                    val dt = LocalDateTime.parse(
-                                        "${nextSession.second}T$time",
-                                        DateTimeFormatter.ISO_LOCAL_DATE_TIME,
-                                    )
-                                    val nowDt = LocalDateTime.now(zone)
-                                    hoursUntil = ChronoUnit.HOURS.between(nowDt, dt).coerceAtLeast(0)
-                                    minutesUntil = (ChronoUnit.MINUTES.between(nowDt, dt) % 60).coerceAtLeast(0)
-                                } catch (_: Exception) {}
+
+                        val time = nextSession.third?.removeSuffix("Z")
+                        if (time != null) {
+                            // Full D/HH/MM/SS from exact session datetime
+                            try {
+                                val dt = LocalDateTime.parse(
+                                    "${nextSession.second}T$time",
+                                    DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+                                ).atZone(ZoneId.of("UTC")).withZoneSameInstant(zone).toLocalDateTime()
+                                val totalSeconds = ChronoUnit.SECONDS.between(nowDt, dt).coerceAtLeast(0)
+                                daysUntil = totalSeconds / 86400
+                                hoursUntil = (totalSeconds % 86400) / 3600
+                                minutesUntil = (totalSeconds % 3600) / 60
+                                secondsUntil = totalSeconds % 60
+                            } catch (_: Exception) {
+                                // Fallback: days only from date
+                                daysUntil = ChronoUnit.DAYS.between(today, sessionDate).coerceAtLeast(0)
                             }
+                        } else {
+                            // No time available — days only from session date
+                            daysUntil = ChronoUnit.DAYS.between(today, sessionDate).coerceAtLeast(0)
                         }
                     }
+                } else {
+                    // No upcoming session — fall back to race date days
+                    daysUntil = ChronoUnit.DAYS.between(today, raceDate).coerceAtLeast(0)
                 }
             }
         }
 
-        // ── Constructors derived from driver standings ──────────────
-        val constructors = drivers.groupBy { it.team }
-            .map { (team, td) ->
-                ConstructorStandingRow(
-                    position  = 0,
-                    name      = team,
-                    points    = td.sumOf { it.points },
-                    wins      = td.sumOf { it.wins },
-                    teamColor = td.first().teamColor,
-                )
-            }
-            .sortedByDescending { it.points }
-            .mapIndexed { i, c -> c.copy(position = i + 1) }
-
-        // ── Schedule rows ───────────────────────────────────────────
         val scheduleRows = schedule.map { entry ->
             val rd = try { LocalDate.parse(entry.raceDate, fmt) } catch (_: Exception) { null }
             ScheduleRow(
-                round     = entry.round,
-                raceName  = entry.raceName,
-                flag      = entry.countryCode ?: "🏁",
-                locality  = entry.locality,
-                country   = entry.country,
-                raceDate  = entry.raceDate,
-                isPast    = rd?.isBefore(today) ?: false,
-                isNext    = entry == nextEntry,
+                round = entry.round,
+                raceName = entry.raceName,
+                flag = entry.countryCode ?: "🏁",
+                locality = entry.locality,
+                country = entry.country,
+                raceDate = entry.raceDate,
+                raceTime = entry.raceTime,
+                isPast = rd?.isBefore(today) ?: false,
+                isNext = entry == nextEntry,
                 hasSprint = entry.sprintDate != null,
             )
         }
 
-        // ── Weekend sessions for the next race ──────────────────────
-        val weekendSessions = if (nextEntry != null) {
-            listOfNotNull(
-                nextEntry.fp1Date?.let { Triple("FP1", it, null as String?) },
-                nextEntry.fp2Date?.let { Triple("FP2", it, null) },
-                nextEntry.fp3Date?.let { Triple("FP3", it, null) },
-                nextEntry.sprintDate?.let { Triple("Sprint", it, nextEntry.sprintTime) },
-                nextEntry.qualifyingDate?.let { Triple("Qualifying", it, nextEntry.qualifyingTime) },
-                Triple("Race", nextEntry.raceDate, nextEntry.raceTime),
-            ).sortedBy { it.second }
-             .map { (lbl, date, time) ->
-                 val d = try { LocalDate.parse(date, fmt) } catch (_: Exception) { null }
-                 SessionRow(
-                     label  = lbl,
-                     date   = date,
-                     time   = time,
-                     isPast = d?.isBefore(today) ?: false,
-                     isNext = lbl == nextSessionLabel && date == nextSessionDate,
-                 )
-             }
-        } else emptyList()
+        val weekendSessions = nextEntry?.let { entry ->
+            val nowDt = LocalDateTime.now(zone)
+            buildSessions(entry).sortedBy { it.second }.map { (label, date, time) ->
+                val isPastSession = try {
+                    if (time != null) {
+                        val clean = time.trimEnd('Z')
+                        val dt = LocalDateTime.parse("${date}T$clean", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                        dt.atZone(ZoneId.of("UTC")).withZoneSameInstant(zone).toLocalDateTime().isBefore(nowDt)
+                    } else {
+                        val d = LocalDate.parse(date, fmt)
+                        d.isBefore(today)
+                    }
+                } catch (_: Exception) { false }
+                SessionRow(
+                    label = label,
+                    date = date,
+                    time = time,
+                    isPast = isPastSession,
+                    isNext = label == nextSessionLabel && date == nextSessionDate,
+                )
+            }
+        } ?: emptyList()
+
+        val hasData = drivers.isNotEmpty() || schedule.isNotEmpty() || constructors.isNotEmpty()
+        val isStale = fetchedAt <= 0L || (System.currentTimeMillis() - fetchedAt) > REFRESH_AFTER
+
+        // Last race results (top 5)
+        val lastRaceResultRows = standings.lastRaceResults?.take(5)?.map { rr ->
+            LastRaceResultRow(
+                position = rr.position,
+                acronym = rr.driverAcronym
+                    ?: rr.driverName.split(" ").last().take(3).uppercase(),
+                driverName = rr.driverName,
+                teamColor = rr.teamColor,
+                timeOrStatus = rr.time ?: rr.status,
+                fastestLap = rr.fastestLap,
+                positionsGained = rr.positionsGained ?: 0,
+            )
+        } ?: emptyList()
+
+        // Qualifying grid (top 10)
+        val lastQualiRows = standings.lastQualiResults?.take(10)?.map { qr ->
+            LastQualiResultRow(
+                position = qr.position,
+                acronym = qr.driverAcronym
+                    ?: qr.driverName.split(" ").last().take(3).uppercase(),
+                teamColor = qr.teamColor,
+                bestTime = qr.q3Time ?: qr.q2Time ?: qr.q1Time,
+                gapToP1 = qr.gapToP1,
+            )
+        } ?: emptyList()
+
+        val lastRaceEntry = schedule
+            .sortedByDescending { it.raceDate }
+            .firstOrNull { try { LocalDate.parse(it.raceDate, fmt).isBefore(today) } catch (_: Exception) { false } }
+        val lastRaceNameStr = standings.lastRaceName ?: lastRaceEntry?.raceName
+        val lastRaceFlagStr = lastRaceEntry?.countryCode ?: "🏁"
 
         return F1WidgetData(
-            nextRaceName      = nextEntry?.raceName,
-            nextRaceCountry   = nextEntry?.country,
-            nextRaceFlag      = nextEntry?.countryCode ?: "🏁",
-            nextRaceDate      = nextEntry?.raceDate,
-            nextRaceTime      = nextEntry?.raceTime,
-            daysUntil         = daysUntil,
-            hoursUntil        = hoursUntil,
-            minutesUntil      = minutesUntil,
-            isRaceWeekend     = isRaceWeekend,
-            nextSessionLabel  = nextSessionLabel,
-            nextSessionDate   = nextSessionDate,
-            nextSessionTime   = nextSessionTime,
-            circuitName       = nextEntry?.circuitName,
-            circuitId         = nextEntry?.circuitId,
-            laps              = nextEntry?.laps,
-            lapRecord         = nextEntry?.lapRecord,
-            lapRecordHolder   = nextEntry?.lapRecordHolder,
-            round             = nextEntry?.round,
-            weekendSessions   = weekendSessions,
-            driverStandings   = drivers,
+            nextRaceName = nextEntry?.raceName,
+            nextRaceCountry = nextEntry?.country,
+            nextRaceFlag = nextEntry?.countryCode ?: "🏁",
+            nextRaceDate = nextEntry?.raceDate,
+            nextRaceTime = nextEntry?.raceTime,
+            daysUntil = daysUntil,
+            hoursUntil = hoursUntil,
+            minutesUntil = minutesUntil,
+            secondsUntil = secondsUntil,
+            isRaceWeekend = isRaceWeekend,
+            nextSessionLabel = nextSessionLabel,
+            nextSessionDate = nextSessionDate,
+            nextSessionTime = nextSessionTime,
+            circuitName = nextEntry?.circuitName,
+            circuitId = nextEntry?.circuitId,
+            laps = nextEntry?.laps,
+            lapRecord = nextEntry?.lapRecord,
+            lapRecordHolder = nextEntry?.lapRecordHolder,
+            round = nextEntry?.round,
+            weekendSessions = weekendSessions,
+            driverStandings = drivers,
             constructorStandings = constructors,
-            schedule          = scheduleRows,
-            lastUpdatedAt     = System.currentTimeMillis(),
-            hasData           = drivers.isNotEmpty() || schedule.isNotEmpty(),
+            schedule = scheduleRows,
+            lastRaceResults = lastRaceResultRows,
+            lastRaceName = lastRaceNameStr,
+            lastRaceFlag = lastRaceFlagStr,
+            lastQualiResults = lastQualiRows,
+            lastUpdatedAt = fetchedAt,
+            hasData = hasData,
+            isStale = isStale,
+            isLoading = !hasData && fetchedAt <= 0L,
         )
     }
+
+    private fun buildSessions(entry: RaceScheduleEntry): List<Triple<String, String, String?>> = listOfNotNull(
+        entry.fp1Date?.let { Triple("FP1", it, null as String?) },
+        entry.fp2Date?.let { Triple("FP2", it, null) },
+        entry.fp3Date?.let { Triple("FP3", it, null) },
+        entry.sprintDate?.let { Triple("Sprint", it, entry.sprintTime) },
+        entry.qualifyingDate?.let { Triple("Qualifying", it, entry.qualifyingTime) },
+        Triple("Race", entry.raceDate, entry.raceTime),
+    )
 }
-
-
-
-

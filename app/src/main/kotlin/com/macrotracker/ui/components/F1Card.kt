@@ -275,66 +275,39 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                 }
             }
 
-            // ── Collapsed view — compact widget ──────────────────────────
-            AnimatedVisibility(
-                visible = !expanded,
-                enter = expandVertically(tween(280)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(240)) + fadeOut(tween(150)),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    when (state) {
-                        is F1UiState.Loading -> {
-                            Spacer(Modifier.height(12.dp))
-                            Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = F1Red, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
-                            }
-                        }
-                        is F1UiState.Error -> {
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                                    .background(F1Red.copy(alpha = 0.08f))
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text("⚠", fontSize = 16.sp)
-                                Text("Lost telemetry uplink", color = TextSecondary, fontSize = 13.sp)
-                            }
-                        }
-                        is F1UiState.Success -> {
-                            F1CollapsedWidget(state.f1Data)
-                        }
-                        else -> Unit
+            // ── Compact content — always visible ─────────────────────────
+            when (state) {
+                is F1UiState.Loading -> {
+                    Spacer(Modifier.height(12.dp))
+                    Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = F1Red, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
                     }
-                    Spacer(Modifier.height(4.dp))
-                    WidgetExpandBar(
-                        expanded = false,
-                        onToggle = { expanded = true; haptics.toggleOn() },
-                        accentColor = F1Red,
-                        expandLabel = "Full Hub",
-                    )
+                }
+                is F1UiState.Error -> {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .background(F1Red.copy(alpha = 0.08f))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("⚠", fontSize = 16.sp)
+                        Text("Lost telemetry uplink", color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+                is F1UiState.Success -> {
+                    F1CollapsedWidget(state.f1Data)
                 }
             }
 
-            // ── Expanded view — full hub ──────────────────────────────────
+            // ── Expanded extra content — slides in below compact view ─────
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically(tween(300)) + fadeIn(tween(220)),
-                exit = shrinkVertically(tween(260)) + fadeOut(tween(160)),
+                enter = MacroMotion.expandEnter,
+                exit = MacroMotion.expandExit,
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    if (state is F1UiState.Success) {
-                        Spacer(Modifier.height(10.dp))
-                        DynamicInfoStrip(state.f1Data)
-
-                        val next = state.f1Data.schedule.filter { !isPast(it.raceDate) }.minByOrNull { daysUntil(it.raceDate) }
-                        if (next != null) {
-                            Spacer(Modifier.height(8.dp))
-                            NextRaceBanner(next, daysUntil(next.raceDate), state.f1Data.schedule)
-                        }
-                    }
-
                     Spacer(Modifier.height(12.dp))
 
                     // ── Tab bar ──────────────────────────────────────────
@@ -372,18 +345,28 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
 
                     // ── Content ──────────────────────────────────────────
+                    // Key on state discriminant (not the full Success object) + tab so that
+                    // lastUpdatedAt / data refreshes inside Success don't re-trigger the slide.
+                    val f1StateKey = when (state) {
+                        is F1UiState.Loading -> -1
+                        is F1UiState.Error   -> -2
+                        is F1UiState.Success -> selectedTab.ordinal
+                    }
                     AnimatedContent(
-                        targetState = state to selectedTab,
+                        targetState = f1StateKey,
                         label = "f1Body",
                         transitionSpec = {
                             (fadeIn(tween(200)) + slideInHorizontally(tween(220)) { it / 10 })
                                 .togetherWith(fadeOut(tween(150)) + slideOutHorizontally(tween(150)) { -it / 10 })
                         }
-                    ) { (s, tab) ->
-                        when (s) {
-                            is F1UiState.Loading -> F1Loading()
-                            is F1UiState.Error   -> F1Error(onRefresh, haptics)
-                            is F1UiState.Success -> when (tab) {
+                    ) { key ->
+                        // Read live `state` for content — `key` determines which branch
+                        // is entered so transitions fire correctly on type/tab changes.
+                        val s = state
+                        when {
+                            key == -1 || s is F1UiState.Loading -> F1Loading()
+                            key == -2 || s is F1UiState.Error   -> F1Error(onRefresh, haptics)
+                            s is F1UiState.Success -> when (selectedTab) {
                                 F1Tab.NEWS     -> F1NewsFeed(s.f1Data.news)
                                 F1Tab.DRIVERS  -> DriverStandingsList(s.f1Data.driverStandings)
                                 F1Tab.TEAMS    -> ConstructorStandingsList(s.f1Data.constructorStandings)
@@ -404,6 +387,17 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                         collapseLabel = "Show less",
                     )
                 }
+            }
+
+            // ── Expand bar (collapsed state) ──────────────────────────────
+            if (!expanded) {
+                Spacer(Modifier.height(4.dp))
+                WidgetExpandBar(
+                    expanded = false,
+                    onToggle = { expanded = true; haptics.toggleOn() },
+                    accentColor = F1Red,
+                    expandLabel = "Full Hub",
+                )
             }
         }
     }
@@ -579,8 +573,15 @@ private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color)
     val mins  = (secondsLeft % 3600) / 60
     val secs  = secondsLeft % 60
 
-    val flash = rememberInfiniteTransition(label = "flash")
-    val dotAlpha by flash.animateFloat(0.5f, 1f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "da")
+    // Toggle at 600ms interval — avoids the 60fps recompose from rememberInfiniteTransition
+    var dotVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(600L)
+            dotVisible = !dotVisible
+        }
+    }
+    val dotAlpha = if (dotVisible) 1f else 0.5f
 
     Row(
         modifier = Modifier.fillMaxWidth()

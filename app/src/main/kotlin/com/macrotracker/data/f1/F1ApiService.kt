@@ -25,9 +25,11 @@ class F1ApiServiceImpl @Inject constructor(
     private val client: HttpClient
 ) : F1ApiService {
 
-    private val TAG = "F1ApiService"
-    // Jolpica is the community-maintained successor to the Ergast API (same JSON schema)
-    private val JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+    companion object {
+        private const val TAG = "F1ApiService"
+        // Jolpica is the community-maintained successor to the Ergast API (same JSON schema)
+        private const val JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+    }
 
     // Cache of driverAcronym -> headshotUrl, populated by getSeasonDriverStandings
     private val headshotCache = mutableMapOf<String, String>()
@@ -130,16 +132,8 @@ class F1ApiServiceImpl @Inject constructor(
                 val acronym = driver?.get("code")?.jsonPrimitive?.content
                 val constructorId = constructor?.get("constructorId")?.jsonPrimitive?.content ?: ""
                 // Use cached headshot or build one on-the-fly
-                val headshotUrl = if (acronym != null && headshotCache.containsKey(acronym)) {
-                    headshotCache[acronym]
-                } else {
-                    buildHeadshotUrl(givenName, familyName)
-                }
-                val teamColorHex = if (acronym != null && teamColorCache.containsKey(acronym)) {
-                    teamColorCache[acronym] ?: getTeamColor(constructorId)
-                } else {
-                    getTeamColor(constructorId)
-                }
+                val headshotUrl = (acronym?.let { headshotCache[it] }) ?: buildHeadshotUrl(givenName, familyName)
+                val teamColorHex = (acronym?.let { teamColorCache[it] }) ?: getTeamColor(constructorId)
                 RaceResult(
                     position = pos,
                     driverName = "$givenName $familyName",
@@ -190,11 +184,7 @@ class F1ApiServiceImpl @Inject constructor(
                     computeTimeGap(p1Time, bestTime)
                 } else null
                 val acronymQ = driver?.get("code")?.jsonPrimitive?.content
-                val headshotUrlQ = if (acronymQ != null && headshotCache.containsKey(acronymQ)) {
-                    headshotCache[acronymQ]
-                } else {
-                    buildHeadshotUrl(givenName, familyName)
-                }
+                val headshotUrlQ = (acronymQ?.let { headshotCache[it] }) ?: buildHeadshotUrl(givenName, familyName)
                 QualiResult(
                     position = pos,
                     driverName = "$givenName $familyName",

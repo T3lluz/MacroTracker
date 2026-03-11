@@ -35,6 +35,9 @@ fun MacroCard(
     // Track whether this card has already animated in. Persists across recompositions
     // so navigating away and back does not re-trigger the entrance fade.
     var hasAnimated by rememberSaveable { mutableStateOf(false) }
+
+    // Only allocate the Animatable when we actually need to animate.
+    // Once hasAnimated=true we skip the graphicsLayer alpha entirely.
     val alpha = remember { Animatable(if (hasAnimated) 1f else 0f) }
 
     LaunchedEffect(Unit) {
@@ -45,15 +48,25 @@ fun MacroCard(
         }
     }
 
+    // Skip the graphicsLayer overhead once the card is fully visible —
+    // a graphicsLayer with alpha=1 and no other transforms is effectively free
+    // but avoids allocating an extra layer in RenderNode when alpha < 1.
+    val alphaVal = if (hasAnimated) 1f else alpha.value
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
-            .graphicsLayer { this.alpha = alpha.value },
+            .then(
+                if (alphaVal < 1f) Modifier.graphicsLayer { this.alpha = alphaVal }
+                else Modifier
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
         border = BorderStroke(1.dp, borderColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        // elevation = 0 avoids a shadow RenderNode pass on every frame —
+        // visual depth is provided by the border + background contrast.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -61,3 +74,5 @@ fun MacroCard(
         )
     }
 }
+
+

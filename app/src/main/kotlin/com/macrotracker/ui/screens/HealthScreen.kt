@@ -2,6 +2,7 @@ package com.macrotracker.ui.screens
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -277,36 +278,12 @@ fun HealthScreen(
             val visibleConfigs by remember(parsedConfigs) {
                 derivedStateOf { parsedConfigs.filter { it.isVisible } }
             }
-            // Inject a non-draggable HISTORY_DETAIL pseudo-item right after HISTORY
-            // so the detail card always appears immediately below the Weekly Trends widget
-            // in the normal layout flow (avoiding graphicsLayer overlap issues).
-            val showHistoryDetail = healthHistory.isNotEmpty() &&
-                (selectedMetric == HealthMetric.HEART_RATE || selectedMetric == HealthMetric.SLEEP)
-            val augmentedConfigs: List<WidgetConfig> by remember(visibleConfigs, showHistoryDetail) {
-                derivedStateOf<List<WidgetConfig>> {
-                    if (!showHistoryDetail) {
-                        visibleConfigs
-                    } else {
-                        val result = mutableListOf<WidgetConfig>()
-                        for (cfg in visibleConfigs) {
-                            result.add(cfg)
-                            if (cfg.id == "HISTORY") {
-                                result.add(WidgetConfig("HISTORY_DETAIL", "History Detail", true, Icons.Default.ShowChart))
-                            }
-                        }
-                        result
-                    }
-                }
-            }
             DraggableWidgetColumn(
-                items = augmentedConfigs,
+                items = visibleConfigs,
                 onReorder = { reordered ->
-                    // Strip pseudo-item before persisting
-                    val real = reordered.filter { it.id != "HISTORY_DETAIL" }
                     val hidden = parsedConfigs.filter { !it.isVisible }
-                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(real + hidden))
+                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(reordered + hidden))
                 },
-                isDraggableItem = { it.id != "HISTORY_DETAIL" },
                 itemContent = { _, config ->
                     when (config.id) {
                     "BODY_STATS" -> {
@@ -423,6 +400,8 @@ fun HealthScreen(
                                 healthHistory = healthHistory,
                                 selectedDate = selectedDate,
                                 selectedMetric = selectedMetric,
+                                intradayHeartRate = intradayHeartRate,
+                                detailedSleep = detailedSleep,
                                 weekStartDay = weekStartDay,
                                 weeksBack = weeksBack,
                                 haptics = haptics,
@@ -450,14 +429,6 @@ fun HealthScreen(
                             )
                             Spacer(modifier = Modifier.height(20.dp))
                         }
-                    }
-                    "HISTORY_DETAIL" -> {
-                        if (selectedMetric == HealthMetric.HEART_RATE) {
-                            HeartRateDetailCard(intradayHeartRate, selectedDate, haptics)
-                        } else if (selectedMetric == HealthMetric.SLEEP) {
-                            SleepDetailCard(detailedSleep, selectedDate, haptics)
-                        }
-                        Spacer(modifier = Modifier.height(20.dp))
                     }
                     "SUMMARY" -> {
                         val s = summary
@@ -783,6 +754,8 @@ private fun HealthHistoryCard(
     healthHistory: List<DailyHealthStats>,
     selectedDate: LocalDate,
     selectedMetric: HealthMetric,
+    intradayHeartRate: List<HeartRateRecord.Sample>,
+    detailedSleep: List<SleepSessionRecord>,
     weekStartDay: DayOfWeek,
     weeksBack: Int,
     haptics: HapticHelper,
@@ -1029,7 +1002,10 @@ private fun HealthHistoryCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp), contentAlignment = Alignment.BottomStart
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Background),
+                contentAlignment = Alignment.BottomStart,
             ) {
                 // Background Average Line Indicator
                 if (avgValue > 0 && maxValue > 0) {
@@ -1059,8 +1035,9 @@ private fun HealthHistoryCard(
                                 onDragStart = { _ -> },
                                 onDrag = { change, _ ->
                                     if (healthHistory.isNotEmpty()) {
+                                        val clampedX = change.position.x.coerceIn(0f, size.width.toFloat())
                                         val widthPerItem = size.width / healthHistory.size.toFloat()
-                                        val index = (change.position.x / widthPerItem)
+                                        val index = (clampedX / widthPerItem)
                                             .toInt()
                                             .coerceIn(0, healthHistory.size - 1)
                                         if (index != lastIndex) {
@@ -1273,15 +1250,37 @@ private fun HealthHistoryCard(
                     }
                 }
             }
+
+            // ── Inline detail graph — expands smoothly within the card ──────────
+            AnimatedVisibility(
+                visible = selectedMetric == HealthMetric.HEART_RATE || selectedMetric == HealthMetric.SLEEP,
+                enter = MacroMotion.expandEnter,
+                exit = MacroMotion.expandExit,
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Border.copy(alpha = 0.35f))
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    if (selectedMetric == HealthMetric.HEART_RATE) {
+                        HeartRateDetailContent(intradayHeartRate, selectedDate, haptics)
+                    } else if (selectedMetric == HealthMetric.SLEEP) {
+                        SleepDetailContent(detailedSleep, selectedDate, haptics)
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: LocalDate, haptics: HapticHelper) {
-    MacroCard(delayMs = 125) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            val dateStr = if (date == LocalDate.now()) "Today" else date.format(DateTimeFormatter.ofPattern("MMM d"))
+private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: LocalDate, haptics: HapticHelper) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        val dateStr = if (date == LocalDate.now()) "Today" else date.format(DateTimeFormatter.ofPattern("MMM d"))
             Text(
                 "Heart Rate ($dateStr)",
                 fontSize = 18.sp,
@@ -1299,21 +1298,24 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                 Canvas(modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Background)
                     .pointerInput(samples) {
                         var lastClosestIndex = -1
                         val width = size.width.toFloat()
 
                         detectDragGestures(
-                            onDragStart = { touchX = it.x },
+                            onDragStart = { touchX = it.x.coerceIn(0f, size.width.toFloat()) },
                             onDrag = { change, _ ->
-                                touchX = change.position.x
+                                val clampedX = change.position.x.coerceIn(0f, size.width.toFloat())
+                                touchX = clampedX
                                 val closestIndex = samples
                                     .withIndex()
                                     .minByOrNull {
                                         val zdt = it.value.time.atZone(java.time.ZoneId.systemDefault())
                                         val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
                                         val px = (hourFraction / 24f) * width
-                                        kotlin.math.abs(px - change.position.x)
+                                        kotlin.math.abs(px - clampedX)
                                     }?.index ?: -1
 
                                 if (closestIndex != -1 && closestIndex != lastClosestIndex) {
@@ -1328,7 +1330,7 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                     .pointerInput(samples) {
                         detectTapGestures(
                             onPress = {
-                                touchX = it.x
+                                touchX = it.x.coerceIn(0f, size.width.toFloat())
                                 haptics.tick()
                                 tryAwaitRelease()
                                 touchX = null
@@ -1451,14 +1453,12 @@ private fun HeartRateDetailCard(samples: List<HeartRateRecord.Sample>, date: Loc
                 }
             }
         }
-    }
 }
 
 @Composable
-private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate, haptics: HapticHelper) {
-    MacroCard(delayMs = 125) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            val dateStr = if (date == LocalDate.now()) "Last Night" else date.format(DateTimeFormatter.ofPattern("MMM d"))
+private fun SleepDetailContent(sessions: List<SleepSessionRecord>, date: LocalDate, haptics: HapticHelper) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        val dateStr = if (date == LocalDate.now()) "Last Night" else date.format(DateTimeFormatter.ofPattern("MMM d"))
             Text(
                 "Sleep Stages ($dateStr)",
                 fontSize = 18.sp,
@@ -1516,17 +1516,20 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Background)
                     ) {
                         Canvas(modifier = Modifier
                             .fillMaxSize()
                             .pointerInput(stages) {
                                 var lastStage: SleepSessionRecord.Stage? = null
                                 detectDragGestures(
-                                    onDragStart = { touchX = it.x },
+                                    onDragStart = { touchX = it.x.coerceIn(0f, size.width.toFloat()) },
                                     onDrag = { change, _ ->
-                                        touchX = change.position.x
+                                        val clampedX = change.position.x.coerceIn(0f, size.width.toFloat())
+                                        touchX = clampedX
                                         if (timeRange > 0) {
-                                            val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val fraction = (clampedX / size.width.toFloat()).coerceIn(0f, 1f)
                                             val touchTime = minTime + (fraction * timeRange).toLong()
                                             val stage = stages.find { touchTime in it.startTime.toEpochMilli()..it.endTime.toEpochMilli() }
                                             if (stage != null && stage != lastStage) {
@@ -1542,7 +1545,7 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                             .pointerInput(stages) {
                                 detectTapGestures(
                                     onPress = {
-                                        touchX = it.x
+                                        touchX = it.x.coerceIn(0f, size.width.toFloat())
                                         haptics.tick()
                                         tryAwaitRelease()
                                         touchX = null
@@ -1757,7 +1760,6 @@ private fun SleepDetailCard(sessions: List<SleepSessionRecord>, date: LocalDate,
                 SleepStageRow("Deep", deepTime, Color(0xFF3F51B5))
             }
         }
-    }
 }
 
 @Composable

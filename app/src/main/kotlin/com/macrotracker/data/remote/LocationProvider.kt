@@ -26,26 +26,40 @@ class LocationProvider @Inject constructor(
 ) {
     companion object {
         private const val TAG = "LocationProvider"
+        private const val LOCATION_CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
     }
 
     private val fusedClient: FusedLocationProviderClient by lazy {
         LocationServices.getFusedLocationProviderClient(context)
     }
 
+    // Short-lived cache so rapid successive calls (e.g. retry after network error)
+    // reuse the same fix instead of each requesting a new GPS signal.
+    private var cachedLocation: LatLon? = null
+    private var locationCacheTimestamp: Long = 0L
+
     /**
      * Returns the device's precise current location, or null if unavailable.
-     * Always requests a fresh GPS fix (PRIORITY_HIGH_ACCURACY), bypassing any
-     * stale or network-only cached location. Falls back to BALANCED_POWER_ACCURACY
-     * if GPS cannot produce a fix (e.g. indoors).
+     * Results are cached for [LOCATION_CACHE_TTL_MS] to avoid redundant GPS fixes.
+     * Falls back to BALANCED_POWER_ACCURACY if GPS cannot produce a fix (e.g. indoors).
      * The caller MUST have already acquired ACCESS_FINE_LOCATION permission.
      */
     @SuppressLint("MissingPermission")
     suspend fun getLocation(): LatLon? {
+        val now = System.currentTimeMillis()
+        if (cachedLocation != null && now - locationCacheTimestamp < LOCATION_CACHE_TTL_MS) {
+            Log.d(TAG, "Returning cached location")
+            return cachedLocation
+        }
+
         // Try a fresh HIGH_ACCURACY (GPS) fix first
         val precise = requestLocation(Priority.PRIORITY_HIGH_ACCURACY)
         if (precise != null) {
             Log.d(TAG, "GPS fix (accuracy=${precise.accuracy}m): ${precise.latitude}, ${precise.longitude}")
-            return LatLon(precise.latitude, precise.longitude)
+            val result = LatLon(precise.latitude, precise.longitude)
+            cachedLocation = result
+            locationCacheTimestamp = now
+            return result
         }
 
         // GPS unavailable (indoors / no signal) — fall back to network-based fix
@@ -53,7 +67,10 @@ class LocationProvider @Inject constructor(
         val fallback = requestLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
         return if (fallback != null) {
             Log.d(TAG, "Network fix (accuracy=${fallback.accuracy}m): ${fallback.latitude}, ${fallback.longitude}")
-            LatLon(fallback.latitude, fallback.longitude)
+            val result = LatLon(fallback.latitude, fallback.longitude)
+            cachedLocation = result
+            locationCacheTimestamp = now
+            result
         } else {
             Log.w(TAG, "Both GPS and network location unavailable")
             null

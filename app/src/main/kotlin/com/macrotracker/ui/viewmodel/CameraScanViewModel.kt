@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToLong
 import javax.inject.Inject
 
 enum class ScanPhase { CAMERA, PREVIEW, RESULT }
@@ -46,8 +47,6 @@ class CameraScanViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    val hasApiKey: Boolean get() = aiRepo.hasApiKey
-
     // Override fields
     private val _foodNameOverride = MutableStateFlow("")
     val foodNameOverride: StateFlow<String> = _foodNameOverride
@@ -81,8 +80,7 @@ class CameraScanViewModel @Inject constructor(
     fun setProteinOverride(v: String) { _proteinOverride.value = v }
     fun setServingsOverride(v: String) { _servingsOverride.value = v }
     fun setServingSizeOverride(v: String) { _servingSizeOverride.value = v }
-    fun setPackageWeightOverride(v: String) { _packageWeightOverride.value = v }
-    
+
     fun setAmountEaten(v: String) { _amountEaten.value = v }
     fun setUnitEaten(v: String) { _unitEaten.value = v }
 
@@ -165,8 +163,8 @@ class CameraScanViewModel @Inject constructor(
             servingSizeGrams = finalServSize,
             packageWeightGrams = finalPkgWeight,
             // Calculate correctly and round to avoid strange decimal point behaviour with the multiplier
-            loggedCalories = Math.round(cals * multiplier).toInt(),
-            loggedProtein = Math.round(prot * multiplier).toInt(),
+            loggedCalories = (cals * multiplier).roundToLong().toInt(),
+            loggedProtein = (prot * multiplier).roundToLong().toInt(),
             multiplier = multiplier
         )
     }

@@ -113,9 +113,10 @@ object DashboardWidgetDataProvider {
             val dao = db.macroDao()
             val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
             val yesterday = LocalDate.now().minusDays(1).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-            val totalCalories = dao.getTotalCaloriesForDate(today)
-            val totalProtein = dao.getTotalProteinForDate(today)
-            val yesterdayCalories = dao.getTotalCaloriesForDate(yesterday)
+            val totalsMap = dao.getTotalsForDates(listOf(today, yesterday)).associateBy { it.date }
+            val totalCalories = totalsMap[today]?.totalCalories ?: 0
+            val totalProtein  = totalsMap[today]?.totalProtein  ?: 0
+            val yesterdayCalories = totalsMap[yesterday]?.totalCalories ?: 0
             val goals = dao.getGoals() ?: GoalsEntity()
             val logs = dao.getLogsForDate(today)
             db.close()

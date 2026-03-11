@@ -36,8 +36,6 @@ class SettingsRepository @Inject constructor(
     private val _restingHeartRateEnabled = MutableStateFlow(healthPrefs.getBoolean("resting_heart_rate_enabled", true))
     val restingHeartRateEnabled: StateFlow<Boolean> = _restingHeartRateEnabled
 
-    private val _heartRateVariabilityEnabled = MutableStateFlow(healthPrefs.getBoolean("heart_rate_variability_enabled", true))
-    val heartRateVariabilityEnabled: StateFlow<Boolean> = _heartRateVariabilityEnabled
 
     private val _oxygenSaturationEnabled = MutableStateFlow(healthPrefs.getBoolean("oxygen_saturation_enabled", true))
     val oxygenSaturationEnabled: StateFlow<Boolean> = _oxygenSaturationEnabled
@@ -111,7 +109,6 @@ class SettingsRepository @Inject constructor(
         when (metric) {
             "heart_rate_enabled" -> _heartRateEnabled.value = enabled
             "resting_heart_rate_enabled" -> _restingHeartRateEnabled.value = enabled
-            "heart_rate_variability_enabled" -> _heartRateVariabilityEnabled.value = enabled
             "oxygen_saturation_enabled" -> _oxygenSaturationEnabled.value = enabled
             "respiratory_rate_enabled" -> _respiratoryRateEnabled.value = enabled
             "steps_enabled" -> _stepsEnabled.value = enabled

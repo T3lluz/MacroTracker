@@ -78,17 +78,24 @@ fun CalendarCard(
     val haptics = rememberHaptics()
 
     AnimatedContent(
-        targetState = state,
+        targetState = when (state) {
+            is CalendarUiState.Loading -> 0
+            is CalendarUiState.Success -> 1
+            is CalendarUiState.PermissionRequired -> 2
+            is CalendarUiState.Unavailable -> 3
+        },
         transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
         label = "calendarContent",
         modifier = modifier,
-    ) { currentState ->
-        when (currentState) {
-            is CalendarUiState.Loading -> { }
+    ) { stateKey ->
+        val currentState = state
+        when (stateKey) {
+            0 -> { } // Loading — nothing
 
-            is CalendarUiState.Success -> {
-                val events = currentState.events
-                val upcomingEvents = currentState.upcomingEvents
+            1 -> {
+                val successState = currentState as? CalendarUiState.Success ?: return@AnimatedContent
+                val events = successState.events
+                val upcomingEvents = successState.upcomingEvents
                 val allVisibleEvents = (events + upcomingEvents).distinctBy { it.id }
                 
                 if (allVisibleEvents.isEmpty()) {
@@ -151,7 +158,7 @@ fun CalendarCard(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     LastUpdatedText(
-                                        lastUpdatedAt = currentState.lastUpdatedAt,
+                                        lastUpdatedAt = successState.lastUpdatedAt,
                                         color = TextSecondary,
                                     )
                                     IconButton(onClick = { showDetails = true }, modifier = Modifier.size(36.dp)) {
@@ -258,7 +265,7 @@ fun CalendarCard(
                 }
             }
 
-            is CalendarUiState.PermissionRequired -> {
+            2 -> {
                 MacroCard(delayMs = 125) {
                     Row(
                         modifier = Modifier
@@ -308,7 +315,7 @@ fun CalendarCard(
                 }
             }
 
-            is CalendarUiState.Unavailable -> { }
+            else -> { } // 3 = Unavailable, nothing to show
         }
     }
 }

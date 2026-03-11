@@ -75,12 +75,26 @@ private fun F1StandingsRoot(data: F1WidgetData) {
 
 // ── Shared header ─────────────────────────────────────────────────
 @Composable
-private fun StandingsHeader(title: String, c: F1Clr, sc: WScale) {
+private fun StandingsHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WScale) {
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(GlanceModifier.width(3.dp).height(sc.flg.value.dp).cornerRadius(2.dp).background(c.red)) {}
         Spacer(GlanceModifier.width(sc.spaceSm))
         Text(title, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.flg, color = c.text), maxLines = 1)
         Spacer(GlanceModifier.defaultWeight())
+        // Inline status tag
+        val statusText = statusTagText(data)
+        if (statusText.isNotBlank() && statusText != "—") {
+            Box(
+                GlanceModifier.cornerRadius(sc.btnCorner)
+                    .background(if (data.isStale) c.cardAlt else c.card)
+                    .padding(horizontal = sc.spaceSm, vertical = 2.dp),
+            ) {
+                Text(statusText, style = TextStyle(fontSize = sc.fxs,
+                    fontWeight = FontWeight.Medium,
+                    color = if (data.isStale) c.gold else c.sub), maxLines = 1)
+            }
+            Spacer(GlanceModifier.width(sc.spaceSm))
+        }
         Box(
             GlanceModifier.width(sc.btnSize).height(sc.btnSize).cornerRadius(sc.btnCorner)
                 .background(c.card).clickable(actionRunCallback<RefreshF1WidgetAction>()).padding(sc.btnPad),
@@ -89,20 +103,35 @@ private fun StandingsHeader(title: String, c: F1Clr, sc: WScale) {
     }
 }
 
-// ── TINY: 2×2 — P1 trophy ────────────────────────────────────────
+// ── TINY: 2×2 — P1 trophy + P2 gap ──────────────────────────────
 @Composable
 private fun StandingsTiny(d: F1WidgetData, c: F1Clr, sc: WScale) {
     val p1 = d.driverStandings.firstOrNull()
+    val p2 = d.driverStandings.getOrNull(1)
     Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("🏆", style = TextStyle(fontSize = sc.iconHero))
+        Text("🏆", style = TextStyle(fontSize = sc.iconMd))
         Spacer(GlanceModifier.height(sc.spaceXs))
         if (p1 != null) {
             Text(p1.acronym, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = teamColorProvider(p1.teamColor)))
             Text("${p1.points.toInt()} pts", style = TextStyle(fontSize = sc.fxs, color = c.sub))
             if (p1.wins > 0)
-                Text("${p1.wins} wins", style = TextStyle(fontSize = sc.fxs, color = c.gold))
+                Text("${p1.wins}W  ${p1.podiums}P", style = TextStyle(fontSize = sc.fxs, color = c.gold))
         } else {
-            Text("No data", style = TextStyle(fontSize = sc.fxs, color = c.sub))
+            Text(f1WidgetEmptyMessage(d, "No data"), style = TextStyle(fontSize = sc.fxs, color = c.sub))
+        }
+        // Gap to P2
+        if (p1 != null && p2 != null) {
+            Spacer(GlanceModifier.height(sc.spaceXs))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(GlanceModifier.width(3.dp).height(sc.fxs.value.dp).cornerRadius(2.dp)
+                    .background(teamColorProvider(p2.teamColor))) {}
+                Spacer(GlanceModifier.width(3.dp))
+                Text(p2.acronym, style = TextStyle(fontSize = sc.fxs, color = c.sub))
+                Spacer(GlanceModifier.width(3.dp))
+                val gap = if (p2.gapToLeader.isNotEmpty()) p2.gapToLeader
+                    else "-${(p1.points - p2.points).toInt()}"
+                Text(gap, style = TextStyle(fontSize = sc.fxs, color = c.sub))
+            }
         }
     }
 }
@@ -111,12 +140,12 @@ private fun StandingsTiny(d: F1WidgetData, c: F1Clr, sc: WScale) {
 @Composable
 private fun StandingsCompact(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
     Column(GlanceModifier.fillMaxSize()) {
-        StandingsHeader("Standings", c, sc)
+        StandingsHeader("Standings", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
         if (d.driverStandings.isEmpty()) {
             Spacer(GlanceModifier.defaultWeight())
             Box(GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card), contentAlignment = Alignment.Center) {
-                Text("No standings data", style = TextStyle(fontSize = sc.fsm, color = c.sub))
+                Text(f1WidgetEmptyMessage(d, "No standings data"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
             }
             Spacer(GlanceModifier.defaultWeight())
         } else {
@@ -130,17 +159,17 @@ private fun StandingsCompact(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
     }
 }
 
-// ── MEDIUM: 2-3×3 — leader card pinned + all scrollable ───────────
+// ── MEDIUM: 2-3×3 — leader card pinned + last race strip + scrollable ─
 @Composable
 private fun StandingsMedium(d: F1WidgetData, c: F1Clr, sc: WScale) {
     Column(GlanceModifier.fillMaxSize()) {
-        StandingsHeader("Championship", c, sc)
+        StandingsHeader("Championship", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
         if (d.driverStandings.isEmpty()) {
             Spacer(GlanceModifier.defaultWeight())
             Column(GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("🏆", style = TextStyle(fontSize = sc.iconHero))
-                Text("No standings available", style = TextStyle(fontSize = sc.fsm, color = c.sub))
+                Text(f1WidgetEmptyMessage(d, "No standings available"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
             }
             Spacer(GlanceModifier.defaultWeight())
         } else {
@@ -148,6 +177,14 @@ private fun StandingsMedium(d: F1WidgetData, c: F1Clr, sc: WScale) {
             LeaderCard(p1, c, sc)
             Spacer(GlanceModifier.height(sc.spaceSm))
             LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
+                if (d.lastRaceResults.isNotEmpty()) {
+                    items(listOf(Unit)) {
+                        Column(GlanceModifier.fillMaxWidth()) {
+                            LastRaceStrip(d, c, sc)
+                            Spacer(GlanceModifier.height(sc.spaceSm))
+                        }
+                    }
+                }
                 items(buildStandingsList(d, includeP1 = false)) { item ->
                     StandingsItemRow(item, c, sc, showTeam = true)
                     Spacer(GlanceModifier.height(sc.spaceXs))
@@ -157,17 +194,17 @@ private fun StandingsMedium(d: F1WidgetData, c: F1Clr, sc: WScale) {
     }
 }
 
-// ── FULL: 4-5×3 — leader card + all scrollable ────────────────────
+// ── FULL: 4-5×3 — leader card + last race mini + all scrollable ────
 @Composable
 private fun StandingsFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
     Column(GlanceModifier.fillMaxSize()) {
-        StandingsHeader("F1 Championship  ·  2026", c, sc)
+        StandingsHeader("F1 Championship  ·  ${java.time.LocalDate.now().year}", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
         if (d.driverStandings.isEmpty()) {
             Spacer(GlanceModifier.defaultWeight())
             Column(GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("🏆", style = TextStyle(fontSize = sc.iconHero))
-                Text("No standings available", style = TextStyle(fontSize = sc.fsm, color = c.sub))
+                Text(f1WidgetEmptyMessage(d, "No standings available"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
             }
             Spacer(GlanceModifier.defaultWeight())
         } else {
@@ -175,9 +212,105 @@ private fun StandingsFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
             LeaderCard(p1, c, sc)
             Spacer(GlanceModifier.height(sc.spaceSm))
             LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
+                if (d.lastRaceResults.isNotEmpty()) {
+                    items(listOf(Unit)) {
+                        Column(GlanceModifier.fillMaxWidth()) {
+                            LastRaceStrip(d, c, sc)
+                            Spacer(GlanceModifier.height(sc.spaceXs))
+                        }
+                    }
+                }
+                if (d.lastQualiResults.isNotEmpty()) {
+                    items(listOf(Unit)) {
+                        Column(GlanceModifier.fillMaxWidth()) {
+                            QualiGridStrip(d, c, sc)
+                            Spacer(GlanceModifier.height(sc.spaceSm))
+                        }
+                    }
+                }
                 items(buildStandingsList(d, includeP1 = false)) { item ->
                     StandingsItemRow(item, c, sc, showTeam = true)
                     Spacer(GlanceModifier.height(sc.spaceXs))
+                }
+            }
+        }
+    }
+}
+
+// ── LAST RACE STRIP (horizontal P1/P2/P3 for FULL size) ──────────
+@Composable
+private fun LastRaceStrip(d: F1WidgetData, c: F1Clr, sc: WScale) {
+    Box(
+        GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.cardAlt)
+            .padding(horizontal = sc.padSm, vertical = sc.spaceXs),
+    ) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            // Label shrinks via defaultWeight — chips always get their measured space
+            Column(GlanceModifier.defaultWeight()) {
+                Text(buildString {
+                    append("LAST")
+                    if (d.lastRaceFlag != null) { append("  "); append(d.lastRaceFlag) }
+                    if (d.lastRaceName != null) { append("  "); append(d.lastRaceName.removePrefix("Grand Prix of ")
+                        .removePrefix("Formula 1 ").take(14)) }
+                }, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.sub), maxLines = 1)
+            }
+            Spacer(GlanceModifier.width(sc.spaceSm))
+            // P1/P2/P3 chips — fixed width, always visible
+            d.lastRaceResults.take(3).forEachIndexed { i, row ->
+                if (i > 0) Spacer(GlanceModifier.width(sc.spaceSm))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(GlanceModifier.cornerRadius(3.dp)
+                        .background(podiumColor(row.position, c))
+                        .padding(horizontal = 3.dp, vertical = 1.dp)) {
+                        Text("${row.position}", style = TextStyle(fontWeight = FontWeight.Bold,
+                            fontSize = sc.fxs, color = if (row.position <= 3) c.bg else c.text))
+                    }
+                    Spacer(GlanceModifier.width(3.dp))
+                    Box(GlanceModifier.width(3.dp).height(sc.fsm.value.dp).cornerRadius(2.dp)
+                        .background(teamColorProvider(row.teamColor))) {}
+                    Spacer(GlanceModifier.width(3.dp))
+                    Text(row.acronym, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text))
+                }
+            }
+        }
+    }
+}
+
+// ── QUALIFYING GRID STRIP ─────────────────────────────────────────
+/** Compact single-row qualifying grid P1-P3 — mirrors LastRaceStrip style. */
+@Composable
+private fun QualiGridStrip(d: F1WidgetData, c: F1Clr, sc: WScale) {
+    if (d.lastQualiResults.isEmpty()) return
+    Box(
+        GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.cardAlt)
+            .padding(horizontal = sc.padSm, vertical = sc.spaceXs),
+    ) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            // Label shrinks via defaultWeight — chips always get their measured space
+            Column(GlanceModifier.defaultWeight()) {
+                Text(buildString {
+                    append("QUALI")
+                    if (d.lastRaceFlag != null) { append("  "); append(d.lastRaceFlag) }
+                    if (d.lastRaceName != null) { append("  "); append(
+                        d.lastRaceName.removePrefix("Grand Prix of ").removePrefix("Formula 1 ").take(12)) }
+                }, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.sub), maxLines = 1)
+            }
+            Spacer(GlanceModifier.width(sc.spaceSm))
+            // P1-P3 chips — position + team stripe + acronym only (no times → always fits)
+            d.lastQualiResults.take(3).forEachIndexed { i, qr ->
+                if (i > 0) Spacer(GlanceModifier.width(sc.spaceSm))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(GlanceModifier.cornerRadius(3.dp)
+                        .background(podiumColor(qr.position, c))
+                        .padding(horizontal = 3.dp, vertical = 1.dp)) {
+                        Text("${qr.position}", style = TextStyle(fontWeight = FontWeight.Bold,
+                            fontSize = sc.fxs, color = if (qr.position <= 3) c.bg else c.text))
+                    }
+                    Spacer(GlanceModifier.width(3.dp))
+                    Box(GlanceModifier.width(3.dp).height(sc.fsm.value.dp).cornerRadius(2.dp)
+                        .background(teamColorProvider(qr.teamColor))) {}
+                    Spacer(GlanceModifier.width(3.dp))
+                    Text(qr.acronym, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text))
                 }
             }
         }
@@ -227,6 +360,14 @@ private fun LeaderCard(d: DriverStandingRow, c: F1Clr, sc: WScale) {
                     Text("🏆", style = TextStyle(fontSize = sc.iconSm))
                     Spacer(GlanceModifier.width(sc.spaceXs))
                     Text(d.name, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxl, color = c.text), maxLines = 1)
+                    if (d.driverNumber != null) {
+                        Spacer(GlanceModifier.width(sc.spaceSm))
+                        Box(GlanceModifier.cornerRadius(3.dp).background(tcColor)
+                            .padding(horizontal = 4.dp, vertical = 1.dp)) {
+                            Text("#${d.driverNumber}", style = TextStyle(fontWeight = FontWeight.Bold,
+                                fontSize = sc.fxs, color = c.bg))
+                        }
+                    }
                 }
                 Spacer(GlanceModifier.height(sc.spaceXs))
                 Text(d.team, style = TextStyle(fontSize = sc.fsm, color = c.sub), maxLines = 1)
@@ -234,10 +375,34 @@ private fun LeaderCard(d: DriverStandingRow, c: F1Clr, sc: WScale) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("${d.points.toInt()}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.gold))
                 Text("pts", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-                if (d.wins > 0) {
+                Spacer(GlanceModifier.height(sc.spaceXs))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (d.wins > 0) {
+                        Box(GlanceModifier.cornerRadius(3.dp).background(c.gold).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                            Text("${d.wins}W", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.bg))
+                        }
+                    }
+                    if (d.podiums > d.wins) {
+                        Spacer(GlanceModifier.width(sc.spaceXs))
+                        Box(GlanceModifier.cornerRadius(3.dp).background(c.pill).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                            Text("${d.podiums}P", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.sub))
+                        }
+                    }
+                }
+                if (d.fastestLaps > 0) {
                     Spacer(GlanceModifier.height(sc.spaceXs))
-                    Box(GlanceModifier.cornerRadius(3.dp).background(c.gold).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                        Text("${d.wins}W", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.bg))
+                    Box(GlanceModifier.cornerRadius(3.dp).background(c.accent).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                        Text("${d.fastestLaps}FL", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.bg))
+                    }
+                }
+                // Last race result chip
+                if (d.lastRacePos > 0) {
+                    Spacer(GlanceModifier.height(sc.spaceXs))
+                    Box(GlanceModifier.cornerRadius(3.dp)
+                        .background(podiumColor(d.lastRacePos, c))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)) {
+                        Text("R·P${d.lastRacePos}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs,
+                            color = if (d.lastRacePos <= 3) c.bg else c.text))
                     }
                 }
             }
@@ -261,7 +426,8 @@ private fun DriverRow(d: DriverStandingRow, c: F1Clr, sc: WScale, showTeam: Bool
     val tcColor = teamColorProvider(d.teamColor)
     Row(
         GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm / 2).background(c.card)
-            .padding(horizontal = sc.padSm, vertical = sc.spaceXs),
+            .padding(horizontal = sc.padSm, vertical = sc.spaceXs)
+            .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Team color stripe
@@ -288,6 +454,21 @@ private fun DriverRow(d: DriverStandingRow, c: F1Clr, sc: WScale, showTeam: Bool
             }
         }
         Spacer(GlanceModifier.defaultWeight())
+        // Last race finish — color-coded badge (gold/silver/bronze/pill for P4+)
+        if (d.lastRacePos > 0) {
+            Box(GlanceModifier.cornerRadius(3.dp)
+                .background(podiumColor(d.lastRacePos, c))
+                .padding(horizontal = 3.dp, vertical = 1.dp)) {
+                Text("P${d.lastRacePos}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs,
+                    color = if (d.lastRacePos <= 3) c.bg else c.text))
+            }
+            Spacer(GlanceModifier.width(sc.spaceSm))
+        }
+        // Gap to leader (P2+)
+        if (d.gapToLeader.isNotEmpty()) {
+            Text(d.gapToLeader, style = TextStyle(fontSize = sc.fxs, color = c.sub))
+            Spacer(GlanceModifier.width(sc.spaceSm))
+        }
         Text("${d.points.toInt()}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text))
         Spacer(GlanceModifier.width(sc.spaceXs))
         Text("pts", style = TextStyle(fontSize = sc.fxs, color = c.sub))
@@ -297,6 +478,7 @@ private fun DriverRow(d: DriverStandingRow, c: F1Clr, sc: WScale, showTeam: Bool
                 Text("${d.wins}W", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.bg))
             }
         }
+        // Removed: podiums badge (wins already implies podium stats) and › chevron (row is clickable)
     }
 }
 
@@ -317,8 +499,29 @@ private fun ConstructorRow(d: ConstructorStandingRow, c: F1Clr, sc: WScale) {
                 .padding(horizontal = 4.dp, vertical = 1.dp),
         ) { Text("${d.position}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.text)) }
         Spacer(GlanceModifier.width(sc.spaceSm))
-        Text(d.name, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text), maxLines = 1)
-        Spacer(GlanceModifier.defaultWeight())
+        // Team name + driver breakdown in a single flexible Column
+        Column(GlanceModifier.defaultWeight()) {
+            Text(d.name, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text), maxLines = 1)
+            if (d.driver1.isNotEmpty()) {
+                Spacer(GlanceModifier.height(sc.spaceXs))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(GlanceModifier.cornerRadius(3.dp).background(c.pill)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)) {
+                        Text("${d.driver1}  ${d.driver1Pts.toInt()}",
+                            style = TextStyle(fontSize = sc.fxs, color = c.sub))
+                    }
+                    if (d.driver2.isNotEmpty()) {
+                        Spacer(GlanceModifier.width(sc.spaceSm))
+                        Box(GlanceModifier.cornerRadius(3.dp).background(c.pill)
+                            .padding(horizontal = 4.dp, vertical = 1.dp)) {
+                            Text("${d.driver2}  ${d.driver2Pts.toInt()}",
+                                style = TextStyle(fontSize = sc.fxs, color = c.sub))
+                        }
+                    }
+                }
+            }
+        }
+        // Points + wins right-aligned
         Text("${d.points.toInt()}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text))
         Spacer(GlanceModifier.width(sc.spaceXs))
         Text("pts", style = TextStyle(fontSize = sc.fxs, color = c.sub))

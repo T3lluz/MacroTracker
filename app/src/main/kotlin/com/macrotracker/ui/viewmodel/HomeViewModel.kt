@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.calendar.CalendarEvent
@@ -180,9 +181,7 @@ class HomeViewModel @Inject constructor(
 
     private fun saveSelectedCalendarIds(ids: Set<Long>) {
         val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet())
-            .apply()
+        prefs.edit { putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet()) }
     }
 
     fun loadData() {
@@ -211,7 +210,6 @@ class HomeViewModel @Inject constructor(
     fun refreshAll(
         hasLocationPermission: Boolean,
         hasCalendarPermission: Boolean,
-        hasHealthPermission: Boolean,
         force: Boolean = false,
     ) {
         if (_isRefreshing.value) return
@@ -226,7 +224,7 @@ class HomeViewModel @Inject constructor(
             loadWeather(hasLocationPermission)
             loadHealthConnect(silent = true)
             loadCalendar(hasCalendarPermission)
-            loadF1Data()
+            loadF1Data(forceRefresh = force)
             lastRefreshMs = System.currentTimeMillis()
             _isRefreshing.value = false
         }
@@ -237,15 +235,25 @@ class HomeViewModel @Inject constructor(
         f1DataJob?.cancel()
 
         f1DataJob = viewModelScope.launch {
-            _f1State.value = F1UiState.Loading
+            val cached = f1Repository.getCachedF1Data()
+            val cachedAt = f1Repository.lastFetchTimeMs.takeIf { it > 0 }?.let(Instant::ofEpochMilli)
+            if (cached != null) {
+                _f1State.value = F1UiState.Success(cached, lastUpdatedAt = cachedAt)
+            } else {
+                _f1State.value = F1UiState.Loading
+            }
+
             f1Repository.getOverallF1Data(forceRefresh)
                 .onSuccess { f1Data ->
                     val fetchedAt = f1Repository.lastFetchTimeMs
-                        .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
+                        .takeIf { it > 0 }?.let(Instant::ofEpochMilli)
                     _f1State.value = F1UiState.Success(f1Data, lastUpdatedAt = fetchedAt)
+                    WidgetUpdater.updateAllWidgets(appContext)
                 }
                 .onFailure { error ->
-                    _f1State.value = F1UiState.Error(error.message ?: "Unknown error")
+                    if (cached == null) {
+                        _f1State.value = F1UiState.Error(error.message ?: "Unknown error")
+                    }
                 }
         }
     }
@@ -286,7 +294,7 @@ class HomeViewModel @Inject constructor(
 
     fun loadCalendar(hasPermission: Boolean) {
         if (!settingsRepository.calendarEnabled.value) {
-            _calendarState.value = CalendarUiState.PermissionRequired
+            _calendarState.value = CalendarUiState.Unavailable
             return
         }
         if (!hasPermission) {
@@ -336,7 +344,7 @@ class HomeViewModel @Inject constructor(
     fun loadWeather(hasPermission: Boolean) {
         if (!settingsRepository.weatherEnabled.value) {
             _weatherState.value = WeatherUiState.PermissionRequired
-            appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+            appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE).edit { clear() }
             viewModelScope.launch { WidgetUpdater.updateAllWidgets(appContext) }
             return
         }
@@ -462,17 +470,17 @@ class HomeViewModel @Inject constructor(
                 "$displayHour|${h.icon}|$temp|0"
             }
 
-            prefs.edit()
-                .putString("temp", weather.temperature.toInt().toString())
-                .putString("icon", weather.icon)
-                .putString("description", weather.description)
-                .putString("location", weather.locationName)
-                .putString("high", todayForecast?.maxTemp?.toInt()?.toString())
-                .putString("low", todayForecast?.minTemp?.toInt()?.toString())
-                .putString("feels_like", weather.feelsLike?.toInt()?.toString())
-                .putString("humidity", weather.humidity?.toInt()?.toString())
-                .putString("hourly_forecast", hourlyStr.ifEmpty { null })
-                .apply()
+            prefs.edit {
+                putString("temp", weather.temperature.toInt().toString())
+                putString("icon", weather.icon)
+                putString("description", weather.description)
+                putString("location", weather.locationName)
+                putString("high", todayForecast?.maxTemp?.toInt()?.toString())
+                putString("low", todayForecast?.minTemp?.toInt()?.toString())
+                putString("feels_like", weather.feelsLike?.toInt()?.toString())
+                putString("humidity", weather.humidity?.toInt()?.toString())
+                putString("hourly_forecast", hourlyStr.ifEmpty { null })
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to cache weather for widget: ${e.message}")
         }
@@ -488,14 +496,6 @@ class HomeViewModel @Inject constructor(
                 protein = protein,
             )
             repository.saveLog(log)
-            loadData()
-            WidgetUpdater.updateAllWidgets(appContext)
-        }
-    }
-
-    fun deleteLog(id: String) {
-        viewModelScope.launch {
-            repository.deleteLog(id)
             loadData()
             WidgetUpdater.updateAllWidgets(appContext)
         }

@@ -15,6 +15,7 @@ import com.macrotracker.data.local.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -84,8 +85,9 @@ class HealthViewModel @Inject constructor(
     private var lastResumeLoadMs = 0L
 
     init {
-        // Reactively load health data when the setting is changed
-        settingsRepository.masterHealthConnectEnabled.onEach { enabled ->
+        // drop(1) skips the initial StateFlow replay — the screen calls loadDataOnResume()
+        // on first composition which covers the initial load. Only react to user-driven changes.
+        settingsRepository.masterHealthConnectEnabled.drop(1).onEach {
             loadHealthConnect()
         }.launchIn(viewModelScope)
     }

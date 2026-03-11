@@ -26,51 +26,59 @@ class MacroRepository @Inject constructor(
 
     suspend fun getLogsForDate(date: String): List<MacroLogEntity> = dao.getLogsForDate(date)
 
+    /** Fetches today's summary in 2 DB round-trips (batch totals + goals). */
     suspend fun getDailySummary(date: String): DailySummary {
-        val totalCal = dao.getTotalCaloriesForDate(date)
-        val totalProt = dao.getTotalProteinForDate(date)
-        val goals = dao.getGoals() ?: GoalsEntity()
+        val totals = dao.getTotalsForDates(listOf(date)).firstOrNull()
+        val goals  = dao.getGoals() ?: GoalsEntity()
         return DailySummary(
-            date = date,
-            totalCalories = totalCal,
-            totalProtein = totalProt,
-            calorieGoal = goals.calorieGoal,
-            proteinGoal = goals.proteinGoal,
+            date          = date,
+            totalCalories = totals?.totalCalories ?: 0,
+            totalProtein  = totals?.totalProtein  ?: 0,
+            calorieGoal   = goals.calorieGoal,
+            proteinGoal   = goals.proteinGoal,
         )
     }
 
+    /**
+     * Fetches summaries for the last [rangeDays] days in 2 DB round-trips:
+     * one batch totals query + one goals query (was N×2 + 1 before).
+     */
     suspend fun getDailySummariesRange(rangeDays: Int): List<DailySummary> {
         val today = LocalDate.now()
-        val goals = dao.getGoals() ?: GoalsEntity()
-        return (0 until rangeDays).map { i ->
-            val date = today.minusDays((rangeDays - 1 - i).toLong())
-            val dateStr = date.format(dateFormat)
-            val totalCal = dao.getTotalCaloriesForDate(dateStr)
-            val totalProt = dao.getTotalProteinForDate(dateStr)
+        val dates = (0 until rangeDays).map { i ->
+            today.minusDays((rangeDays - 1 - i).toLong()).format(dateFormat)
+        }
+        val goals     = dao.getGoals() ?: GoalsEntity()
+        val totalsMap = dao.getTotalsForDates(dates).associateBy { it.date }
+        return dates.map { dateStr ->
+            val totals = totalsMap[dateStr]
             DailySummary(
-                date = dateStr,
-                totalCalories = totalCal,
-                totalProtein = totalProt,
-                calorieGoal = goals.calorieGoal,
-                proteinGoal = goals.proteinGoal,
+                date          = dateStr,
+                totalCalories = totals?.totalCalories ?: 0,
+                totalProtein  = totals?.totalProtein  ?: 0,
+                calorieGoal   = goals.calorieGoal,
+                proteinGoal   = goals.proteinGoal,
             )
         }
     }
 
+    /**
+     * Fetches summaries for a date range in 2 DB round-trips
+     * (was N×2 + 1 before).
+     */
     suspend fun getDailySummariesBetween(startDate: LocalDate, endDate: LocalDate): List<DailySummary> {
-        val days = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
-        val goals = dao.getGoals() ?: GoalsEntity()
-        return (0 until days).map { i ->
-            val date = startDate.plusDays(i.toLong())
-            val dateStr = date.format(dateFormat)
-            val totalCal = dao.getTotalCaloriesForDate(dateStr)
-            val totalProt = dao.getTotalProteinForDate(dateStr)
+        val days  = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
+        val dates = (0 until days).map { i -> startDate.plusDays(i.toLong()).format(dateFormat) }
+        val goals     = dao.getGoals() ?: GoalsEntity()
+        val totalsMap = dao.getTotalsForDates(dates).associateBy { it.date }
+        return dates.map { dateStr ->
+            val totals = totalsMap[dateStr]
             DailySummary(
-                date = dateStr,
-                totalCalories = totalCal,
-                totalProtein = totalProt,
-                calorieGoal = goals.calorieGoal,
-                proteinGoal = goals.proteinGoal,
+                date          = dateStr,
+                totalCalories = totals?.totalCalories ?: 0,
+                totalProtein  = totals?.totalProtein  ?: 0,
+                calorieGoal   = goals.calorieGoal,
+                proteinGoal   = goals.proteinGoal,
             )
         }
     }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.calendar.CalendarInfo
@@ -76,9 +77,7 @@ class SettingsViewModel @Inject constructor(
 
     private fun saveSelectedCalendarIds(ids: Set<Long>) {
         val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet())
-            .apply()
+        prefs.edit { putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet()) }
     }
 
     fun setMasterHealthConnectEnabled(enabled: Boolean) {

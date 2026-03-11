@@ -47,8 +47,13 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.automirrored.outlined.ViewList
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,7 +97,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.macrotracker.data.youtube.YoutubeChannel
 import com.macrotracker.data.youtube.YoutubeVideo
@@ -119,6 +123,8 @@ import java.time.temporal.ChronoUnit
 private val YtRed  = Color(0xFFFF0000)
 private val YtDark = Color(0xFF0F0F0F)
 
+private enum class YtLayout { LIST, GRID }
+
 // ── Main card ─────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,6 +132,7 @@ private val YtDark = Color(0xFF0F0F0F)
 fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
     val haptics          = rememberHaptics()
     val scope            = rememberCoroutineScope()
+    val context          = LocalContext.current
     val sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val youtubeState     by viewModel.youtubeState.collectAsState()
@@ -163,6 +170,15 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                         color = TextSecondary,
                     )
                     val successState = youtubeState as? YouTubeUiState.Success
+                    // Video count pill
+                    if (successState != null && successState.videos.isNotEmpty()) {
+                        Text("·", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.35f))
+                        Text(
+                            "${successState.videos.size} video${if (successState.videos.size != 1) "s" else ""}",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                        )
+                    }
                     if (successState?.lastUpdatedAt != null) {
                         Text("·", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.35f))
                         LastUpdatedText(
@@ -194,6 +210,29 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                     modifier = Modifier.size(36.dp),
                 ) {
                     Icon(Icons.Outlined.Settings, "Settings", tint = TextSecondary, modifier = Modifier.size(20.dp))
+                }
+            }
+            // "Open YouTube" shortcut — only shown when collapsed (mirrors refresh/settings slot)
+            AnimatedVisibility(
+                visible = !expanded,
+                enter = fadeIn(tween(150)) + scaleIn(tween(150)),
+                exit = fadeOut(tween(100)) + scaleOut(tween(100)),
+            ) {
+                IconButton(
+                    onClick = {
+                        haptics.tick()
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, "https://www.youtube.com".toUri())
+                        )
+                    },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = "Open YouTube",
+                        tint = TextSecondary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
             val ytChevronRot by animateFloatAsState(
@@ -345,11 +384,20 @@ private fun CompactVideoFeed(
 ) {
     val context = LocalContext.current
     var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
-    val displayedVideos = if (selectedChannelId != null) videos.filter { it.channelId == selectedChannelId } else videos
+
+    // Pre-compute all derived state once — never recomputed on each frame
+    val displayedVideos = remember(videos, selectedChannelId) {
+        if (selectedChannelId != null) videos.filter { it.channelId == selectedChannelId } else videos
+    }
+    val newTodayCount = remember(videos) {
+        val cutoff = Instant.now().minus(24, ChronoUnit.HOURS)
+        videos.count { v -> runCatching { Instant.parse(v.publishedAt).isAfter(cutoff) }.getOrDefault(false) }
+    }
 
     if (videos.isEmpty()) {
         Row(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(YtRed.copy(alpha = 0.06f))
                 .padding(12.dp),
@@ -363,96 +411,61 @@ private fun CompactVideoFeed(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        // Channel avatar strip — clickable to filter
-        if (trackedChannels.isNotEmpty()) {
+        // ── "N new today" info chip ──────────────────────────────────────
+        if (newTodayCount > 0 && selectedChannelId == null) {
+            Row(
+                modifier = Modifier.padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(YtRed.copy(alpha = 0.12f))
+                        .border(0.5.dp, YtRed.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(YtRed))
+                        Text(
+                            "$newTodayCount new today",
+                            fontSize = 10.sp,
+                            color = YtRed,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Channel avatar filter strip (only when multiple channels tracked) ──
+        if (trackedChannels.size > 1) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 10.dp),
             ) {
-                items(trackedChannels) { channel ->
-                    val hasNew = videos.any { it.channelId == channel.channelId }
-                    val isSelected = selectedChannelId == channel.channelId
-                    val avatarUrl = channel.thumbnailUrl
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                haptics.tick()
-                                selectedChannelId = if (isSelected) null else channel.channelId
-                            }
-                    ) {
-                        if (avatarUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context).data(avatarUrl).crossfade(true).build(),
-                                contentDescription = channel.title,
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .border(
-                                        width = if (isSelected) 2.5.dp else 1.5.dp,
-                                        color = when {
-                                            isSelected -> YtRed
-                                            hasNew -> YtRed.copy(alpha = 0.6f)
-                                            else -> Border
-                                        },
-                                        shape = CircleShape,
-                                    ),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .border(
-                                        width = if (isSelected) 2.5.dp else 1.5.dp,
-                                        color = when {
-                                            isSelected -> YtRed
-                                            hasNew -> YtRed.copy(alpha = 0.6f)
-                                            else -> Border
-                                        },
-                                        shape = CircleShape,
-                                    )
-                                    .background(Border.copy(alpha = 0.5f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    channel.title.take(1).uppercase(),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextSecondary,
-                                )
-                            }
-                        }
-                        if (hasNew && !isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .align(Alignment.TopEnd)
-                                    .clip(CircleShape)
-                                    .background(YtRed)
-                                    .border(1.dp, Surface, CircleShape),
-                            )
-                        }
-                        if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(YtRed.copy(alpha = 0.3f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                    }
+                items(trackedChannels, key = { it.channelId }) { channel ->
+                    CompactChannelAvatar(
+                        channel = channel,
+                        isSelected = selectedChannelId == channel.channelId,
+                        onClick = {
+                            haptics.tick()
+                            selectedChannelId =
+                                if (selectedChannelId == channel.channelId) null else channel.channelId
+                        },
+                    )
                 }
             }
-            // Channel filter active label
+            // Active filter label
             if (selectedChannelId != null) {
-                val channelName = trackedChannels.find { it.channelId == selectedChannelId }?.title ?: ""
+                val channelName = remember(selectedChannelId, trackedChannels) {
+                    trackedChannels.find { it.channelId == selectedChannelId }?.title ?: ""
+                }
                 Row(
-                    modifier = Modifier.padding(bottom = 6.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -465,172 +478,16 @@ private fun CompactVideoFeed(
                     ) {
                         Text(channelName, fontSize = 10.sp, color = YtRed, fontWeight = FontWeight.SemiBold)
                     }
-                    Text(
-                        "Tap avatar to clear",
-                        fontSize = 9.sp,
-                        color = TextSecondary.copy(alpha = 0.5f),
-                    )
+                    Text("Tap avatar to clear", fontSize = 9.sp, color = TextSecondary.copy(alpha = 0.5f))
                 }
             }
         }
 
-        // Latest 3 videos in compact row format (filtered if needed)
-        val videosToShow = displayedVideos.take(3)
-        videosToShow.forEachIndexed { idx, video ->
-            var visible by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) {
-                kotlinx.coroutines.delay(idx * 55L)
-                visible = true
-            }
-            AnimatedVisibility(
-                visible = visible,
-                enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
-                            haptics.tick()
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
-                            )
-                        }
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    // Compact thumbnail
-                    Box(
-                        modifier = Modifier
-                            .width(88.dp)
-                            .aspectRatio(16f / 9f)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(YtDark),
-                    ) {
-                        SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
-                            contentDescription = video.title,
-                            modifier = Modifier.matchParentSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)))),
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .align(Alignment.Center)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.55f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(3.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(Color.Black.copy(alpha = 0.8f))
-                                .padding(horizontal = 3.dp, vertical = 1.dp),
-                        ) {
-                            Text(formatRelativeTime(video.publishedAt), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                    // Title + meta
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            video.title,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            lineHeight = 16.sp,
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(YtRed))
-                            Text(
-                                video.channelTitle,
-                                fontSize = 10.sp,
-                                color = YtRed,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                        }
-                        Text(formatRelativeTime(video.publishedAt), fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.7f))
-                    }
-                }
-            }
-        if (idx < minOf(2, videosToShow.size - 1)) {
-                HorizontalDivider(color = Border.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 1.dp))
-            }
-        }
-
-        if (displayedVideos.size > 3) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "+${displayedVideos.size - 3} more · Expand to see all",
-                fontSize = 10.sp,
-                color = TextSecondary.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        } else if (displayedVideos.isEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(YtRed.copy(alpha = 0.06f))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(Icons.Outlined.VideoLibrary, null, tint = YtRed.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
-                Text("No videos from this channel yet", color = TextSecondary, fontSize = 13.sp)
-            }
-        }
-    }
-}
-
-// ── Video feed ────────────────────────────────────────────────────────────────
-
-@Composable
-private fun VideoFeed(
-    videos: List<YoutubeVideo>,
-    trackedChannels: List<YoutubeChannel>,
-) {
-    val context = LocalContext.current
-    val haptics = rememberHaptics()
-    var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
-    val displayedVideos = if (selectedChannelId != null) videos.filter { it.channelId == selectedChannelId } else videos
-
-    Column {
-        // Scrollable channel pill row — clickable to filter
-        if (trackedChannels.isNotEmpty()) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 12.dp),
-            ) {
-                items(trackedChannels) { channel ->
-                    ChannelPill(
-                        channel = channel,
-                        isSelected = selectedChannelId == channel.channelId,
-                        onClick = {
-                            haptics.tick()
-                            selectedChannelId = if (selectedChannelId == channel.channelId) null else channel.channelId
-                        },
-                    )
-                }
-            }
-        }
+        // ── Content ──────────────────────────────────────────────────────
         if (displayedVideos.isEmpty()) {
             Row(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(YtRed.copy(alpha = 0.06f))
                     .padding(12.dp),
@@ -641,14 +498,671 @@ private fun VideoFeed(
                 Text("No videos from this channel yet", color = TextSecondary, fontSize = 13.sp)
             }
         } else {
-            displayedVideos.take(6).forEachIndexed { index, video ->
-                VideoCard(video = video, onClick = {
-                    haptics.tick()
-                    context.startActivity(Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri()))
-                })
-                if (index < minOf(5, displayedVideos.size - 1)) {
-                    HorizontalDivider(color = Border.copy(alpha = 0.2f))
+            val featuredVideo = displayedVideos.first()
+            val isFeaturedNew = remember(featuredVideo.publishedAt) {
+                runCatching {
+                    Instant.parse(featuredVideo.publishedAt)
+                        .isAfter(Instant.now().minus(24, ChronoUnit.HOURS))
+                }.getOrDefault(false)
+            }
+
+            // ── Hero card — newest video ─────────────────────────────────
+            key(featuredVideo.videoId) {
+                CompactHeroCard(
+                    video = featuredVideo,
+                    isNew = isFeaturedNew,
+                    onClick = {
+                        haptics.tick()
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW,
+                                "https://www.youtube.com/watch?v=${featuredVideo.videoId}".toUri())
+                        )
+                    },
+                )
+            }
+
+            // ── Side-by-side tile pair ────────────────────────────────────
+            val nextVideos = displayedVideos.drop(1).take(2)
+            if (nextVideos.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    nextVideos.forEach { video ->
+                        key(video.videoId) {
+                            CompactVideoTile(
+                                video = video,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    haptics.tick()
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW,
+                                            "https://www.youtube.com/watch?v=${video.videoId}".toUri())
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    // Pad odd row (single tile) so it doesn't stretch full width
+                    if (nextVideos.size == 1) Spacer(Modifier.weight(1f))
                 }
+            }
+
+            // ── "More" footer ─────────────────────────────────────────────
+            if (displayedVideos.size > 3) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.15f))
+                    Text(
+                        "+${displayedVideos.size - 3} more · Expand for full feed",
+                        fontSize = 10.sp,
+                        color = TextSecondary.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.15f))
+                }
+            }
+        }
+    }
+}
+
+// ── Compact hero card (featured/latest video in collapsed view) ───────────────
+
+@Composable
+private fun CompactHeroCard(
+    video: YoutubeVideo,
+    isNew: Boolean,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .background(YtDark),
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+            contentDescription = video.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        // Bottom gradient scrim
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.45f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.86f),
+                        ),
+                    ),
+                ),
+        )
+        // Top-left badge: "NEW" (< 24 h) or subtle "LATEST"
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(if (isNew) YtRed else Color.Black.copy(alpha = 0.62f))
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+        ) {
+            Text(
+                if (isNew) "NEW" else "LATEST",
+                fontSize = 8.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp,
+            )
+        }
+        // Centred play button
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .align(Alignment.Center)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(26.dp))
+        }
+        // Bottom metadata overlay
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Text(
+                video.title,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 16.sp,
+            )
+            Spacer(Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(YtRed))
+                Text(
+                    video.channelTitle,
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Text("·", fontSize = 9.sp, color = Color.White.copy(alpha = 0.4f))
+                Text(
+                    formatRelativeTime(video.publishedAt),
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.72f),
+                )
+            }
+        }
+    }
+}
+
+// ── Compact video tile (side-by-side pair below the hero) ─────────────────────
+
+@Composable
+private fun CompactVideoTile(
+    video: YoutubeVideo,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Surface)
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                .background(YtDark),
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+                contentDescription = video.title,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))),
+                    ),
+            )
+            // Play icon
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .align(Alignment.Center)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(13.dp))
+            }
+            // Time badge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(3.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.Black.copy(alpha = 0.78f))
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+            ) {
+                Text(formatRelativeTime(video.publishedAt), fontSize = 8.sp, color = Color.White)
+            }
+        }
+        Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)) {
+            Text(
+                video.title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 14.sp,
+            )
+            Spacer(Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(YtRed))
+                Text(
+                    video.channelTitle,
+                    fontSize = 9.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+    }
+}
+
+// ── Compact channel avatar (collapsed filter strip) ───────────────────────────
+
+@Composable
+private fun CompactChannelAvatar(
+    channel: YoutubeChannel,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) YtRed else Border,
+        animationSpec = tween(200),
+        label = "cca_border_${channel.channelId}",
+    )
+    val borderWidth = if (isSelected) 2.5.dp else 1.5.dp
+
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+    ) {
+        if (channel.thumbnailUrl.isNotBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                contentDescription = channel.title,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .border(borderWidth, borderColor, CircleShape),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .border(borderWidth, borderColor, CircleShape)
+                    .background(Border.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    channel.title.take(1).uppercase(),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                )
+            }
+        }
+        // Selected check overlay
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(YtRed.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
+            }
+        }
+    }
+}
+
+// ── Expanded video feed (new rich layout) ────────────────────────────────────
+
+private const val YT_INITIAL_PAGE = 4
+private const val YT_PAGE_SIZE    = 5
+
+@Composable
+private fun VideoFeed(
+    videos: List<YoutubeVideo>,
+    trackedChannels: List<YoutubeChannel>,
+) {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+
+    var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
+    var layout by rememberSaveable { mutableStateOf(YtLayout.LIST) }
+    var groupByChannel by rememberSaveable { mutableStateOf(false) }
+    var visibleCount by rememberSaveable { mutableIntStateOf(YT_INITIAL_PAGE) }
+
+    // Reset pagination whenever filter, layout, or grouping changes
+    LaunchedEffect(selectedChannelId, layout, groupByChannel) { visibleCount = YT_INITIAL_PAGE }
+
+    // Derive filtered list — only recomputed when inputs change, not every frame
+    val displayedVideos = remember(videos, selectedChannelId) {
+        if (selectedChannelId != null) videos.filter { it.channelId == selectedChannelId } else videos
+    }
+    // "New" video count per channel — computed once, used by channel pills for badges
+    val channelNewCountMap = remember(videos) {
+        val cutoff = Instant.now().minus(24, ChronoUnit.HOURS)
+        videos.groupBy { it.channelId }.mapValues { (_, vids) ->
+            vids.count { v -> runCatching { Instant.parse(v.publishedAt).isAfter(cutoff) }.getOrDefault(false) }
+        }
+    }
+
+    Column {
+        // ── Channel filter pills ──────────────────────────────────────────
+        if (trackedChannels.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 12.dp),
+            ) {
+                items(trackedChannels, key = { it.channelId }) { channel ->
+                    ChannelPill(
+                        channel = channel,
+                        isSelected = selectedChannelId == channel.channelId,
+                        newCount = channelNewCountMap[channel.channelId] ?: 0,
+                        onClick = {
+                            haptics.tick()
+                            selectedChannelId =
+                                if (selectedChannelId == channel.channelId) null else channel.channelId
+                            groupByChannel = false
+                        },
+                    )
+                }
+            }
+        }
+
+        // ── Controls bar ─────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Video count
+            Text(
+                "${displayedVideos.size} video${if (displayedVideos.size != 1) "s" else ""}",
+                fontSize = 11.sp,
+                color = TextSecondary.copy(alpha = 0.55f),
+                modifier = Modifier.weight(1f),
+            )
+            // "By channel" grouping toggle — only when all channels are visible and more than one exist
+            if (selectedChannelId == null && trackedChannels.size > 1) {
+                val groupBg by animateColorAsState(
+                    targetValue = if (groupByChannel) YtRed.copy(alpha = 0.12f) else Color.Transparent,
+                    animationSpec = tween(200), label = "group_bg",
+                )
+                val groupBorder by animateColorAsState(
+                    targetValue = if (groupByChannel) YtRed.copy(alpha = 0.35f) else Border.copy(alpha = 0.35f),
+                    animationSpec = tween(200), label = "group_border",
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(groupBg)
+                        .border(0.5.dp, groupBorder, RoundedCornerShape(8.dp))
+                        .clickable { haptics.tick(); groupByChannel = !groupByChannel }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        "By channel",
+                        fontSize = 10.sp,
+                        color = if (groupByChannel) YtRed else TextSecondary,
+                        fontWeight = if (groupByChannel) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+            // List / Grid layout toggle
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Border.copy(alpha = 0.25f)),
+            ) {
+                listOf(
+                    YtLayout.LIST to Icons.AutoMirrored.Outlined.ViewList,
+                    YtLayout.GRID to Icons.Outlined.GridView,
+                ).forEach { (mode, icon) ->
+                    val selected = layout == mode
+                    val iconTint by animateColorAsState(
+                        targetValue = if (selected) YtRed else TextSecondary.copy(alpha = 0.5f),
+                        animationSpec = tween(180), label = "layout_icon_tint_${mode.name}",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) Surface else Color.Transparent)
+                            .clickable { haptics.tick(); layout = mode }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(icon, contentDescription = mode.name, tint = iconTint, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
+        // ── Content ───────────────────────────────────────────────────────
+        if (displayedVideos.isEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(YtRed.copy(alpha = 0.06f))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Outlined.VideoLibrary, null, tint = YtRed.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                Text("No videos from this channel yet", color = TextSecondary, fontSize = 13.sp)
+            }
+        } else {
+            val doGrouping = groupByChannel && selectedChannelId == null && trackedChannels.size > 1
+            // Only animate transitions when the layout style or grouping mode changes —
+            // not when the channel filter changes (that just recomputes displayedVideos).
+            AnimatedContent(
+                targetState = layout to doGrouping,
+                transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
+                label = "yt_expanded_layout",
+            ) { (currentLayout, grouping) ->
+                if (grouping) {
+                    // ── Grouped by channel with pagination ────────────────
+                    val allGroups = remember(displayedVideos, trackedChannels) {
+                        trackedChannels.mapNotNull { ch ->
+                            val vids = displayedVideos.filter { it.channelId == ch.channelId }
+                            if (vids.isNotEmpty()) ch to vids else null
+                        }
+                    }
+                    val paginatedGroups = remember(allGroups, visibleCount) {
+                        var remaining = visibleCount
+                        allGroups.mapNotNull { (ch, vids) ->
+                            if (remaining <= 0) null
+                            else { val take = vids.take(remaining); remaining -= take.size; ch to take }
+                        }
+                    }
+                    val totalGrouped = remember(allGroups) { allGroups.sumOf { it.second.size } }
+                    val shownGrouped = remember(paginatedGroups) { paginatedGroups.sumOf { it.second.size } }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        paginatedGroups.forEach { (channel, channelVideos) ->
+                            key(channel.channelId) {
+                                ChannelSectionHeader(channel = channel, videoCount = channelVideos.size)
+                                if (currentLayout == YtLayout.GRID) {
+                                    VideoGrid(
+                                        videos = channelVideos,
+                                        onVideoClick = { video ->
+                                            haptics.tick()
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
+                                            )
+                                        },
+                                    )
+                                } else {
+                                    channelVideos.forEachIndexed { idx, video ->
+                                        key(video.videoId) {
+                                            VideoCard(
+                                                video = video,
+                                                onClick = {
+                                                    haptics.tick()
+                                                    context.startActivity(
+                                                        Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
+                                                    )
+                                                },
+                                            )
+                                            if (idx < channelVideos.size - 1) {
+                                                HorizontalDivider(color = Border.copy(alpha = 0.18f))
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(6.dp))
+                            }
+                        }
+                        if (shownGrouped < totalGrouped) {
+                            ShowMoreButton(
+                                remaining = totalGrouped - shownGrouped,
+                                onClick = { haptics.tick(); visibleCount += YT_PAGE_SIZE },
+                            )
+                        }
+                    }
+                } else if (currentLayout == YtLayout.GRID) {
+                    // ── Grid layout with pagination ───────────────────────
+                    val paged   = displayedVideos.take(visibleCount)
+                    val hasMore = displayedVideos.size > visibleCount
+                    Column {
+                        VideoGrid(
+                            videos = paged,
+                            onVideoClick = { video ->
+                                haptics.tick()
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
+                                )
+                            },
+                        )
+                        if (hasMore) {
+                            ShowMoreButton(
+                                remaining = displayedVideos.size - visibleCount,
+                                onClick = { haptics.tick(); visibleCount += YT_PAGE_SIZE },
+                            )
+                        }
+                    }
+                } else {
+                    // ── List layout: hero + paginated rest ────────────────
+                    val heroVideo  = displayedVideos.first()
+                    val restQuota  = (visibleCount - 1).coerceAtLeast(0)
+                    val restVideos = displayedVideos.drop(1).take(restQuota)
+                    val hasMore    = displayedVideos.size > 1 + restQuota
+
+                    Column {
+                        key(heroVideo.videoId) {
+                            HeroVideoCard(
+                                video = heroVideo,
+                                onClick = {
+                                    haptics.tick()
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${heroVideo.videoId}".toUri())
+                                    )
+                                },
+                            )
+                        }
+                        if (restVideos.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.22f))
+                                Text(
+                                    "More videos",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary.copy(alpha = 0.4f),
+                                )
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.22f))
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            restVideos.forEachIndexed { idx, video ->
+                                key(video.videoId) {
+                                    VideoCard(
+                                        video = video,
+                                        onClick = {
+                                            haptics.tick()
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
+                                            )
+                                        },
+                                    )
+                                    if (idx < restVideos.size - 1) {
+                                        HorizontalDivider(color = Border.copy(alpha = 0.18f))
+                                    }
+                                }
+                            }
+                        }
+                        if (hasMore) {
+                            ShowMoreButton(
+                                remaining = displayedVideos.size - 1 - restQuota,
+                                onClick = { haptics.tick(); visibleCount += YT_PAGE_SIZE },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Show More button ──────────────────────────────────────────────────────────
+
+@Composable
+private fun ShowMoreButton(remaining: Int, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(YtRed.copy(alpha = 0.08f))
+                .border(0.5.dp, YtRed.copy(alpha = 0.22f), RoundedCornerShape(10.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 20.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Outlined.ExpandMore,
+                contentDescription = "Show more",
+                tint = YtRed.copy(alpha = 0.8f),
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                "Show ${minOf(remaining, YT_PAGE_SIZE)} more",
+                fontSize = 12.sp,
+                color = YtRed.copy(alpha = 0.85f),
+                fontWeight = FontWeight.Medium,
+            )
+            if (remaining > YT_PAGE_SIZE) {
+                Text(
+                    "· $remaining left",
+                    fontSize = 10.sp,
+                    color = TextSecondary.copy(alpha = 0.45f),
+                )
             }
         }
     }
@@ -673,7 +1187,7 @@ private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(8.dp))
                 .background(YtDark),
         ) {
-            SubcomposeAsyncImage(
+            AsyncImage(
                 model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
                 contentDescription = video.title,
                 modifier = Modifier.matchParentSize(),
@@ -722,8 +1236,317 @@ private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
     }
 }
 
+// ── Hero video card (featured newest video in expanded list mode) ─────────────
+
 @Composable
-private fun ChannelPill(channel: YoutubeChannel, isSelected: Boolean = false, onClick: () -> Unit = {}) {
+private fun HeroVideoCard(video: YoutubeVideo, onClick: () -> Unit) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .background(YtDark),
+    ) {
+        // Full-width thumbnail
+        AsyncImage(
+            model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+            contentDescription = video.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(14.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        // Scrim — transparent at top, dark at bottom
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.42f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.88f),
+                        ),
+                    ),
+                ),
+        )
+        // "LATEST" badge — top-left
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(YtRed)
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        ) {
+            Text(
+                "LATEST",
+                fontSize = 9.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp,
+            )
+        }
+        // Centered play button
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .align(Alignment.Center)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .border(1.5.dp, Color.White.copy(alpha = 0.32f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(30.dp))
+        }
+        // Title + channel + time pinned to bottom
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(12.dp),
+        ) {
+            Text(
+                video.title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 20.sp,
+            )
+            Spacer(Modifier.height(5.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(YtRed))
+                Text(
+                    video.channelTitle,
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Text("·", fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f))
+                Text(
+                    formatRelativeTime(video.publishedAt),
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+            }
+        }
+    }
+}
+
+// ── Video grid layout ─────────────────────────────────────────────────────────
+
+@Composable
+private fun VideoGrid(
+    videos: List<YoutubeVideo>,
+    onVideoClick: (YoutubeVideo) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        videos.chunked(2).forEach { rowVideos ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                rowVideos.forEach { video ->
+                    key(video.videoId) {
+                        VideoGridItem(
+                            video = video,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onVideoClick(video) },
+                        )
+                    }
+                }
+                // Pad empty slot when odd number of videos in the last row
+                if (rowVideos.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoGridItem(
+    video: YoutubeVideo,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Surface)
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 0.dp, bottomEnd = 0.dp))
+                .background(YtDark),
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+                contentDescription = video.title,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f)))),
+            )
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .align(Alignment.Center)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(15.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.Black.copy(alpha = 0.78f))
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    formatRelativeTime(video.publishedAt),
+                    fontSize = 8.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+        Column(modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp)) {
+            Text(
+                video.title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 15.sp,
+            )
+            Spacer(Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(YtRed))
+                Text(
+                    video.channelTitle,
+                    fontSize = 9.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+    }
+}
+
+// ── Channel section header (used in grouped-by-channel mode) ─────────────────
+
+@Composable
+private fun ChannelSectionHeader(channel: YoutubeChannel, videoCount: Int) {
+    val context = LocalContext.current
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (channel.thumbnailUrl.isNotBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                contentDescription = channel.title,
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, YtRed.copy(alpha = 0.4f), CircleShape),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(YtRed.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    channel.title.take(1).uppercase(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = YtRed,
+                )
+            }
+        }
+        Text(
+            channel.title,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(YtRed.copy(alpha = 0.1f))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        ) {
+            Text("$videoCount", fontSize = 9.sp, color = YtRed, fontWeight = FontWeight.Bold)
+        }
+        // Open channel on YouTube
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable {
+                    haptics.tick()
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW,
+                            "https://www.youtube.com/channel/${channel.channelId}".toUri())
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Outlined.OpenInNew,
+                contentDescription = "Open channel",
+                tint = TextSecondary.copy(alpha = 0.45f),
+                modifier = Modifier.size(13.dp),
+            )
+        }
+        HorizontalDivider(modifier = Modifier.weight(1.5f), color = Border.copy(alpha = 0.3f))
+    }
+}
+
+// ── Channel pill ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun ChannelPill(
+    channel: YoutubeChannel,
+    isSelected: Boolean = false,
+    newCount: Int = 0,
+    onClick: () -> Unit = {},
+) {
     val context = LocalContext.current
     val bgColor by animateColorAsState(
         targetValue = if (isSelected) YtRed.copy(alpha = 0.15f) else Surface,
@@ -758,6 +1581,23 @@ private fun ChannelPill(channel: YoutubeChannel, isSelected: Boolean = false, on
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
         )
+        // "New" count badge — only when not selected and there are recent videos
+        if (!isSelected && newCount > 0) {
+            Spacer(Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(YtRed)
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    "$newCount",
+                    fontSize = 8.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
         if (isSelected) {
             Spacer(Modifier.width(4.dp))
             Icon(Icons.Filled.Close, null, tint = YtRed.copy(alpha = 0.7f), modifier = Modifier.size(10.dp))

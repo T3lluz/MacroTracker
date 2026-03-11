@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.LocationOn
@@ -249,6 +246,17 @@ private fun weatherAccentColor(symbolCode: String): Color {
 
 private val LocationAccent = Color(0xFF4CAF50)
 
+// Stable discriminant so AnimatedContent only transitions between loading/success/error —
+// not on every internal field change within a Success state.
+private enum class WeatherStateKey { LOADING, SUCCESS, PERMISSION, APPROXIMATE, ERROR }
+private fun WeatherUiState.toKey() = when (this) {
+    is WeatherUiState.Loading           -> WeatherStateKey.LOADING
+    is WeatherUiState.Success           -> WeatherStateKey.SUCCESS
+    is WeatherUiState.PermissionRequired -> WeatherStateKey.PERMISSION
+    is WeatherUiState.ApproximateLocation -> WeatherStateKey.APPROXIMATE
+    is WeatherUiState.Error             -> WeatherStateKey.ERROR
+}
+
 @Composable
 fun WeatherCard(
     state: WeatherUiState,
@@ -261,14 +269,20 @@ fun WeatherCard(
     var expanded by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
 
+    // Snapshot the current state so that inner composables always read the
+    // latest value without triggering AnimatedContent re-targeting.
     AnimatedContent(
-        targetState = state,
+        targetState = state.toKey(),
         transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
         label = "weatherContent",
         modifier = modifier,
-    ) { currentState ->
-        when (currentState) {
-            is WeatherUiState.Loading -> {
+    ) { stateKey ->
+        // Re-read the live state inside each branch — this is safe because
+        // `state` is a parameter captured by the lambda and the branch only
+        // renders when the key matches.
+        val currentState = state
+        when (stateKey) {
+            WeatherStateKey.LOADING -> {
                 MacroCard(delayMs = 50) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -286,8 +300,9 @@ fun WeatherCard(
                 }
             }
 
-            is WeatherUiState.Success -> {
-                val weather = currentState.weather
+            WeatherStateKey.SUCCESS -> {
+                val successState = currentState as? WeatherUiState.Success ?: return@AnimatedContent
+                val weather = successState.weather
                 val gradient = weatherGradient(weather.symbolCode)
                 val accent = weatherAccentColor(weather.symbolCode)
 
@@ -298,7 +313,7 @@ fun WeatherCard(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     border = BorderStroke(1.dp, Border.copy(alpha = 0.5f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 ) {
                     Box(
                         modifier = Modifier
@@ -321,9 +336,9 @@ fun WeatherCard(
                                         if (weather.locationName.isNotBlank()) {
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Icon(
-                                                if (currentState.isPrecise) Icons.Outlined.LocationOn else Icons.Outlined.LocationOff,
+                                                if (successState.isPrecise) Icons.Outlined.LocationOn else Icons.Outlined.LocationOff,
                                                 contentDescription = null,
-                                                tint = if (currentState.isPrecise) accent else Color.White.copy(alpha = 0.5f),
+                                                tint = if (successState.isPrecise) accent else Color.White.copy(alpha = 0.5f),
                                                 modifier = Modifier.size(14.dp),
                                             )
                                             Spacer(modifier = Modifier.width(2.dp))
@@ -337,7 +352,7 @@ fun WeatherCard(
                                         }
                                     }
                                     LastUpdatedText(
-                                        lastUpdatedAt = currentState.lastUpdatedAt,
+                                        lastUpdatedAt = successState.lastUpdatedAt,
                                         color = Color.White.copy(alpha = 0.9f),
                                     )
                                 }
@@ -378,7 +393,7 @@ fun WeatherCard(
                             }
 
                             // Approximate location nudge banner
-                            if (!currentState.isPrecise) {
+                            if (!successState.isPrecise) {
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -429,7 +444,7 @@ fun WeatherCard(
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     // AI Summary — first thing in expanded, right under current weather
-                                    if (currentState.aiSummaryLoading || currentState.aiSummary != null) {
+                                    if (successState.aiSummaryLoading || successState.aiSummary != null) {
                                         Spacer(modifier = Modifier.height(12.dp))
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -445,7 +460,7 @@ fun WeatherCard(
                                                 modifier = Modifier.size(14.dp),
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            if (currentState.aiSummaryLoading) {
+                                            if (successState.aiSummaryLoading) {
                                                 CircularProgressIndicator(
                                                     modifier = Modifier.size(14.dp),
                                                     color = accent,
@@ -457,18 +472,18 @@ fun WeatherCard(
                                                     fontSize = 12.sp,
                                                     color = Color.White.copy(alpha = 0.6f),
                                                 )
-                                            } else if (currentState.aiSummary != null) {
+                                            } else if (successState.aiSummary != null) {
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(
-                                                        text = currentState.aiSummary,
+                                                        text = successState.aiSummary,
                                                         fontSize = 13.sp,
                                                         color = Color.White.copy(alpha = 0.85f),
                                                         lineHeight = 19.sp,
                                                     )
-                                                    if (currentState.aiSummaryUpdatedAt != null) {
+                                                    if (successState.aiSummaryUpdatedAt != null) {
                                                         Spacer(modifier = Modifier.height(4.dp))
                                                         LastUpdatedText(
-                                                            lastUpdatedAt = currentState.aiSummaryUpdatedAt,
+                                                            lastUpdatedAt = successState.aiSummaryUpdatedAt,
                                                             color = Color.White,
                                                             modifier = Modifier.align(Alignment.End),
                                                         )
@@ -479,7 +494,7 @@ fun WeatherCard(
                                     }
 
                                     // Clothing recommendation
-                                    if (!currentState.aiSummaryLoading && !currentState.aiClothingRecommendation.isNullOrBlank()) {
+                                    if (!successState.aiSummaryLoading && !successState.aiClothingRecommendation.isNullOrBlank()) {
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Row(
                                             verticalAlignment = Alignment.Top,
@@ -499,7 +514,7 @@ fun WeatherCard(
                                                 )
                                                 Spacer(modifier = Modifier.height(2.dp))
                                                 Text(
-                                                    text = currentState.aiClothingRecommendation,
+                                                    text = successState.aiClothingRecommendation,
                                                     fontSize = 13.sp,
                                                     color = Color.White.copy(alpha = 0.85f),
                                                     lineHeight = 19.sp,
@@ -587,7 +602,7 @@ fun WeatherCard(
                 }
             }
 
-            is WeatherUiState.PermissionRequired -> {
+            WeatherStateKey.PERMISSION -> {
                 MacroCard(delayMs = 50) {
                     Row(
                         modifier = Modifier
@@ -637,7 +652,7 @@ fun WeatherCard(
                 }
             }
 
-            is WeatherUiState.ApproximateLocation -> {
+            WeatherStateKey.APPROXIMATE -> {
                 MacroCard(delayMs = 50) {
                     Row(
                         modifier = Modifier
@@ -687,7 +702,8 @@ fun WeatherCard(
                 }
             }
 
-            is WeatherUiState.Error -> {
+            WeatherStateKey.ERROR -> {
+                val errorState = currentState as? WeatherUiState.Error
                 MacroCard(delayMs = 50) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -702,7 +718,7 @@ fun WeatherCard(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text("Weather", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                Text(text = currentState.message, fontSize = 12.sp, color = TextSecondary)
+                                Text(text = errorState?.message ?: "", fontSize = 12.sp, color = TextSecondary)
                             }
                         }
                         MacroButton(text = "Retry", onClick = onRetry, variant = ButtonVariant.SECONDARY)

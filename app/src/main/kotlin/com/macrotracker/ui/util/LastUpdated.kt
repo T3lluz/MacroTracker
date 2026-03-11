@@ -27,14 +27,26 @@ fun rememberRelativeTime(instant: Instant): String {
     var text by remember(instant) { mutableStateOf(relativeTimeString(instant)) }
     LaunchedEffect(instant) {
         while (true) {
-            delay(30_000L)
+            // Poll at an interval appropriate to the precision currently shown:
+            // - "just now" / seconds  → check every 30 s
+            // - minutes               → check every 60 s
+            // - hours                 → check every 5 min
+            // - days                  → check every hour
+            val now = Instant.now()
+            val seconds = ChronoUnit.SECONDS.between(instant, now).coerceAtLeast(0)
+            val intervalMs = when {
+                seconds < 3600  -> 30_000L   // update within seconds/minutes range
+                seconds < 86400 -> 300_000L  // update within hours range (every 5 min)
+                else            -> 3_600_000L // update within days range (every hour)
+            }
+            delay(intervalMs)
             text = relativeTimeString(instant)
         }
     }
     return text
 }
 
-private fun relativeTimeString(instant: Instant): String {
+fun relativeTimeString(instant: Instant): String {
     val now = Instant.now()
     val seconds = ChronoUnit.SECONDS.between(instant, now).coerceAtLeast(0)
     return when {
@@ -51,7 +63,7 @@ private fun relativeTimeString(instant: Instant): String {
  * Designed to sit at the trailing end of a header row — visible on close inspection,
  * invisible at a glance. No word "Updated", no label — just the time.
  *
- * @param tint  Icon + text color. Pass white-alpha for colored card backgrounds.
+ * @param color  Icon + text color. Pass white-alpha for colored card backgrounds.
  */
 @Composable
 fun LastUpdatedText(
