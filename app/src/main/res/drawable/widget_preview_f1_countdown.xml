@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the F1 Next Race Countdown widget (2×2) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+
+    <!-- Very dark F1 background -->
+    <path android:fillColor="#FF0A0A0F" android:pathData="M0,0 H300 V300 H0 Z"/>
+    <!-- Card -->
+    <path android:fillColor="#FF13131A" android:pathData="M8,8 H292 V292 H8 Z"/>
+
+    <!-- F1 red accent bar at top -->
+    <path android:fillColor="#FFE8002D" android:pathData="M8,8 H292 V28 H8 Z"/>
+
+    <!-- "F1" text representation (white on red) -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M16,12 H56 V22 H16 Z"/>
+    <!-- F1 logo block -->
+    <path android:fillColor="#FFE8002D" android:pathData="M20,13 H52 V21 H20 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M22,13 H28 V21 H22 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M22,13 H38 V16 H22 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M22,17 H34 V20 H22 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M44,13 H48 V21 H44 Z"/>
+
+    <!-- "NEXT RACE" label -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M72,13 H180 V21 H72 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M74,14 H178 V20 H74 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M76,15 H176 V19 H76 Z"/>
+
+    <!-- Race name placeholder -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M16,36 H220 V46 H16 Z"/>
+    <path android:fillColor="#FF13131A" android:pathData="M18,37 H218 V45 H18 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M20,38 H200 V44 H20 Z"/>
+    <!-- Circuit placeholder -->
+    <path android:fillColor="#FF555570" android:pathData="M16,50 H180 V58 H16 Z"/>
+    <!-- Round badge -->
+    <path android:fillColor="#FFE8002D" android:pathData="M226,36 H284 V58 H226 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M232,41 H278 V53 H232 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M236,43 H274 V51 H236 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M240,44 H270 V50 H240 Z"/>
+
+    <!-- Countdown boxes row -->
+    <!-- Box 1: Days -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,72 H82 V152 H16 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M16,72 H82 V76 H16 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,88 H74 V128 H24 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M28,92 H70 V124 H28 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M32,96 H68 V120 H32 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M24,136 H74 V144 H24 Z"/>
+
+    <!-- Box 2: Hours -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M90,72 H156 V152 H90 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M90,72 H156 V76 H90 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M98,88 H148 V128 H98 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M102,92 H144 V124 H102 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M106,96 H140 V120 H106 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M98,136 H148 V144 H98 Z"/>
+
+    <!-- Box 3: Minutes -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M164,72 H230 V152 H164 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M164,72 H230 V76 H164 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M172,88 H222 V128 H172 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M176,92 H218 V124 H176 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M180,96 H214 V120 H180 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M172,136 H222 V144 H172 Z"/>
+
+    <!-- Box 4: Seconds -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M238,72 H284 V152 H238 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M238,72 H284 V76 H238 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M244,88 H278 V128 H244 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M248,92 H274 V124 H248 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M252,96 H270 V120 H252 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M244,136 H278 V144 H244 Z"/>
+
+    <!-- Separator dots between boxes -->
+    <path android:fillColor="#FF555570"
+        android:pathData="M84,100 A3,3,0,1,0,90,100 A3,3,0,1,0,84,100 Z"/>
+    <path android:fillColor="#FF555570"
+        android:pathData="M84,114 A3,3,0,1,0,90,114 A3,3,0,1,0,84,114 Z"/>
+    <path android:fillColor="#FF555570"
+        android:pathData="M158,100 A3,3,0,1,0,164,100 A3,3,0,1,0,158,100 Z"/>
+    <path android:fillColor="#FF555570"
+        android:pathData="M158,114 A3,3,0,1,0,164,114 A3,3,0,1,0,158,114 Z"/>
+    <path android:fillColor="#FF555570"
+        android:pathData="M232,100 A3,3,0,1,0,238,100 A3,3,0,1,0,232,100 Z"/>
+    <path android:fillColor="#FF555570"
+        android:pathData="M232,114 A3,3,0,1,0,238,114 A3,3,0,1,0,232,114 Z"/>
+
+    <!-- Circuit map placeholder -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,162 H284 V220 H16 Z"/>
+    <!-- Simplified circuit track shape -->
+    <path android:fillColor="#FF2A2A3E" android:pathData="M30,172 H270 V210 H30 Z"/>
+    <!-- Track lines -->
+    <path android:fillColor="#FF555570" android:pathData="M40,180 H260 V184 H40 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M40,196 H260 V200 H40 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M40,188 H80 V192 H40 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M88,188 H260 V192 H88 Z"/>
+
+    <!-- Session info bottom -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,228 H284 V266 H16 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M24,236 H100 V243 H24 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M108,236 H200 V243 H108 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M24,250 H110 V257 H24 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M118,250 H220 V257 H118 Z"/>
+
+    <!-- Last updated -->
+    <path android:fillColor="#FF555570" android:pathData="M16,273 H200 V279 H16 Z"/>
+</vector>
+

@@ -5,6 +5,7 @@ import android.util.Log
 import com.macrotracker.data.f1.F1Standings
 import com.macrotracker.data.f1.RaceScheduleEntry
 import com.macrotracker.data.f1.f1Repository
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -14,6 +15,8 @@ import java.time.temporal.ChronoUnit
 private const val TAG = "F1WidgetData"
 private const val MEMORY_TTL = 60 * 1000L
 private const val REFRESH_AFTER = 15 * 60 * 1000L
+/** Max time to wait for an inline network fetch inside provideGlance before giving up. */
+private const val INLINE_FETCH_TIMEOUT = 10_000L
 
 /**
  * Lightweight data holder for F1 widgets.
@@ -142,28 +145,60 @@ object F1WidgetDataProvider {
 
     fun hasCachedData(context: Context): Boolean = context.f1Repository().getCachedF1Data() != null
 
+    /**
+     * Fast path for `provideGlance`.
+     *
+     * 1. Return in-memory cache if still fresh.
+     * 2. Return repo disk-cache if available (schedule background refresh when stale).
+     * 3. **Attempt an inline network fetch** with a bounded timeout so the widget
+     *    renders real data on first placement instead of showing "Syncing…" forever.
+     * 4. Only if everything fails, return an empty loading placeholder — but **never**
+     *    cache it, so the next render attempt will try again.
+     */
     suspend fun loadData(context: Context): F1WidgetData {
         val now = System.currentTimeMillis()
-        cached?.takeIf { now - cachedAt < MEMORY_TTL }?.let { return it }
+        // 1. Memory cache
+        cached?.takeIf { it.hasData && now - cachedAt < MEMORY_TTL }?.let { return it }
 
         val repo = context.f1Repository()
+
+        // 2. Repo / disk cache
         val repoCache = repo.getCachedF1Data()
         if (repoCache != null) {
             val data = buildWidgetData(repoCache, repo.lastFetchTimeMs)
             cache(data)
             if (data.isStale) {
+                // Enqueue a background refresh — but return stale data immediately
                 WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
             }
             return data
         }
 
+        // 3. No cache at all — try inline fetch with timeout
+        Log.d(TAG, "No F1 cache, attempting inline fetch…")
+        val inlineFetch = try {
+            withTimeoutOrNull(INLINE_FETCH_TIMEOUT) {
+                repo.getOverallF1Data(forceRefresh = true).getOrNull()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Inline F1 fetch failed: ${e.message}")
+            null
+        }
+        if (inlineFetch != null) {
+            val data = buildWidgetData(inlineFetch, repo.lastFetchTimeMs)
+            cache(data)
+            return data
+        }
+
+        // 4. All attempts failed — return empty loading state; do NOT cache it
+        //    so the next provideGlance call will retry step 3.
         WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
         return F1WidgetData(
             lastUpdatedAt = repo.lastFetchTimeMs,
             hasData = false,
             isStale = repo.lastFetchTimeMs > 0L,
             isLoading = true,
-        ).also(::cache)
+        )
     }
 
     suspend fun refreshNow(context: Context, force: Boolean = true): Boolean {
@@ -176,6 +211,8 @@ object F1WidgetDataProvider {
     }
 
     private fun cache(data: F1WidgetData) {
+        // Only cache states with real data — loading/empty states should not be cached
+        if (!data.hasData) return
         cached = data
         cachedAt = System.currentTimeMillis()
     }

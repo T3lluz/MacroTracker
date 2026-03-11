@@ -15,6 +15,7 @@ import com.macrotracker.ui.screens.HistoryScreen
 import com.macrotracker.ui.screens.HomeScreen
 import com.macrotracker.ui.screens.SettingsScreen
 import com.macrotracker.ui.screens.StatsScreen
+import com.macrotracker.ui.screens.WidgetsScreen
 import com.macrotracker.ui.screens.onboarding.PermissionsScreen
 import com.macrotracker.ui.screens.onboarding.TutorialScreen
 import com.macrotracker.ui.screens.onboarding.WelcomeScreen
@@ -108,9 +109,10 @@ fun DailyDashNavHost(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onNavigateToHelp = { navController.navigate("help") },
-                onNavigateToStats = { navController.navigate("stats") },
-                onReplayTutorial = {
+                onNavigateToHelp    = { navController.navigate("help") },
+                onNavigateToStats   = { navController.navigate("stats") },
+                onNavigateToWidgets = { navController.navigate("widgets") },
+                onReplayTutorial    = {
                     navController.navigate(OnboardingRoutes.WELCOME) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                     }
@@ -137,6 +139,16 @@ fun DailyDashNavHost(
             popExitTransition = { MacroMotion.subScreenPopExit }
         ) {
             HelpScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route = "widgets",
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit }
+        ) {
+            WidgetsScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         composable(

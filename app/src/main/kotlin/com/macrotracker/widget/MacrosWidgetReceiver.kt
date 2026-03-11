@@ -12,6 +12,7 @@ class MacrosWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
         WidgetRefreshWorker.enqueuePeriodicRefresh(context)
+        WidgetRefreshWorker.enqueueImmediateRefresh(context)
     }
 
     override fun onDisabled(context: Context) {
@@ -24,6 +25,7 @@ class MacrosWidgetReceiver : GlanceAppWidgetReceiver() {
         super.onReceive(context, intent)
         if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             WidgetRefreshWorker.enqueuePeriodicRefresh(context)
+            WidgetRefreshWorker.enqueueImmediateRefresh(context)
         }
     }
 }

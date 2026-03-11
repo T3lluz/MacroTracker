@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the F1 Race Schedule widget (3×3) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+
+    <!-- Very dark F1 background -->
+    <path android:fillColor="#FF0A0A0F" android:pathData="M0,0 H300 V300 H0 Z"/>
+    <!-- Card -->
+    <path android:fillColor="#FF13131A" android:pathData="M8,8 H292 V292 H8 Z"/>
+
+    <!-- F1 red accent bar at top -->
+    <path android:fillColor="#FFE8002D" android:pathData="M8,8 H292 V28 H8 Z"/>
+    <!-- Title: "Race Schedule 2026" -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M16,13 H240 V21 H16 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M18,14 H238 V20 H18 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M20,15 H220 V19 H20 Z"/>
+    <!-- Season badge -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M244,12 H284 V24 H244 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M248,14 H280 V22 H248 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M252,15 H276 V21 H252 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M255,16 H273 V20 H255 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,32 H284 V33 H16 Z"/>
+
+    <!-- RACE ROWS -->
+
+    <!-- Row 1: Round 1 (current/upcoming — highlighted) -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,38 H284 V80 H16 Z"/>
+    <!-- Left accent: red = next race -->
+    <path android:fillColor="#FFE8002D" android:pathData="M16,38 H20 V80 H16 Z"/>
+    <!-- Round number badge -->
+    <path android:fillColor="#FF2A2A3E" android:pathData="M24,44 H52 V74 H24 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M26,50 H50 V68 H26 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M30,53 H46 V65 H30 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M34,56 H42 V62 H34 Z"/>
+    <!-- Flag color block (country color) -->
+    <path android:fillColor="#FF2A2A3E" android:pathData="M58,44 H76 V60 H58 Z"/>
+    <path android:fillColor="#FF009A44" android:pathData="M58,44 H65 V60 H58 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M65,44 H69 V60 H65 Z"/>
+    <path android:fillColor="#FF009A44" android:pathData="M69,44 H76 V60 H69 Z"/>
+    <!-- Race name -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M82,44 H220 V52 H82 Z"/>
+    <!-- Circuit -->
+    <path android:fillColor="#FF555570" android:pathData="M82,58 H190 V64 H82 Z"/>
+    <!-- Date pill -->
+    <path android:fillColor="#FFE8002D" android:pathData="M224,44 H284 V54 H224 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M228,46 H280 V52 H228 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M232,47 H276 V51 H232 Z"/>
+    <!-- Sprint badge -->
+    <path android:fillColor="#FF2A2A3E" android:pathData="M224,60 H270 V70 H224 Z"/>
+    <path android:fillColor="#FFFFC107" android:pathData="M228,62 H266 V68 H228 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M232,63 H262 V67 H232 Z"/>
+
+    <!-- Row 2 -->
+    <path android:fillColor="#FF13131A" android:pathData="M16,86 H284 V120 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,86 H20 V120 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M24,90 H52 V116 H24 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M28,96 H48 V110 H28 Z"/>
+    <path android:fillColor="#FF13131A" android:pathData="M30,97 H46 V109 H30 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M32,98 H44 V108 H32 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M58,90 H76 V104 H58 Z"/>
+    <path android:fillColor="#FFCE1126" android:pathData="M58,90 H65 V104 H58 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M65,90 H69 V104 H65 Z"/>
+    <path android:fillColor="#FF002395" android:pathData="M69,90 H76 V104 H69 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M82,90 H210 V98 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M82,104 H180 V110 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M224,90 H284 V98 H224 Z"/>
+
+    <!-- Row 3 -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,126 H284 V160 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,126 H20 V160 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M24,130 H52 V156 H24 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M28,136 H48 V150 H28 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M30,137 H46 V149 H30 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M32,138 H44 V148 H32 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M58,130 H76 V144 H58 Z"/>
+    <path android:fillColor="#FF003580" android:pathData="M58,130 H76 V144 H58 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M60,136 H74 V140 H60 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M82,130 H200 V138 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M82,144 H172 V150 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M224,130 H284 V138 H224 Z"/>
+
+    <!-- Row 4 -->
+    <path android:fillColor="#FF13131A" android:pathData="M16,166 H284 V200 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,166 H20 V200 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M24,170 H52 V196 H24 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M28,176 H48 V190 H28 Z"/>
+    <path android:fillColor="#FF13131A" android:pathData="M30,177 H46 V189 H30 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M32,178 H44 V188 H32 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M58,170 H76 V184 H58 Z"/>
+    <path android:fillColor="#FFFF0000" android:pathData="M58,170 H76 V177 H58 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M58,177 H76 V184 H58 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M82,170 H198 V178 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M82,184 H168 V190 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M224,170 H284 V178 H224 Z"/>
+
+    <!-- Row 5 -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,206 H284 V240 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,206 H20 V240 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M24,210 H52 V236 H24 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M28,216 H48 V230 H28 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M30,217 H46 V229 H30 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M32,218 H44 V228 H32 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M58,210 H76 V224 H58 Z"/>
+    <path android:fillColor="#FF009246" android:pathData="M58,210 H76 V217 H58 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M58,217 H76 V224 H58 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M82,210 H196 V218 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M82,224 H166 V230 H82 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M224,210 H284 V218 H224 Z"/>
+
+    <!-- Footer: "more races..." indicator -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,248 H284 V249 H16 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M16,256 H180 V262 H16 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M240,254 H284 V264 H240 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M244,256 H280 V262 H244 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M248,257 H276 V261 H248 Z"/>
+
+    <!-- Legend dots -->
+    <path android:fillColor="#FFE8002D"
+        android:pathData="M16,270 A4,4,0,1,0,24,270 A4,4,0,1,0,16,270 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M30,267 H100 V273 H30 Z"/>
+    <path android:fillColor="#FFFFC107"
+        android:pathData="M110,270 A4,4,0,1,0,118,270 A4,4,0,1,0,110,270 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M124,267 H190 V273 H124 Z"/>
+</vector>
+

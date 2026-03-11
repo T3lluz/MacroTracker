@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
 /**
  * WorkManager worker that periodically refreshes all DailyDash dashboard widgets.
  * F1 data is warmed through the shared repository so widgets stay populated even when the API is slow.
+ * Dashboard data is fully refreshed (including AI insights) via [DashboardWidgetDataProvider.refreshNow].
  */
 class WidgetRefreshWorker(
     private val context: Context,
@@ -26,9 +27,13 @@ class WidgetRefreshWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // Refresh dashboard data (local + AI insights in parallel)
+        runCatching { DashboardWidgetDataProvider.refreshNow(context) }
+
         val hasF1Widgets = hasAnyF1Widgets(context)
         val fetchedF1 = if (hasF1Widgets) F1WidgetDataProvider.refreshNow(context, force = true) else false
 
+        // Re-render all widgets with the freshly cached data
         DashboardWidget().updateAll(context)
         MacrosWidget().updateAll(context)
         HealthWidget().updateAll(context)
@@ -50,10 +55,13 @@ class WidgetRefreshWorker(
     companion object {
         private const val PERIODIC_WORK_NAME = "dashboard_widget_refresh"
         private const val IMMEDIATE_F1_WORK_NAME = "f1_widget_refresh_now"
+        private const val IMMEDIATE_DASH_WORK_NAME = "dashboard_widget_refresh_now"
 
         private fun networkConstraints() = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
+
+        private fun noConstraints() = Constraints.Builder().build()
 
         fun enqueuePeriodicRefresh(context: Context) {
             val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(15, TimeUnit.MINUTES)
@@ -63,6 +71,23 @@ class WidgetRefreshWorker(
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 PERIODIC_WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
+                request,
+            )
+        }
+
+        /**
+         * Enqueue a one-time immediate refresh for all dashboard (non-F1) widgets.
+         * No network constraint — local data loads instantly; AI will use cached
+         * insights if offline.
+         */
+        fun enqueueImmediateRefresh(context: Context) {
+            val request = OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
+                .setConstraints(noConstraints())
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                IMMEDIATE_DASH_WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
                 request,
             )
         }

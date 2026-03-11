@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the F1 Championship Standings widget (3×3) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+
+    <!-- Very dark F1 background -->
+    <path android:fillColor="#FF0A0A0F" android:pathData="M0,0 H300 V300 H0 Z"/>
+    <!-- Card -->
+    <path android:fillColor="#FF13131A" android:pathData="M8,8 H292 V292 H8 Z"/>
+
+    <!-- F1 red accent bar at top -->
+    <path android:fillColor="#FFE8002D" android:pathData="M8,8 H292 V28 H8 Z"/>
+    <!-- Title: "Championship Standings" -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M16,13 H220 V21 H16 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M18,14 H218 V20 H18 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M20,15 H200 V19 H20 Z"/>
+
+    <!-- Drivers / Constructors tab -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,34 H150 V48 H16 Z"/>
+    <!-- Active "Drivers" tab -->
+    <path android:fillColor="#FFE8002D" android:pathData="M16,44 H83 V48 H16 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M22,37 H77 V43 H22 Z"/>
+    <path android:fillColor="#FF13131A" android:pathData="M24,38 H75 V42 H24 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M26,39 H73 V41 H26 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M89,37 H145 V43 H89 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,52 H284 V53 H16 Z"/>
+
+    <!-- STANDINGS ROWS -->
+
+    <!-- Row 1: P1 (gold) -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,58 H284 V100 H16 Z"/>
+    <!-- Gold medal badge -->
+    <path android:fillColor="#FFFFD700" android:pathData="M16,58 H22 V100 H16 Z"/>
+    <!-- P1 circle -->
+    <path android:fillColor="#FF2A2A3E"
+        android:pathData="M28,72 A10,10,0,1,0,48,72 A10,10,0,1,0,28,72 Z"/>
+    <path android:fillColor="#FFFFD700" android:pathData="M30,68 H46 V76 H30 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M32,69 H44 V75 H32 Z"/>
+    <path android:fillColor="#FFFFD700" android:pathData="M33,70 H43 V74 H33 Z"/>
+    <!-- Team color stripe -->
+    <path android:fillColor="#FF00D2BE" android:pathData="M58,62 H62 V96 H58 Z"/>
+    <!-- Driver name stub -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M68,64 H180 V72 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,78 H140 V84 H68 Z"/>
+    <!-- Team name stub -->
+    <path android:fillColor="#FF555570" android:pathData="M68,90 H160 V96 H68 Z"/>
+    <!-- Points -->
+    <path android:fillColor="#FFFFD700" android:pathData="M220,64 H284 V80 H220 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M224,66 H280 V78 H224 Z"/>
+    <path android:fillColor="#FFFFD700" android:pathData="M228,67 H276 V77 H228 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M240,84 H284 V90 H240 Z"/>
+
+    <!-- Row 2: P2 (silver) -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,106 H284 V142 H16 Z"/>
+    <path android:fillColor="#FFC0C0C0" android:pathData="M16,106 H22 V142 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E"
+        android:pathData="M28,117 A9,9,0,1,0,46,117 A9,9,0,1,0,28,117 Z"/>
+    <path android:fillColor="#FFC0C0C0" android:pathData="M31,113 H43 V121 H31 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M33,114 H41 V120 H33 Z"/>
+    <path android:fillColor="#FFC0C0C0" android:pathData="M34,115 H40 V119 H34 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M58,110 H62 V138 H58 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M68,112 H170 V119 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,125 H136 V131 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,135 H155 V140 H68 Z"/>
+    <path android:fillColor="#FFC0C0C0" android:pathData="M228,112 H276 V120 H228 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M240,128 H284 V134 H240 Z"/>
+
+    <!-- Row 3: P3 (bronze) -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,148 H284 V184 H16 Z"/>
+    <path android:fillColor="#FFCD7F32" android:pathData="M16,148 H22 V184 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E"
+        android:pathData="M28,159 A9,9,0,1,0,46,159 A9,9,0,1,0,28,159 Z"/>
+    <path android:fillColor="#FFCD7F32" android:pathData="M31,155 H43 V163 H31 Z"/>
+    <path android:fillColor="#FF1E1E2E" android:pathData="M33,156 H41 V162 H33 Z"/>
+    <path android:fillColor="#FFCD7F32" android:pathData="M34,157 H40 V161 H34 Z"/>
+    <path android:fillColor="#FF0600EF" android:pathData="M58,152 H62 V180 H58 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M68,154 H168 V161 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,167 H134 V173 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,177 H152 V182 H68 Z"/>
+    <path android:fillColor="#FFCD7F32" android:pathData="M228,154 H276 V162 H228 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M240,170 H284 V176 H240 Z"/>
+
+    <!-- Row 4: P4 -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,190 H284 V218 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,190 H22 V218 H16 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M28,198 H46 V210 H28 Z"/>
+    <path android:fillColor="#FF13131A" android:pathData="M30,199 H44 V209 H30 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M31,200 H43 V208 H31 Z"/>
+    <path android:fillColor="#FFFF8700" android:pathData="M58,194 H62 V214 H58 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M68,196 H160 V202 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,208 H130 V213 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M228,196 H272 V204 H228 Z"/>
+
+    <!-- Row 5: P5 -->
+    <path android:fillColor="#FF1E1E2E" android:pathData="M16,224 H284 V252 H16 Z"/>
+    <path android:fillColor="#FF2A2A3E" android:pathData="M16,224 H22 V252 H16 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M28,232 H46 V244 H28 Z"/>
+    <path android:fillColor="#FF13131A" android:pathData="M30,233 H44 V243 H30 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M31,234 H43 V242 H31 Z"/>
+    <path android:fillColor="#FF27F4D2" android:pathData="M58,228 H62 V248 H58 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M68,230 H155 V236 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M68,242 H125 V247 H68 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M228,230 H268 V238 H228 Z"/>
+
+    <!-- Season info footer -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,260 H284 V261 H16 Z"/>
+    <path android:fillColor="#FF555570" android:pathData="M16,266 H220 V272 H16 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M230,264 H284 V274 H230 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M234,266 H280 V272 H234 Z"/>
+    <path android:fillColor="#FFE8002D" android:pathData="M238,267 H276 V271 H238 Z"/>
+</vector>
+

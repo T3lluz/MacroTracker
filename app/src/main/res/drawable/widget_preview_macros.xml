@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the Macros / Nutrition widget (2×2) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+
+    <!-- App background -->
+    <path android:fillColor="#FF080D18" android:pathData="M0,0 H300 V300 H0 Z"/>
+    <!-- Card surface -->
+    <path android:fillColor="#FF111827" android:pathData="M8,8 H292 V292 H8 Z"/>
+
+    <!-- Header: icon circle + title block -->
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M18,24 A10,10,0,1,0,38,24 A10,10,0,1,0,18,24 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M46,18 H168 V26 H46 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M46,32 H108 V38 H46 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,50 H284 V51 H16 Z"/>
+
+    <!-- CALORIES label stub -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,60 H80 V67 H16 Z"/>
+    <!-- CALORIES value stub -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M16,73 H152 V82 H16 Z"/>
+    <!-- Progress track -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,90 H284 V98 H16 Z"/>
+    <!-- Progress fill 78% -->
+    <path android:fillColor="#FF4F7CFF" android:pathData="M16,90 H218 V98 H16 Z"/>
+    <!-- Percentage -->
+    <path android:fillColor="#FF4F7CFF" android:pathData="M244,84 H284 V104 H244 Z"/>
+    <path android:fillColor="#FF080D18" android:pathData="M248,90 H280 V98 H248 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M250,91 H276 V97 H250 Z"/>
+
+    <!-- PROTEIN label stub -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,114 H72 V121 H16 Z"/>
+    <!-- PROTEIN value stub -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M16,127 H132 V136 H16 Z"/>
+    <!-- Progress track -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,144 H284 V152 H16 Z"/>
+    <!-- Progress fill 55% -->
+    <path android:fillColor="#FF22C55E" android:pathData="M16,144 H162 V152 H16 Z"/>
+    <!-- Percentage -->
+    <path android:fillColor="#FF22C55E" android:pathData="M244,138 H284 V158 H244 Z"/>
+    <path android:fillColor="#FF080D18" android:pathData="M248,144 H280 V152 H248 Z"/>
+    <path android:fillColor="#FF22C55E" android:pathData="M250,145 H276 V151 H250 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,164 H284 V165 H16 Z"/>
+
+    <!-- 3 Summary chips -->
+    <!-- Chip 1: Calories -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,172 H100 V224 H16 Z"/>
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M50,184 A8,8,0,1,0,66,184 A8,8,0,1,0,50,184 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M22,200 H94 V207 H22 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M22,212 H80 V217 H22 Z"/>
+
+    <!-- Chip 2: Protein -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M108,172 H192 V224 H108 Z"/>
+    <path android:fillColor="#FF22C55E"
+        android:pathData="M142,184 A8,8,0,1,0,158,184 A8,8,0,1,0,142,184 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M114,200 H186 V207 H114 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M114,212 H172 V217 H114 Z"/>
+
+    <!-- Chip 3: Streak -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M200,172 H284 V224 H200 Z"/>
+    <path android:fillColor="#FFFF8C42"
+        android:pathData="M234,184 A8,8,0,1,0,250,184 A8,8,0,1,0,234,184 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M206,200 H278 V207 H206 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M206,212 H262 V217 H206 Z"/>
+
+    <!-- Recent log entries section -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,232 H284 V233 H16 Z"/>
+    <path android:fillColor="#FF22C55E" android:pathData="M16,240 H8 V240 H16 Z"/>
+    <path android:fillColor="#FF22C55E"
+        android:pathData="M16,242 A4,4,0,1,0,24,242 A4,4,0,1,0,16,242 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,238 H160 V246 H30 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M226,238 H284 V246 H226 Z"/>
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M16,258 A4,4,0,1,0,24,258 A4,4,0,1,0,16,258 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,254 H140 V262 H30 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M226,254 H284 V262 H226 Z"/>
+    <path android:fillColor="#FF99A8C2"
+        android:pathData="M20,270 A4,4,0,1,0,28,270 A4,4,0,1,0,20,270 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M34,266 H120 V274 H34 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M228,266 H284 V274 H228 Z"/>
+</vector>
+

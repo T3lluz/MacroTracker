@@ -22,12 +22,14 @@
     <string name="widget_calendar_name">DailyDash — Calendar</string>
     <string name="widget_calendar_description">Next upcoming event and today\'s schedule at a glance</string>
 
-    <!-- F1 widgets -->
-    <string name="widget_f1_countdown_name">F1 — Next Race Countdown</string>
-    <string name="widget_f1_countdown_description">Countdown to the next Formula 1 Grand Prix with circuit info</string>
-    <string name="widget_f1_standings_name">F1 — Championship Standings</string>
-    <string name="widget_f1_standings_description">Live driver and constructor championship standings</string>
-    <string name="widget_f1_schedule_name">F1 — Race Calendar</string>
-    <string name="widget_f1_schedule_description">Full 2026 Formula 1 race calendar with sprint weekends</string>
+    <!-- F1 widgets — prefixed with "DailyDash — F1:" so they group with the other
+         DailyDash widgets in the picker (all start with "DailyDash") and naturally
+         cluster together alphabetically between Dashboard and Health. -->
+    <string name="widget_f1_countdown_name">DailyDash — F1: Next Race</string>
+    <string name="widget_f1_countdown_description">Countdown timer to the next Formula 1 Grand Prix with circuit info and session schedule</string>
+    <string name="widget_f1_standings_name">DailyDash — F1: Standings</string>
+    <string name="widget_f1_standings_description">Live driver and constructor championship standings with team colours</string>
+    <string name="widget_f1_schedule_name">DailyDash — F1: Schedule</string>
+    <string name="widget_f1_schedule_description">Full 2026 Formula 1 race calendar with sprint weekends highlighted</string>
 </resources>
 

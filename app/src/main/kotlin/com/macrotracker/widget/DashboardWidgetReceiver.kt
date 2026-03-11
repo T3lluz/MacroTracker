@@ -12,6 +12,7 @@ class DashboardWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
         WidgetRefreshWorker.enqueuePeriodicRefresh(context)
+        WidgetRefreshWorker.enqueueImmediateRefresh(context)
     }
 
     override fun onDisabled(context: Context) {
@@ -24,6 +25,7 @@ class DashboardWidgetReceiver : GlanceAppWidgetReceiver() {
         // Re-enqueue the worker on every update to guarantee it's running
         if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             WidgetRefreshWorker.enqueuePeriodicRefresh(context)
+            WidgetRefreshWorker.enqueueImmediateRefresh(context)
         }
     }
 }

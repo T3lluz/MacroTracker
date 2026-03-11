@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the Calendar widget (3×2) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="450dp"
+    android:height="300dp"
+    android:viewportWidth="450"
+    android:viewportHeight="300">
+
+    <!-- App background -->
+    <path android:fillColor="#FF080D18" android:pathData="M0,0 H450 V300 H0 Z"/>
+    <!-- Card surface -->
+    <path android:fillColor="#FF111827" android:pathData="M8,8 H442 V292 H8 Z"/>
+
+    <!-- Header: calendar icon + title + date -->
+    <path android:fillColor="#FF22C55E"
+        android:pathData="M18,24 A10,10,0,1,0,38,24 A10,10,0,1,0,18,24 Z"/>
+    <!-- Calendar grid dots in icon -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M21,22 H23 V24 H21 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M27,22 H29 V24 H27 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M33,22 H35 V24 H33 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M21,28 H23 V30 H21 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M27,28 H29 V30 H27 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M46,18 H160 V26 H46 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M46,32 H200 V38 H46 Z"/>
+    <!-- Current date pill on right -->
+    <path android:fillColor="#FF22C55E" android:pathData="M360,18 H434 V38 H360 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M368,23 H426 V29 H368 Z"/>
+    <path android:fillColor="#FF111827" android:pathData="M372,26 H422 V32 H372 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,50 H434 V51 H16 Z"/>
+
+    <!-- "Today's Events" label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,60 H120 V67 H16 Z"/>
+
+    <!-- EVENT ROW 1 (prominent - next event) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,74 H434 V122 H16 Z"/>
+    <!-- Color accent bar on left (blue) -->
+    <path android:fillColor="#FF4F7CFF" android:pathData="M16,74 H22 V122 H16 Z"/>
+    <!-- Event title placeholder (large) -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,84 H280 V94 H30 Z"/>
+    <!-- Time range -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,100 H180 V108 H30 Z"/>
+    <!-- Calendar name badge -->
+    <path android:fillColor="#FF4F7CFF" android:pathData="M286,84 H386 V94 H286 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M292,87 H380 V91 H292 Z"/>
+    <!-- Location line -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,112 H200 V118 H30 Z"/>
+    <!-- Duration pill -->
+    <path android:fillColor="#FF1A2438" android:pathData="M392,100 H428 V114 H392 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M396,105 H424 V109 H396 Z"/>
+
+    <!-- EVENT ROW 2 -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,130 H434 V170 H16 Z"/>
+    <path android:fillColor="#FFFF8C42" android:pathData="M16,130 H22 V170 H16 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,140 H240 V149 H30 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,155 H160 V162 H30 Z"/>
+    <path android:fillColor="#FFFF8C42" android:pathData="M248,140 H344 V149 H248 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M254,143 H338 V146 H254 Z"/>
+    <path android:fillColor="#FF1A2438" android:pathData="M354,151 H390 V163 H354 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M358,155 H386 V159 H358 Z"/>
+
+    <!-- EVENT ROW 3 -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,178 H434 V218 H16 Z"/>
+    <path android:fillColor="#FF8B5CF6" android:pathData="M16,178 H22 V218 H16 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,188 H220 V197 H30 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,203 H150 V210 H30 Z"/>
+    <path android:fillColor="#FF8B5CF6" android:pathData="M228,188 H310 V197 H228 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M234,191 H304 V194 H234 Z"/>
+
+    <!-- "Tomorrow" section label -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,226 H434 V227 H16 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,234 H100 V241 H16 Z"/>
+
+    <!-- Tomorrow event row (lighter, shorter) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,248 H434 V278 H16 Z"/>
+    <path android:fillColor="#FF22C55E" android:pathData="M16,248 H22 V278 H16 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,256 H260 V264 H30 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,269 H180 V275 H30 Z"/>
+</vector>
+

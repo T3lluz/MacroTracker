@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the Weather widget (3×2) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="450dp"
+    android:height="300dp"
+    android:viewportWidth="450"
+    android:viewportHeight="300">
+
+    <!-- App background -->
+    <path android:fillColor="#FF080D18" android:pathData="M0,0 H450 V300 H0 Z"/>
+    <!-- Card surface -->
+    <path android:fillColor="#FF111827" android:pathData="M8,8 H442 V292 H8 Z"/>
+
+    <!-- Header: cloud icon + title -->
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M18,24 A10,10,0,1,0,38,24 A10,10,0,1,0,18,24 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M46,18 H180 V26 H46 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M46,32 H140 V38 H46 Z"/>
+    <!-- Last updated pill on right -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M368,20 H434 V36 H368 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M374,25 H428 V31 H374 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,50 H434 V51 H16 Z"/>
+
+    <!-- LEFT COLUMN: temperature + conditions -->
+    <!-- Big temperature number block -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M24,66 H168 V126 H24 Z"/>
+    <!-- Degree symbol placeholder -->
+    <path android:fillColor="#FF111827" android:pathData="M32,74 H160 V118 H32 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M44,82 H148 V110 H44 Z"/>
+    <!-- Condition text -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M24,132 H160 V140 H24 Z"/>
+    <!-- Feels like -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M24,148 H132 V154 H24 Z"/>
+
+    <!-- Hi / Lo temps -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M24,164 H104 V184 H24 Z"/>
+    <path android:fillColor="#FFEF4444" android:pathData="M30,169 H52 V177 H30 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M58,169 H96 V177 H58 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,179 H92 V183 H30 Z"/>
+
+    <path android:fillColor="#FF1D2B3D" android:pathData="M110,164 H190 V184 H110 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M116,169 H138 V177 H116 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M144,169 H182 V177 H144 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M116,179 H178 V183 H116 Z"/>
+
+    <!-- CENTER: large weather icon circle -->
+    <path android:fillColor="#FF1D2B3D"
+        android:pathData="M230,68 A54,54,0,1,0,338,68 A54,54,0,1,0,230,68 Z"/>
+    <!-- Sun rays / cloud shapes to suggest weather icon -->
+    <path android:fillColor="#FFFFC107"
+        android:pathData="M268,50 A16,16,0,1,0,300,50 A16,16,0,1,0,268,50 Z"/>
+    <path android:fillColor="#FFFFC107" android:pathData="M280,38 H288 V46 H280 Z"/>
+    <path android:fillColor="#FFFFC107" android:pathData="M280,60 H288 V68 H280 Z"/>
+    <path android:fillColor="#FFFFC107" android:pathData="M260,50 H268 V58 H260 Z"/>
+    <path android:fillColor="#FFFFC107" android:pathData="M300,50 H308 V58 H300 Z"/>
+    <!-- Cloud overlay -->
+    <path android:fillColor="#FFB0BEC5"
+        android:pathData="M258,70 A14,14,0,1,0,286,70 A14,14,0,1,0,258,70 Z"/>
+    <path android:fillColor="#FFB0BEC5"
+        android:pathData="M274,74 A10,10,0,1,0,294,74 A10,10,0,1,0,274,74 Z"/>
+    <path android:fillColor="#FFB0BEC5" android:pathData="M258,76 H294 V86 H258 Z"/>
+
+    <!-- RIGHT COLUMN: AI summary text block -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M356,60 H434 V188 H356 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M364,68 H428 V74 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,80 H426 V86 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,92 H424 V98 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,104 H420 V110 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,116 H428 V122 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,128 H416 V134 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,140 H424 V146 H364 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M364,152 H414 V158 H364 Z"/>
+
+    <!-- HOURLY FORECAST SECTION -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,196 H434 V197 H16 Z"/>
+
+    <!-- Hourly item 1 (now) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,204 H88 V284 H16 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M28,212 H76 V218 H28 Z"/>
+    <path android:fillColor="#FFFFC107"
+        android:pathData="M44,228 A8,8,0,1,0,60,228 A8,8,0,1,0,44,228 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M28,244 H76 V252 H28 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,260 H74 V266 H30 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M36,272 H68 V278 H36 Z"/>
+
+    <!-- Hourly item 2 -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M96,204 H168 V284 H96 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M108,212 H156 V218 H108 Z"/>
+    <path android:fillColor="#FFB0BEC5"
+        android:pathData="M120,228 A8,8,0,1,0,136,228 A8,8,0,1,0,120,228 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M108,244 H156 V252 H108 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M110,260 H154 V266 H110 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M116,272 H148 V278 H116 Z"/>
+
+    <!-- Hourly item 3 -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M176,204 H248 V284 H176 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M188,212 H236 V218 H188 Z"/>
+    <path android:fillColor="#FFFFC107"
+        android:pathData="M200,228 A8,8,0,1,0,216,228 A8,8,0,1,0,200,228 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M188,244 H236 V252 H188 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M190,260 H234 V266 H190 Z"/>
+    <path android:fillColor="#FF22C55E" android:pathData="M196,272 H228 V278 H196 Z"/>
+
+    <!-- Hourly item 4 -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M256,204 H328 V284 H256 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M268,212 H316 V218 H268 Z"/>
+    <path android:fillColor="#FFB0BEC5"
+        android:pathData="M280,228 A8,8,0,1,0,296,228 A8,8,0,1,0,280,228 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M268,244 H316 V252 H268 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M270,260 H314 V266 H270 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M276,272 H308 V278 H276 Z"/>
+
+    <!-- Hourly item 5 -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M336,204 H408 V284 H336 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M348,212 H396 V218 H348 Z"/>
+    <path android:fillColor="#FF8B5CF6"
+        android:pathData="M360,228 A8,8,0,1,0,376,228 A8,8,0,1,0,360,228 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M348,244 H396 V252 H348 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M350,260 H394 V266 H350 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M356,272 H388 V278 H356 Z"/>
+</vector>
+

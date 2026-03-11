@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the full Dashboard widget (3×3) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+
+    <!-- App background -->
+    <path android:fillColor="#FF080D18" android:pathData="M0,0 H300 V300 H0 Z"/>
+    <!-- Card surface -->
+    <path android:fillColor="#FF111827" android:pathData="M8,8 H292 V292 H8 Z"/>
+
+    <!-- Header: logo icon + app name + date -->
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M18,22 A10,10,0,1,0,38,22 A10,10,0,1,0,18,22 Z"/>
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M22,20 A6,6,0,1,0,34,20 A6,6,0,1,0,22,20 Z"/>
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M24,20 A4,4,0,1,0,32,20 A4,4,0,1,0,24,20 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M44,16 H160 V23 H44 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M44,28 H120 V34 H44 Z"/>
+    <path android:fillColor="#FF1D2B3D" android:pathData="M210,16 H284 V34 H210 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M214,20 H280 V26 H214 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M214,28 H260 V32 H214 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,42 H284 V43 H16 Z"/>
+
+    <!-- ======= TOP ROW: Macros section (left) + Weather section (right) ======= -->
+
+    <!-- MACROS card (left, top) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,50 H148 V140 H16 Z"/>
+    <!-- Section label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M22,56 H80 V62 H22 Z"/>
+    <!-- Calories bar -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M22,68 H60 V74 H22 Z"/>
+    <path android:fillColor="#FF1A2438" android:pathData="M22,78 H142 V84 H22 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M22,78 H111 V84 H22 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M22,88 H90 V94 H22 Z"/>
+    <!-- Protein bar -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M22,100 H56 V106 H22 Z"/>
+    <path android:fillColor="#FF1A2438" android:pathData="M22,110 H142 V116 H22 Z"/>
+    <path android:fillColor="#FF22C55E" android:pathData="M22,110 H90 V116 H22 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M22,120 H80 V126 H22 Z"/>
+    <!-- Streak chip -->
+    <path android:fillColor="#FF111827" android:pathData="M22,130 H80 V138 H22 Z"/>
+    <path android:fillColor="#FFFF8C42"
+        android:pathData="M25,134 A3,3,0,1,0,31,134 A3,3,0,1,0,25,134 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M35,131 H76 V137 H35 Z"/>
+
+    <!-- WEATHER card (right, top) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M156,50 H284 V140 H156 Z"/>
+    <!-- Section label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M162,56 H210 V62 H162 Z"/>
+    <!-- Big temperature -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M162,68 H230 V100 H162 Z"/>
+    <path android:fillColor="#FF1D2B3D" android:pathData="M166,72 H226 V96 H166 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M168,74 H224 V94 H168 Z"/>
+    <!-- Condition text -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M162,104 H222 V110 H162 Z"/>
+    <!-- Weather icon -->
+    <path android:fillColor="#FFFFC107"
+        android:pathData="M244,72 A14,14,0,1,0,272,72 A14,14,0,1,0,244,72 Z"/>
+    <!-- Hi/Lo -->
+    <path android:fillColor="#FFEF4444" android:pathData="M162,116 H184 V122 H162 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M188,116 H210 V122 H188 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M216,116 H238 V122 H216 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M242,116 H264 V122 H242 Z"/>
+    <!-- Hourly strips -->
+    <path android:fillColor="#FF111827" android:pathData="M162,128 H200 V138 H162 Z"/>
+    <path android:fillColor="#FF111827" android:pathData="M206,128 H244 V138 H206 Z"/>
+    <path android:fillColor="#FF111827" android:pathData="M250,128 H284 V138 H250 Z"/>
+
+    <!-- ======= MIDDLE ROW: Health metrics ======= -->
+    <!-- 4 health chips in a 2×2 grid -->
+
+    <!-- Steps chip (top-left) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,148 H76 H76 V202 H16 Z"/>
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M34,160 A10,10,0,1,0,54,160 A10,10,0,1,0,34,160 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M22,178 H70 V184 H22 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M22,190 H56 V196 H22 Z"/>
+
+    <!-- Heart chip (top-right) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M84,148 H144 V202 H84 Z"/>
+    <path android:fillColor="#FFEF4444"
+        android:pathData="M102,160 A10,10,0,1,0,122,160 A10,10,0,1,0,102,160 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M90,178 H138 V184 H90 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M90,190 H130 V196 H90 Z"/>
+
+    <!-- Sleep chip (bottom-left) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M152,148 H212 V202 H152 Z"/>
+    <path android:fillColor="#FF8B5CF6"
+        android:pathData="M170,160 A10,10,0,1,0,190,160 A10,10,0,1,0,170,160 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M158,178 H206 V184 H158 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M158,190 H198 V196 H158 Z"/>
+
+    <!-- Activity chip (bottom-right) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M220,148 H284 V202 H220 Z"/>
+    <path android:fillColor="#FFFF8C42"
+        android:pathData="M238,160 A10,10,0,1,0,258,160 A10,10,0,1,0,238,160 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M226,178 H278 V184 H226 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M226,190 H268 V196 H226 Z"/>
+
+    <!-- ======= BOTTOM ROW: Calendar events ======= -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,210 H284 V211 H16 Z"/>
+
+    <!-- Calendar label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,216 H90 V222 H16 Z"/>
+
+    <!-- Event row 1 -->
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M16,228 A3,3,0,1,0,22,228 A3,3,0,1,0,16,228 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M26,224 H180 V232 H26 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M218,224 H284 V232 H218 Z"/>
+
+    <!-- Event row 2 -->
+    <path android:fillColor="#FF22C55E"
+        android:pathData="M16,242 A3,3,0,1,0,22,242 A3,3,0,1,0,16,242 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M26,238 H162 V246 H26 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M220,238 H284 V246 H220 Z"/>
+
+    <!-- Event row 3 -->
+    <path android:fillColor="#FF8B5CF6"
+        android:pathData="M16,256 A3,3,0,1,0,22,256 A3,3,0,1,0,16,256 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M26,252 H148 V260 H26 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M220,252 H284 V260 H220 Z"/>
+
+    <!-- Last updated -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,270 H284 V271 H16 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,275 H160 V281 H16 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M240,273 H284 V283 H240 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M244,275 H280 V281 H244 Z"/>
+    <path android:fillColor="#FF4F7CFF" android:pathData="M248,276 H276 V280 H248 Z"/>
+</vector>
+

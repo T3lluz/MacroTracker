@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview for the Health & Activity widget (2×2) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+
+    <!-- App background -->
+    <path android:fillColor="#FF080D18" android:pathData="M0,0 H300 V300 H0 Z"/>
+    <!-- Card surface -->
+    <path android:fillColor="#FF111827" android:pathData="M8,8 H292 V292 H8 Z"/>
+
+    <!-- Header: icon + title -->
+    <path android:fillColor="#FFEF4444"
+        android:pathData="M18,24 A10,10,0,1,0,38,24 A10,10,0,1,0,18,24 Z"/>
+    <!-- Heart icon inner (white center) -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M24,24 A4,4,0,1,0,32,24 A4,4,0,1,0,24,24 Z"/>
+    <path android:fillColor="#FFEAF0FB" android:pathData="M46,18 H148 V26 H46 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M46,32 H112 V38 H46 Z"/>
+
+    <!-- Divider -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,50 H284 V51 H16 Z"/>
+
+    <!-- 2×2 grid of health metric chips -->
+
+    <!-- Chip 1: Steps (top-left) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,60 H144 V160 H16 Z"/>
+    <!-- Steps icon circle (blue) -->
+    <path android:fillColor="#FF4F7CFF"
+        android:pathData="M64,84 A16,16,0,1,0,96,84 A16,16,0,1,0,64,84 Z"/>
+    <!-- Step legs indicator inside circle -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M76,78 H84 V82 H76 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M72,84 H88 V88 H72 Z"/>
+    <!-- Steps value (large) -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,110 H130 V122 H30 Z"/>
+    <!-- Steps label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,130 H80 V136 H30 Z"/>
+    <!-- Arrow (positive) -->
+    <path android:fillColor="#FF22C55E" android:pathData="M90,128 H130 V136 H90 Z"/>
+    <!-- Compare yesterday -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,144 H120 V150 H30 Z"/>
+
+    <!-- Chip 2: Heart Rate (top-right) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M156,60 H284 V160 H156 Z"/>
+    <!-- Heart icon circle (red) -->
+    <path android:fillColor="#FFEF4444"
+        android:pathData="M204,84 A16,16,0,1,0,236,84 A16,16,0,1,0,204,84 Z"/>
+    <!-- Heart symbol inside -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M216,78 H224 V82 H216 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M212,84 H228 V90 H212 Z"/>
+    <!-- HR value -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M170,110 H270 V122 H170 Z"/>
+    <!-- HR label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M170,130 H228 V136 H170 Z"/>
+    <!-- Arrow (positive) -->
+    <path android:fillColor="#FF22C55E" android:pathData="M232,128 H270 V136 H232 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M170,144 H260 V150 H170 Z"/>
+
+    <!-- Chip 3: Sleep (bottom-left) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M16,168 H144 V268 H16 Z"/>
+    <!-- Moon icon circle (purple) -->
+    <path android:fillColor="#FF8B5CF6"
+        android:pathData="M64,192 A16,16,0,1,0,96,192 A16,16,0,1,0,64,192 Z"/>
+    <path android:fillColor="#FF1D2B3D"
+        android:pathData="M72,184 A14,14,0,1,0,72,200 A10,10,0,1,1,72,184 Z"/>
+    <!-- Sleep value -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M30,218 H130 V230 H30 Z"/>
+    <!-- Sleep label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,238 H70 V244 H30 Z"/>
+    <path android:fillColor="#FF8B5CF6" android:pathData="M80,236 H130 V244 H80 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M30,252 H120 V258 H30 Z"/>
+
+    <!-- Chip 4: Active Calories (bottom-right) -->
+    <path android:fillColor="#FF1D2B3D" android:pathData="M156,168 H284 V268 H156 Z"/>
+    <!-- Fire icon circle (orange) -->
+    <path android:fillColor="#FFFF8C42"
+        android:pathData="M204,192 A16,16,0,1,0,236,192 A16,16,0,1,0,204,192 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M215,186 H225 V194 H215 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M213,194 H227 V200 H213 Z"/>
+    <!-- Active cal value -->
+    <path android:fillColor="#FFEAF0FB" android:pathData="M170,218 H270 V230 H170 Z"/>
+    <!-- Active cal label -->
+    <path android:fillColor="#FF99A8C2" android:pathData="M170,238 H238 V244 H170 Z"/>
+    <path android:fillColor="#FFFF8C42" android:pathData="M242,236 H270 V244 H242 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M170,252 H260 V258 H170 Z"/>
+
+    <!-- Bottom: last updated bar -->
+    <path android:fillColor="#FF24324A" android:pathData="M16,276 H284 V277 H16 Z"/>
+    <path android:fillColor="#FF99A8C2" android:pathData="M16,281 H180 V287 H16 Z"/>
+</vector>
+

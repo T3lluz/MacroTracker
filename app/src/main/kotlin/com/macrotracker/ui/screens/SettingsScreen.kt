@@ -93,6 +93,7 @@ import com.macrotracker.ui.viewmodel.SettingsViewModel
 fun SettingsScreen(
     onNavigateToHelp: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
+    onNavigateToWidgets: () -> Unit = {},
     onReplayTutorial: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
@@ -517,6 +518,38 @@ fun SettingsScreen(
 
         // ── Quick Links ──────────────────────────────────────────────────
         Spacer(modifier = Modifier.height(8.dp))
+
+        // Widgets showcase — full-width prominent button
+        MacroCard(delayMs = 200) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 12.dp),
+            ) {
+                Text("📱", fontSize = 22.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Home Screen Widgets",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                    )
+                    Text(
+                        text = "8 widgets — nutrition, health, weather, calendar & F1",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+            }
+            MacroButton(
+                text = "Browse & Add Widgets",
+                onClick = {
+                    haptics.click()
+                    onNavigateToWidgets()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),

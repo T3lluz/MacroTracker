@@ -20,6 +20,8 @@ import com.macrotracker.BuildConfig
 import com.macrotracker.data.local.GoalsEntity
 import com.macrotracker.data.local.MacroDatabase
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -36,6 +38,12 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Reads all data sources directly for the widget (no Hilt available).
+ *
+ * Two loading paths:
+ * - [loadData] — fast, for `provideGlance`. Returns memory cache or loads local
+ *   data + cached AI from SharedPrefs. **Never** makes network calls.
+ * - [refreshNow] — full, for background workers. Loads local data + fresh AI
+ *   insights from Gemini in parallel. Updates memory + disk caches.
  */
 object DashboardWidgetDataProvider {
 
@@ -56,13 +64,99 @@ object DashboardWidgetDataProvider {
     private const val AI_CALENDAR_TS_KEY = "ai_insight_calendar_ts"
     private const val AI_INSIGHT_TTL = 60 * 60 * 1000L // 1 hour
 
+    /** In-memory cache — avoids redundant local reads across multiple widget renders. */
+    private const val MEMORY_TTL = 30_000L // 30 seconds
+    @Volatile private var cached: DashboardWidgetData? = null
+    @Volatile private var cachedAt: Long = 0L
+
+    /** Invalidate in-memory cache so the next [loadData] re-reads local sources. */
+    fun invalidate() {
+        cached = null
+        cachedAt = 0L
+    }
+
+    /**
+     * Fast path — called by every widget's `provideGlance`.
+     * Returns in-memory cache if fresh, otherwise reads local data sources
+     * (Room, Health Connect, SharedPrefs, Calendar) and reads **cached** AI
+     * insights from disk. Never makes network calls — returns almost instantly.
+     */
     suspend fun loadData(context: Context): DashboardWidgetData {
+        val now = System.currentTimeMillis()
+        cached?.takeIf { now - cachedAt < MEMORY_TTL }?.let { return it }
+
+        val merged = loadLocalData(context)
+
+        // Read cached AI insights from SharedPrefs (no network)
+        val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+        val result = merged.copy(
+            aiInsight = prefs.getString(AI_INSIGHT_KEY, null),
+            aiInsightNutrition = prefs.getString(AI_NUTRITION_KEY, null),
+            aiInsightHealth = prefs.getString(AI_HEALTH_KEY, null),
+            aiInsightWeather = prefs.getString(AI_WEATHER_KEY, null),
+            aiInsightCalendar = prefs.getString(AI_CALENDAR_KEY, null),
+            lastUpdatedAt = now,
+        )
+        cache(result)
+        return result
+    }
+
+    /**
+     * Full refresh — called by [WidgetRefreshWorker] and [RefreshWidgetAction].
+     * Loads local data, then fetches fresh AI insights from Gemini **in parallel**.
+     * Updates both memory and disk caches.
+     */
+    suspend fun refreshNow(context: Context): DashboardWidgetData {
+        val merged = loadLocalData(context)
+
+        // Fetch all AI insights in parallel (each has its own TTL check)
+        val results = coroutineScope {
+            val insight = async(Dispatchers.IO) {
+                loadAiInsight(context, merged, AI_INSIGHT_KEY, AI_INSIGHT_TS_KEY, buildInsightPrompt(merged))
+            }
+            val nutrition = async(Dispatchers.IO) {
+                loadAiInsight(context, merged, AI_NUTRITION_KEY, AI_NUTRITION_TS_KEY, buildNutritionPrompt(merged))
+            }
+            val health = async(Dispatchers.IO) {
+                loadAiInsight(context, merged, AI_HEALTH_KEY, AI_HEALTH_TS_KEY, buildHealthPrompt(merged))
+            }
+            val weather = async(Dispatchers.IO) {
+                loadAiInsight(context, merged, AI_WEATHER_KEY, AI_WEATHER_TS_KEY, buildWeatherPrompt(merged))
+            }
+            val calendar = async(Dispatchers.IO) {
+                loadAiInsight(context, merged, AI_CALENDAR_KEY, AI_CALENDAR_TS_KEY, buildCalendarPrompt(merged))
+            }
+            listOf(insight.await(), nutrition.await(), health.await(), weather.await(), calendar.await())
+        }
+
+        val result = merged.copy(
+            aiInsight = results[0],
+            aiInsightNutrition = results[1],
+            aiInsightHealth = results[2],
+            aiInsightWeather = results[3],
+            aiInsightCalendar = results[4],
+            lastUpdatedAt = System.currentTimeMillis(),
+        )
+        cache(result)
+        return result
+    }
+
+    private fun cache(data: DashboardWidgetData) {
+        cached = data
+        cachedAt = System.currentTimeMillis()
+    }
+
+    /**
+     * Loads macros, health, weather, and calendar from local sources.
+     * No network calls — fast enough for `provideGlance`.
+     */
+    private suspend fun loadLocalData(context: Context): DashboardWidgetData {
         val macros = loadMacros(context)
         val health = loadHealth(context)
         val weather = loadWeather(context)
         val calendar = loadCalendar(context)
 
-        val merged = macros.copy(
+        return macros.copy(
             steps = health.steps,
             stepsGoal = health.stepsGoal,
             avgHeartRate = health.avgHeartRate,
@@ -85,20 +179,6 @@ object DashboardWidgetDataProvider {
             eventsToday = calendar.eventsToday,
             hasCalendarData = calendar.hasCalendarData,
             upcomingEvents = calendar.upcomingEvents,
-        )
-
-        val insight            = loadAiInsight(context, merged, AI_INSIGHT_KEY,   AI_INSIGHT_TS_KEY,   buildInsightPrompt(merged))
-        val insightNutrition   = loadAiInsight(context, merged, AI_NUTRITION_KEY,  AI_NUTRITION_TS_KEY, buildNutritionPrompt(merged))
-        val insightHealth      = loadAiInsight(context, merged, AI_HEALTH_KEY,     AI_HEALTH_TS_KEY,    buildHealthPrompt(merged))
-        val insightWeather     = loadAiInsight(context, merged, AI_WEATHER_KEY,    AI_WEATHER_TS_KEY,   buildWeatherPrompt(merged))
-        val insightCalendar    = loadAiInsight(context, merged, AI_CALENDAR_KEY,   AI_CALENDAR_TS_KEY,  buildCalendarPrompt(merged))
-        return merged.copy(
-            aiInsight = insight,
-            aiInsightNutrition = insightNutrition,
-            aiInsightHealth = insightHealth,
-            aiInsightWeather = insightWeather,
-            aiInsightCalendar = insightCalendar,
-            lastUpdatedAt = System.currentTimeMillis(),
         )
     }
 
