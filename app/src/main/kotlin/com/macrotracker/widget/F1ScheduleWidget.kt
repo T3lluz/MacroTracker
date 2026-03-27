@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
-import androidx.glance.LocalSize
+
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -28,6 +28,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontStyle
 import androidx.glance.text.FontWeight
@@ -39,15 +40,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * F1 Schedule Widget — 3×2 to 5×3.
- *
- * All sizes ≥ COMPACT are fully scrollable.
- * Session timetable lives as a compact pill strip ABOVE the hero card —
- * keeping the hero tight and maximising the LazyColumn scroll area.
- *
- * COMPACT (*×2)  — header + session pills + scrollable race list
- * MEDIUM  (2-3×3)— header + session pills + compact hero + scrollable race list
- * FULL    (4-5×3)— header + session pills + full hero + full scrollable calendar
+ * F1 Schedule Widget
  */
 class F1ScheduleWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Single
@@ -57,27 +50,20 @@ class F1ScheduleWidget : GlanceAppWidget() {
     }
 }
 
-// ── Root ──────────────────────────────────────────────────────────
+// ——— Root —————————————————————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun F1ScheduleRoot(data: F1WidgetData) {
-    val sz = LocalSize.current
-    val ws = classify(sz.width, sz.height)
     val c  = F1Clr()
     val sc = WScale.from()
     Box(
         modifier = GlanceModifier.fillMaxSize().cornerRadius(sc.corner).background(c.bg)
             .clickable(actionStartActivity<MainActivity>()).padding(sc.pad),
     ) {
-        when (ws) {
-            WSize.TINY    -> ScheduleTiny(data, c, sc)
-            WSize.COMPACT -> ScheduleCompact(data, c, sc, sz.width)
-            WSize.MEDIUM  -> ScheduleMedium(data, c, sc)
-            WSize.FULL    -> ScheduleFull(data, c, sc, sz.width)
-        }
+        ScheduleFull(data, c, sc)
     }
 }
 
-// ── Header ────────────────────────────────────────────────────────
+// ——— Header ——————————————————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun ScheduleHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WScale) {
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -106,130 +92,23 @@ private fun ScheduleHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WSca
     }
 }
 
-// ── TINY: 2×2 — flag + round + countdown + locality ──────────────
+// ——— FULL —————————————————————————————————————————————————————————————————————————————————————————
 @Composable
-private fun ScheduleTiny(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    val next = d.schedule.firstOrNull { it.isNext } ?: d.schedule.firstOrNull { !it.isPast }
-    Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
-        // Flag + round on same line
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(next?.flag ?: "🏁", style = TextStyle(fontSize = sc.iconMd))
-            if (next != null) {
-                Spacer(GlanceModifier.width(sc.spaceXs))
-                Box(GlanceModifier.cornerRadius(3.dp).background(c.red).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                    Text("R${next.round}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.text))
-                }
-            }
-        }
-        Spacer(GlanceModifier.height(sc.spaceXs))
-        when {
-            d.daysUntil == 0L -> {
-                Text("TODAY", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxl, color = c.red))
-                if (d.hoursUntil >= 0)
-                    Text("${d.hoursUntil}h ${d.minutesUntil}m", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-            }
-            d.daysUntil > 0 -> {
-                Text("${d.daysUntil}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.red))
-                Text("days", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-            }
-            d.isLoading -> Text("SYNC", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.sub))
-            else -> {
-                Text("R${next?.round ?: "?"}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.red))
-                Text(next?.locality?.take(10) ?: "F1", style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-            }
-        }
-        // Locality for upcoming race
-        if (next != null && d.daysUntil >= 0) {
-            Spacer(GlanceModifier.height(sc.spaceXs))
-            Text(next.locality.take(12), style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-        }
-    }
-}
-
-// ── COMPACT: *×2 — header → pills → full scroll race list ─────────
-@Composable
-private fun ScheduleCompact(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
+private fun ScheduleFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
+    val w = 368.dp // Fixed width for fallback scaling
     Column(GlanceModifier.fillMaxSize()) {
-        ScheduleHeader("F1 ${LocalDate.now().year}", d, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceSm))
-        if (d.schedule.isEmpty()) {
-            Spacer(GlanceModifier.defaultWeight())
-            Box(GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card), contentAlignment = Alignment.Center) {
-                Text(f1WidgetEmptyMessage(d, "No data"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
-            }
-            Spacer(GlanceModifier.defaultWeight())
-        } else {
-            val futureSessions = d.weekendSessions.filter { !it.isPast }
-            if (futureSessions.isNotEmpty()) {
-                SessionPillStrip(futureSessions, c, sc)
-                Spacer(GlanceModifier.height(sc.spaceSm))
-            }
-            val upcoming = d.schedule.filter { !it.isPast }
-            val toShow = if (upcoming.isEmpty()) d.schedule.takeLast(3) else upcoming
-            LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
-                items(toShow) { race ->
-                    RaceRow(race, c, sc, showDate = true, showLocality = w >= 340.dp)
-                    Spacer(GlanceModifier.height(sc.spaceXs))
-                }
-            }
-        }
-    }
-}
-
-// ── MEDIUM: 2-3×3 — header → sessions → compact hero → scroll list ───
-@Composable
-private fun ScheduleMedium(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    Column(GlanceModifier.fillMaxSize()) {
-        ScheduleHeader("${LocalDate.now().year} Calendar", d, c, sc)
+        ScheduleHeader("Formula 1    ${LocalDate.now().year}", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
         if (d.schedule.isEmpty()) {
             Spacer(GlanceModifier.defaultWeight())
             Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏁", style = TextStyle(fontSize = sc.iconHero))
-                Text(f1WidgetEmptyMessage(d, "No schedule data"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
-            }
-            Spacer(GlanceModifier.defaultWeight())
-        } else {
-            val next = d.schedule.firstOrNull { it.isNext }
-            val futureSessions = d.weekendSessions.filter { !it.isPast }
-            // Detailed session table when in race weekend
-            if (futureSessions.isNotEmpty()) {
-                WeekendSessionTable(futureSessions, c, sc)
+                androidx.glance.Image(
+                    provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_car),
+                    contentDescription = null,
+                    colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                    modifier = GlanceModifier.size(32.dp)
+                )
                 Spacer(GlanceModifier.height(sc.spaceSm))
-            } else if (next != null) {
-                HeroCardCompact(next, d, c, sc)
-                Spacer(GlanceModifier.height(sc.spaceSm))
-            } else if (d.lastRaceResults.isNotEmpty()) {
-                // No upcoming race card — show last race result
-                LastRaceCard(d, c, sc, compact = true)
-                Spacer(GlanceModifier.height(sc.spaceSm))
-            } else if (d.lastQualiResults.isNotEmpty()) {
-                // Fallback: show qualifying grid
-                QualiGridCard(d, c, sc, compact = true)
-                Spacer(GlanceModifier.height(sc.spaceSm))
-            }
-            val upcoming = d.schedule.filter { !it.isPast && !it.isNext }
-            val toShow = if (upcoming.isEmpty()) d.schedule.takeLast(5) else upcoming
-            LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
-                items(toShow) { race ->
-                    RaceRow(race, c, sc, showDate = true)
-                    Spacer(GlanceModifier.height(sc.spaceXs))
-                }
-            }
-        }
-    }
-}
-
-// ── FULL: 4-5×3 — header → sessions → full hero → full scroll calendar ─
-@Composable
-private fun ScheduleFull(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
-    Column(GlanceModifier.fillMaxSize()) {
-        ScheduleHeader("Formula 1  ·  ${LocalDate.now().year}", d, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceSm))
-        if (d.schedule.isEmpty()) {
-            Spacer(GlanceModifier.defaultWeight())
-            Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏁", style = TextStyle(fontSize = sc.iconHero))
                 Text(f1WidgetEmptyMessage(d, "No schedule data"), style = TextStyle(fontSize = sc.fmd, color = c.sub))
             }
             Spacer(GlanceModifier.defaultWeight())
@@ -291,7 +170,7 @@ private fun ScheduleFull(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
     }
 }
 
-// ── LAST RACE CARD ────────────────────────────────────────────────
+// ——— LAST RACE CARD ——————————————————————————————————————————————————————————————————————————————————————
 /** Compact card showing the top-3 finishers from the last race. */
 @Composable
 private fun LastRaceCard(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolean) {
@@ -302,7 +181,16 @@ private fun LastRaceCard(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolean
         Column(GlanceModifier.fillMaxWidth()) {
             // Header row
             Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(d.lastRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconSm))
+                if (d.lastRaceFlag == null) {
+                    androidx.glance.Image(
+                        provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_flag),
+                        contentDescription = null,
+                        colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                        modifier = GlanceModifier.size(16.dp)
+                    )
+                } else {
+                    Text(d.lastRaceFlag, style = TextStyle(fontSize = sc.iconSm))
+                }
                 Spacer(GlanceModifier.width(sc.spaceSm))
                 Text(cleanRaceName(d.lastRaceName ?: "Last Race").take(if (compact) 18 else 24),
                     style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.sub), maxLines = 1)
@@ -354,7 +242,7 @@ private fun LastRaceCard(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolean
     }
 }
 
-// ── QUALIFYING GRID CARD ──────────────────────────────────────────
+// ——— QUALIFYING GRID CARD ——————————————————————————————————————————————————————————————————————————————————
 /** Standalone qualifying grid card for the schedule widget. */
 @Composable
 private fun QualiGridCard(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolean) {
@@ -366,7 +254,16 @@ private fun QualiGridCard(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolea
         Column(GlanceModifier.fillMaxWidth()) {
             // Header
             Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(d.lastRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconSm))
+                if (d.lastRaceFlag == null) {
+                    androidx.glance.Image(
+                        provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_flag),
+                        contentDescription = null,
+                        colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                        modifier = GlanceModifier.size(16.dp)
+                    )
+                } else {
+                    Text(d.lastRaceFlag, style = TextStyle(fontSize = sc.iconSm))
+                }
                 Spacer(GlanceModifier.width(sc.spaceSm))
                 Text(cleanRaceName(d.lastRaceName ?: "Qualifying").take(18),
                     style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.sub), maxLines = 1)
@@ -414,7 +311,7 @@ private fun QualiGridCard(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolea
     }
 }
 
-// ── WEEKEND SESSION TABLE ─────────────────────────────────────────
+// ——— WEEKEND SESSION TABLE ————————————————————————————————————————————————————————————————————————————————
 // Full-detail list of all upcoming sessions in the race weekend.
 @Composable
 private fun WeekendSessionTable(sessions: List<SessionRow>, c: F1Clr, sc: WScale) {
@@ -467,8 +364,8 @@ private fun WeekendSessionTable(sessions: List<SessionRow>, c: F1Clr, sc: WScale
     }
 }
 
-// ── SESSION PILL STRIP ────────────────────────────────────────────
-// Compact single-row of pills: gold = next session, dim = future, invisible = past.
+// ——— SESSION PILL STRIP —————————————————————————————————————————————————————————————————
+/** Compact single-row of pills: gold = next session, dim = future, invisible = past. */
 @Composable
 private fun SessionPillStrip(sessions: List<SessionRow>, c: F1Clr, sc: WScale) {
     Box(
@@ -514,7 +411,7 @@ private fun SessionPillStrip(sessions: List<SessionRow>, c: F1Clr, sc: WScale) {
     }
 }
 
-// ── COMPACT HERO CARD (MEDIUM layout) ────────────────────────────
+// ——— COMPACT HERO CARD (MEDIUM layout) ———————————————————————————————
 @Composable
 private fun HeroCardCompact(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScale) {
     Box(
@@ -539,7 +436,7 @@ private fun HeroCardCompact(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WS
     }
 }
 
-// ── FULL HERO CARD (FULL layout) ──────────────────────────────────
+// ——— FULL HERO CARD (FULL layout) —————————————————————————————————————————————————————————————————————————
 @Composable
 private fun HeroCardFull(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScale) {
     Box(
@@ -555,14 +452,14 @@ private fun HeroCardFull(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScal
                 Spacer(GlanceModifier.height(sc.spaceXs))
                 val raceLocal = fmtLocalTime(race.raceDate, race.raceTime ?: d.nextRaceTime)
                 Text(buildString {
-                    append(race.locality); append("  ·  "); append(fmtLongDate(race.raceDate))
-                    if (raceLocal.isNotEmpty()) { append("  ·  Race "); append(raceLocal) }
+                    append(race.locality); append("    "); append(fmtLongDate(race.raceDate))
+                    if (raceLocal.isNotEmpty()) { append("    Race "); append(raceLocal) }
                 }, style = TextStyle(fontSize = sc.fxs, color = c.text), maxLines = 1)
                 // Circuit info row
                 val circuitInfo = buildString {
                     if (d.laps != null) { append("🔄 "); append(d.laps); append(" laps") }
                     if (d.lapRecord != null) {
-                        if (isNotEmpty()) append("  ·  ")
+                        if (isNotEmpty()) append("    ")
                         append("⏱ "); append(d.lapRecord)
                         if (d.lapRecordHolder != null) { append(" ("); append(d.lapRecordHolder.split(" ").last()); append(")") }
                     }
@@ -579,7 +476,7 @@ private fun HeroCardFull(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScal
     }
 }
 
-// ── COUNTDOWN BLOCK ───────────────────────────────────────────────
+// ——— COUNTDOWN BLOCK ——————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun CountdownBlock(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolean) {
     val bigFont = if (compact) sc.fxl else sc.fxxl
@@ -607,7 +504,7 @@ private fun CountdownBlock(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boole
     }
 }
 
-// ── SPRINT BADGE ──────────────────────────────────────────────────
+// ——— SPRINT BADGE ————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun SprintBadge(c: F1Clr, sc: WScale) {
     Box(GlanceModifier.cornerRadius(3.dp).background(c.card).padding(horizontal = 5.dp, vertical = 1.dp)) {
@@ -615,7 +512,7 @@ private fun SprintBadge(c: F1Clr, sc: WScale) {
     }
 }
 
-// ── RACE ROW ──────────────────────────────────────────────────────
+// ——— RACE ROW ————————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun RaceRow(
     race: ScheduleRow, c: F1Clr, sc: WScale,
@@ -679,7 +576,7 @@ private fun RaceRow(
     }
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────
+// ——— HELPERS ——————————————————————————————————————————————————————————————————————————————————————————————
 private fun cleanRaceName(n: String) = n.removePrefix("Grand Prix of ").removePrefix("Formula 1 ").trim()
 
 private fun abbrevSession(label: String): String = when {

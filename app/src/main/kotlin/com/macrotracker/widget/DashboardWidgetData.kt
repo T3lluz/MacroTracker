@@ -9,7 +9,7 @@ package com.macrotracker.widget
  */
 data class HourlyForecast(
     val hour: String,
-    val icon: String,
+    val iconRes: Int,
     val temp: String,
     val pop: Int? = null,
     val windSpeed: String? = null,
@@ -58,9 +58,11 @@ data class DashboardWidgetData(
     val hasHealthData: Boolean = false,
     // Weather (from cached SharedPreferences)
     val weatherTemp: String? = null,
+    val weatherDesc: String? = null,
+    val weatherIconRes: Int? = null,
+    val dailyMinMax: String? = null,
     val weatherHigh: String? = null,
     val weatherLow: String? = null,
-    val weatherIcon: String? = null,
     val weatherDescription: String? = null,
     val weatherLocation: String? = null,
     val weatherFeelsLike: String? = null,
@@ -69,9 +71,10 @@ data class DashboardWidgetData(
     val weatherSunrise: String? = null,
     val weatherSunset: String? = null,
     val hasWeatherData: Boolean = false,
-    // Hourly forecast (next 6–8 hours, cached from OWM)
+    val aiInsightWeather: String? = null,
     val hourlyForecast: List<HourlyForecast> = emptyList(),
-    // Calendar
+
+    // CALENDAR
     val nextEventTitle: String? = null,
     val nextEventTime: String? = null,
     val nextEventRelativeDay: String? = null,
@@ -83,6 +86,5 @@ data class DashboardWidgetData(
     val aiInsight: String? = null,           // general / dashboard
     val aiInsightNutrition: String? = null,  // macros widget
     val aiInsightHealth: String? = null,     // health widget
-    val aiInsightWeather: String? = null,    // weather widget
     val aiInsightCalendar: String? = null,   // calendar widget
 )

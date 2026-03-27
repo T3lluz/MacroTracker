@@ -67,6 +67,7 @@ concurrent-futures = { module = "androidx.concurrent:concurrent-futures", versio
 glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "glance" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+tabler-icons = { module = "br.com.devsrsouza.compose.icons:tabler-icons", version = "1.1.1" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

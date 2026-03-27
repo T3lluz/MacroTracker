@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -422,8 +424,16 @@ fun WeatherCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text(text = weather.icon, fontSize = 48.sp)
-                                Spacer(modifier = Modifier.width(16.dp))
+                                // Replaced raw text emoji with vector drawable
+                                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        painter = painterResource(weather.iconRes),
+                                        contentDescription = null,
+                                        modifier = Modifier.requiredSize(64.dp),
+                                        tint = Color.Unspecified
+                                    )
+                                }
+                                Spacer(Modifier.width(16.dp))
                                 Column {
                                     Text("${weather.temperature.toInt()}°C", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     Text(weather.description, fontSize = 15.sp, color = Color.White.copy(alpha = 0.85f))
@@ -541,9 +551,16 @@ fun WeatherCard(
                                                         .padding(vertical = 8.dp, horizontal = 4.dp),
                                                 ) {
                                                     Text(hourly.time, fontSize = 11.sp, color = Color.White.copy(alpha = 0.65f))
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Text(hourly.icon, fontSize = 20.sp)
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Spacer(Modifier.height(4.dp))
+                                                    Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            painter = painterResource(hourly.iconRes),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.requiredSize(32.dp),
+                                                            tint = Color.Unspecified
+                                                        )
+                                                    }
+                                                    Spacer(Modifier.height(4.dp))
                                                     Text("${hourly.temperature.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                                 }
                                             }
@@ -566,7 +583,14 @@ fun WeatherCard(
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Text(daily.date, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.White, modifier = Modifier.width(44.dp))
-                                                Text(daily.icon, fontSize = 20.sp)
+                                                Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        painter = painterResource(daily.iconRes),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.requiredSize(32.dp),
+                                                        tint = Color.Unspecified
+                                                    )
+                                                }
                                                 Text(daily.description, fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
                                                 Row {
                                                     Text("${daily.minTemp.toInt()}°", fontSize = 14.sp, color = Color.White.copy(alpha = 0.5f))

@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
-import androidx.glance.LocalSize
+
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -28,6 +28,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -37,16 +38,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * F1 Countdown Widget — complete visual revamp.
- *
- * The entire widget IS the countdown. Bold segmented D / HH / MM / SS blocks
- * dominate every layout, with race context (flag, name, circuit, next session)
- * shown as supporting info above/below.
- *
- * TINY    (2×2)   — flag + HH:MM:SS (or D days) centred
- * COMPACT (*×2)   — header + full segmented timer + race subtitle
- * MEDIUM  (2-3×3) — header + big timer card + session list
- * FULL    (4-5×3) — header + race info row + giant segmented timer + session list
+ * F1 Countdown Widget
  */
 class F1CountdownWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Single
@@ -59,20 +51,13 @@ class F1CountdownWidget : GlanceAppWidget() {
 // ── Root ──────────────────────────────────────────────────────────
 @Composable
 private fun F1CountdownRoot(data: F1WidgetData) {
-    val sz = LocalSize.current
-    val ws = classify(sz.width, sz.height)
     val c  = F1Clr()
     val sc = WScale.from()
     Box(
         modifier = GlanceModifier.fillMaxSize().cornerRadius(sc.corner).background(c.bg)
             .clickable(actionStartActivity<MainActivity>()).padding(sc.pad),
     ) {
-        when (ws) {
-            WSize.TINY    -> CdTiny(data, c, sc)
-            WSize.COMPACT -> CdCompact(data, c, sc, sz.width)
-            WSize.MEDIUM  -> CdMedium(data, c, sc)
-            WSize.FULL    -> CdFull(data, c, sc, sz.width)
-        }
+        CdFull(data, c, sc)
     }
 }
 
@@ -105,255 +90,11 @@ private fun CdHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WScale) {
 }
 
 // ════════════════════════════════════════════════════════
-//  TINY  2×2 — flag + countdown + race context
+//  FULL — header + race info + giant timer + sessions
 // ════════════════════════════════════════════════════════
 @Composable
-private fun CdTiny(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    Column(GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(d.nextRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconMd))
-        Spacer(GlanceModifier.height(sc.spaceXs))
-        when {
-            d.isLoading && d.nextRaceName == null ->
-                Text("SYNC", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.sub))
-            d.daysUntil < 0 ->
-                Text("🏎", style = TextStyle(fontSize = sc.fxl))
-            isLive(d) -> {
-                Text("🏁", style = TextStyle(fontSize = sc.fxl))
-                Text("LIVE", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = c.gold))
-            }
-            d.secondsUntil >= 0 -> {
-                Text(fmtHms(d.hoursUntil, d.minutesUntil, d.secondsUntil),
-                    style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxl, color = c.red))
-                if (d.daysUntil > 0)
-                    Text("${d.daysUntil}d left", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-                else
-                    Text(d.nextSessionLabel?.let { abbrev(it) } ?: "away", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-            }
-            else -> {
-                Text("${d.daysUntil}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.red))
-                Text("days", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-            }
-        }
-        // Race name + round for context
-        if (d.nextRaceName != null) {
-            Spacer(GlanceModifier.height(sc.spaceXs))
-            val label = buildString {
-                if (d.round != null) { append("R"); append(d.round); append("·") }
-                append(cleanRaceName(d.nextRaceName).take(10))
-            }
-            Text(label, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-        }
-    }
-}
-
-// ════════════════════════════════════════════════════════
-//  COMPACT  *×2 — header + countdown takes full height
-// ════════════════════════════════════════════════════════
-@Composable
-private fun CdCompact(d: F1WidgetData, c: F1Clr, sc: WScale, @Suppress("UNUSED_PARAMETER") w: Dp) {
-    Column(GlanceModifier.fillMaxSize()) {
-        CdHeader("Formula 1", d, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceSm))
-        if (!d.hasData || d.nextRaceName == null) {
-            Spacer(GlanceModifier.defaultWeight())
-            Box(GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card),
-                contentAlignment = Alignment.Center) {
-                Text(f1WidgetEmptyMessage(d, "No race data"),
-                    style = TextStyle(fontSize = sc.fsm, color = c.sub))
-            }
-            Spacer(GlanceModifier.defaultWeight())
-        } else {
-            // Countdown card fills remaining space
-            Box(GlanceModifier.fillMaxWidth().defaultWeight().cornerRadius(sc.cornerSm)
-                .background(c.card).padding(horizontal = sc.padSm, vertical = sc.spaceSm)) {
-                if (isLive(d)) {
-                    LiveBanner(d, c, sc)
-                } else {
-                    Column(GlanceModifier.fillMaxSize(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Race label at top
-                        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(d.nextRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconSm))
-                            Spacer(GlanceModifier.width(sc.spaceSm))
-                            Column(GlanceModifier.defaultWeight()) {
-                                Text(cleanRaceName(d.nextRaceName),
-                                    style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text), maxLines = 1)
-                                val locality = d.schedule.firstOrNull { it.isNext }?.locality ?: ""
-                                val subLine = buildString {
-                                    if (d.round != null) { append("R"); append(d.round) }
-                                    if (locality.isNotEmpty()) { if (isNotEmpty()) append("  ·  "); append(locality) }
-                                }
-                                if (subLine.isNotEmpty())
-                                    Text(subLine, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-                            }
-                            if (d.nextSessionLabel != null) {
-                                Box(GlanceModifier.cornerRadius(3.dp).background(c.red)
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)) {
-                                    Text(abbrev(d.nextSessionLabel),
-                                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.text))
-                                }
-                            }
-                        }
-                        Spacer(GlanceModifier.height(sc.spaceSm))
-                        // THE COUNTDOWN — centred, big
-                        TimerBlocks(d, c, sc, large = false)
-                        if (d.nextSessionDate != null) {
-                            Spacer(GlanceModifier.height(sc.spaceXs))
-                            val lt = fmtLocalTimeStr(d.nextSessionDate, d.nextSessionTime)
-                            Text(buildString {
-                                append(fmtLongDate(d.nextSessionDate))
-                                if (lt.isNotEmpty()) { append("  ·  "); append(lt) }
-                            }, style = TextStyle(fontSize = sc.fxs, color = c.sub))
-                        }
-                        // Last race winner mini-strip
-                        if (d.lastRaceResults.isNotEmpty()) {
-                            Spacer(GlanceModifier.height(sc.spaceXs))
-                            val winner = d.lastRaceResults.first()
-                            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Box(GlanceModifier.cornerRadius(3.dp).background(c.gold)
-                                    .padding(horizontal = 3.dp, vertical = 1.dp)) {
-                                    Text("🏆", style = TextStyle(fontSize = (sc.fxs.value * 0.85f).sp))
-                                }
-                                Spacer(GlanceModifier.width(sc.spaceXs))
-                                Box(GlanceModifier.width(3.dp).height(sc.fsm.value.dp).cornerRadius(2.dp)
-                                    .background(teamColorProvider(winner.teamColor))) {}
-                                Spacer(GlanceModifier.width(sc.spaceXs))
-                                Text(winner.acronym, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.text))
-                                if (d.lastRaceName != null) {
-                                    Spacer(GlanceModifier.width(sc.spaceXs))
-                                    Text("·  ${cleanRaceName(d.lastRaceName).take(14)}",
-                                        style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ════════════════════════════════════════════════════════
-//  MEDIUM  2-3×3 — header + big timer card + sessions
-// ════════════════════════════════════════════════════════
-@Composable
-private fun CdMedium(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    Column(GlanceModifier.fillMaxSize()) {
-        CdHeader("F1 Countdown", d, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceSm))
-        if (!d.hasData || d.nextRaceName == null) {
-            Spacer(GlanceModifier.defaultWeight())
-            Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically,
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏁", style = TextStyle(fontSize = sc.iconHero))
-                Text(f1WidgetEmptyMessage(d, "No race data"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
-            }
-            Spacer(GlanceModifier.defaultWeight())
-        } else {
-            // Big countdown hero card
-            Box(GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card)
-                .padding(horizontal = sc.padSm, vertical = sc.spaceSm)) {
-                if (isLive(d)) {
-                    LiveBanner(d, c, sc)
-                } else {
-                    Column(GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Race info row
-                        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(d.nextRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconMd))
-                            Spacer(GlanceModifier.width(sc.spaceSm))
-                            Column(GlanceModifier.defaultWeight()) {
-                                Text(cleanRaceName(d.nextRaceName ?: "—"),
-                                    style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = c.text), maxLines = 1)
-                                val locality = d.schedule.firstOrNull { it.isNext }?.locality ?: ""
-                                val circuitLine = buildString {
-                                    if (locality.isNotEmpty()) append(locality)
-                                    if (d.circuitName != null) { if (isNotEmpty()) append("  ·  "); append(d.circuitName) }
-                                }
-                                if (circuitLine.isNotEmpty())
-                                    Text(circuitLine, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-                            }
-                            if (d.round != null) { RoundBadge(d.round, c, sc) }
-                        }
-                        Spacer(GlanceModifier.height(sc.spaceMd))
-                        // Big timer blocks centred
-                        TimerBlocks(d, c, sc, large = true)
-                        Spacer(GlanceModifier.height(sc.spaceSm))
-                        // Next session label
-                        if (d.nextSessionLabel != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(GlanceModifier.cornerRadius(3.dp).background(c.red)
-                                    .padding(horizontal = 5.dp, vertical = 2.dp)) {
-                                    Text(abbrev(d.nextSessionLabel),
-                                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.text))
-                                }
-                                Spacer(GlanceModifier.width(sc.spaceSm))
-                                val lt = fmtLocalTimeStr(d.nextSessionDate, d.nextSessionTime)
-                                Text(buildString {
-                                    append(fmtLongDate(d.nextSessionDate))
-                                    if (lt.isNotEmpty()) { append("  ·  "); append(lt) }
-                                }, style = TextStyle(fontSize = sc.fxs, color = c.sub))
-                            }
-                        }
-                    }
-                }
-            }
-            Spacer(GlanceModifier.height(sc.spaceSm))
-            if (d.weekendSessions.isNotEmpty()) {
-                LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
-                    // Qualifying grid — shown when quali has happened this race weekend
-                    if (d.isRaceWeekend && d.lastQualiResults.isNotEmpty()) {
-                        items(listOf(Unit)) {
-                            Column(GlanceModifier.fillMaxWidth()) {
-                                CdQualiGrid(d, c, sc, compact = true)
-                                Spacer(GlanceModifier.height(sc.spaceSm))
-                            }
-                        }
-                        items(listOf(Unit)) {
-                            Column(GlanceModifier.fillMaxWidth()) {
-                                CdDivider("SESSIONS", c, sc)
-                                Spacer(GlanceModifier.height(sc.spaceXs))
-                            }
-                        }
-                    } else {
-                        items(listOf(Unit)) {
-                            Column(GlanceModifier.fillMaxWidth()) {
-                                CdDivider("WEEKEND SESSIONS", c, sc)
-                                Spacer(GlanceModifier.height(sc.spaceXs))
-                            }
-                        }
-                    }
-                    items(d.weekendSessions) { s ->
-                        CdSessionRow(s, c, sc)
-                        Spacer(GlanceModifier.height(sc.spaceXs))
-                    }
-                }
-            } else {
-                val hasStats = d.laps != null || d.lapRecord != null
-                if (hasStats) {
-                    CircuitStatsRow(d, c, sc)
-                    Spacer(GlanceModifier.height(sc.spaceSm))
-                }
-                // Show qualifying grid if available, else last race podium
-                if (d.lastQualiResults.isNotEmpty()) {
-                    CdQualiGrid(d, c, sc, compact = true)
-                } else if (d.lastRaceResults.isNotEmpty()) {
-                    LastRacePodium(d, c, sc, compact = true)
-                } else if (!hasStats) {
-                    Spacer(GlanceModifier.defaultWeight())
-                }
-            }
-        }
-    }
-}
-
-// ════════════════════════════════════════════════════════
-//  FULL  4-5×3 — header + race info + giant timer + sessions
-// ════════════════════════════════════════════════════════
-@Composable
-private fun CdFull(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
+private fun CdFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
+    val w = 368.dp // Fixed width for scaling fallback
     Column(GlanceModifier.fillMaxSize()) {
         CdHeader("Next Grand Prix", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
@@ -361,7 +102,13 @@ private fun CdFull(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
             Spacer(GlanceModifier.defaultWeight())
             Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically,
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏁", style = TextStyle(fontSize = sc.iconHero))
+                androidx.glance.Image(
+                    provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_flag),
+                    contentDescription = null,
+                    colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                    modifier = GlanceModifier.size(32.dp)
+                )
+                Spacer(GlanceModifier.height(sc.spaceSm))
                 Text(f1WidgetEmptyMessage(d, "No race data"), style = TextStyle(fontSize = sc.fmd, color = c.sub))
             }
             Spacer(GlanceModifier.defaultWeight())
@@ -379,7 +126,16 @@ private fun CdFull(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
                         // Left: race details
                         Column(GlanceModifier.defaultWeight()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(d.nextRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconMd))
+                                if (d.nextRaceFlag == null) {
+                                    androidx.glance.Image(
+                                        provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_flag),
+                                        contentDescription = null,
+                                        colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                                        modifier = GlanceModifier.size(20.dp)
+                                    )
+                                } else {
+                                    Text(d.nextRaceFlag, style = TextStyle(fontSize = sc.iconMd))
+                                }
                                 Spacer(GlanceModifier.width(sc.spaceSm))
                                 Column {
                                     Text(cleanRaceName(d.nextRaceName ?: "—"),
@@ -558,7 +314,16 @@ private fun TimerColon(sepFont: androidx.compose.ui.unit.TextUnit, c: F1Clr) {
 @Composable
 private fun LiveBanner(d: F1WidgetData, c: F1Clr, sc: WScale) {
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(d.nextRaceFlag ?: "🏁", style = TextStyle(fontSize = sc.iconMd))
+        if (d.nextRaceFlag == null) {
+            androidx.glance.Image(
+                provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_flag),
+                contentDescription = null,
+                colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                modifier = GlanceModifier.size(20.dp)
+            )
+        } else {
+            Text(d.nextRaceFlag, style = TextStyle(fontSize = sc.iconMd))
+        }
         Spacer(GlanceModifier.width(sc.spaceSm))
         Column(GlanceModifier.defaultWeight()) {
             Text(cleanRaceName(d.nextRaceName ?: ""),
@@ -700,25 +465,32 @@ private fun LastRacePodium(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boole
 private fun CircuitStatsRow(d: F1WidgetData, c: F1Clr, sc: WScale, showHolder: Boolean = false) {
     Row(GlanceModifier.fillMaxWidth()) {
         if (d.laps != null) {
-            StatPill("🔄", "${d.laps}", "Laps", c, sc, GlanceModifier.defaultWeight())
+            StatPill(0, "${d.laps}", "Laps", c, sc, GlanceModifier.defaultWeight())
             Spacer(GlanceModifier.width(sc.spaceSm))
         }
         if (d.lapRecord != null) {
-            StatPill("⏱", d.lapRecord, "Lap record", c, sc, GlanceModifier.defaultWeight())
+            StatPill(0, d.lapRecord, "Lap record", c, sc, GlanceModifier.defaultWeight())
             if (showHolder && d.lapRecordHolder != null) {
                 Spacer(GlanceModifier.width(sc.spaceSm))
-                StatPill("🏆", d.lapRecordHolder.split(" ").last(), "Holder", c, sc, GlanceModifier.defaultWeight())
+                StatPill(0, d.lapRecordHolder.split(" ").last(), "Holder", c, sc, GlanceModifier.defaultWeight())
             }
         }
     }
 }
 
 @Composable
-private fun StatPill(icon: String, value: String, label: String, c: F1Clr, sc: WScale, modifier: GlanceModifier) {
+private fun StatPill(iconRes: Int, value: String, label: String, c: F1Clr, sc: WScale, modifier: GlanceModifier) {
     Box(modifier.cornerRadius(sc.cornerSm).background(c.card).padding(horizontal = sc.padSm, vertical = sc.spaceSm)) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, style = TextStyle(fontSize = sc.iconSm))
-            Spacer(GlanceModifier.width(sc.spaceSm))
+            if (iconRes != 0) {
+                androidx.glance.Image(
+                    provider = androidx.glance.ImageProvider(iconRes),
+                    contentDescription = null,
+                    colorFilter = androidx.glance.ColorFilter.tint(c.sub),
+                    modifier = GlanceModifier.size(14.dp)
+                )
+                Spacer(GlanceModifier.width(sc.spaceSm))
+            }
             Column {
                 Text(value, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text), maxLines = 1)
                 Text(label, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)

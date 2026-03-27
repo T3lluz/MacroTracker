@@ -131,6 +131,7 @@ object DashboardWidgetDataProvider {
      * Updates both memory and disk caches.
      */
     suspend fun refreshNow(context: Context): DashboardWidgetData {
+        fetchLiveWeather(context)
         val merged = loadLocalData(context)
 
         // Fetch all AI insights in parallel (each has its own TTL check)
@@ -165,6 +166,65 @@ object DashboardWidgetDataProvider {
         return result
     }
 
+    private suspend fun fetchLiveWeather(context: Context) {
+        try {
+            val hiltEntryPoint = context.widgetEntryPoint()
+            val settings = hiltEntryPoint.settingsRepository()
+            if (!settings.weatherEnabled.value) return
+            
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasPermission) return
+            
+            val locationProvider = hiltEntryPoint.locationProvider()
+            val weatherRepository = hiltEntryPoint.weatherRepository()
+            
+            val location = locationProvider.getLocation() ?: return
+            val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
+            val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
+            
+            val prefs = context.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
+            val todayForecast = weather.dailyForecasts.firstOrNull()
+            
+            val hourlyStr = weather.hourlyForecasts.take(24).joinToString("|") { h ->
+                val displayHour = try {
+                    val parts = h.time.split(":")
+                    val hr = parts[0].toInt()
+                    when {
+                        hr == 0  -> "12 AM"
+                        hr < 12  -> "$hr AM"
+                        hr == 12 -> "12 PM"
+                        else     -> "${hr - 12} PM"
+                    }
+                } catch (_: Exception) { h.time }
+                val temp = h.temperature.toInt().toString()
+                val wind = "${h.windSpeed.toInt()} km/h"
+                val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+                "$displayHour|${h.iconRes}|$temp|0|$wind|$desc"
+            }
+            
+            prefs.edit().apply {
+                putString("temp", weather.temperature.toInt().toString())
+                putString("icon", weather.iconRes.toString())
+                putString("description", weather.description)
+                putString("location", weather.locationName)
+                putString("high", todayForecast?.maxTemp?.toInt()?.toString())
+                putString("low", todayForecast?.minTemp?.toInt()?.toString())
+                putString("feels_like", (weather.feelsLike ?: weather.temperature).toInt().toString())
+                putString("humidity", weather.humidity?.toInt()?.toString())
+                putString("wind_speed", weather.windSpeed.toInt().toString())
+                putString("sunrise", weather.sunrise)
+                putString("sunset", weather.sunset)
+                putString("hourly_forecast", hourlyStr.ifEmpty { null })
+            }.apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch live weather in widget refresh: ${e.message}")
+        }
+    }
+
     private fun cache(data: DashboardWidgetData) {
         cached = data
         cachedAt = System.currentTimeMillis()
@@ -188,9 +248,11 @@ object DashboardWidgetDataProvider {
             activeCaloriesBurned = health.activeCaloriesBurned,
             hasHealthData = health.hasHealthData,
             weatherTemp = weather.weatherTemp,
+            dailyMinMax = weather.dailyMinMax,
+            weatherIconRes = weather.weatherIconRes,
+            weatherDesc = weather.weatherDesc,
             weatherHigh = weather.weatherHigh,
             weatherLow = weather.weatherLow,
-            weatherIcon = weather.weatherIcon,
             weatherDescription = weather.weatherDescription,
             weatherLocation = weather.weatherLocation,
             weatherFeelsLike = weather.weatherFeelsLike,
@@ -327,14 +389,14 @@ object DashboardWidgetDataProvider {
             val sunset = prefs.getString("sunset", null)
 
             // Hourly forecast: stored as pipe-separated segments
-            // Format: "3 PM|⛅|18|20|12 km/h|Short desc"
+            // Format: "3 PM|213000|18|20|12 km/h|Short desc"
             val hourlyRaw = prefs.getString("hourly_forecast", null)
             val hourlyForecast: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
                 hourlyRaw.split("|").chunked(6).mapNotNull { seg ->
                     if (seg.size < 3) null
                     else HourlyForecast(
                         hour = seg[0],
-                        icon = seg[1],
+                        iconRes = seg[1].toIntOrNull() ?: com.macrotracker.R.drawable.ic_weather_sun,
                         temp = seg[2],
                         pop  = seg.getOrNull(3)?.toIntOrNull(),
                         windSpeed = seg.getOrNull(4)?.takeIf { it.isNotBlank() },
@@ -343,25 +405,26 @@ object DashboardWidgetDataProvider {
                 }
             } else emptyList()
 
-            if (temp != null && icon != null) {
-                DashboardWidgetData(
-                    weatherTemp = temp,
-                    weatherHigh = high,
-                    weatherLow = low,
-                    weatherIcon = icon,
-                    weatherDescription = desc,
-                    weatherLocation = location,
-                    weatherFeelsLike = feelsLike,
-                    weatherHumidity = humidity,
-                    weatherWindSpeed = windSpeed,
-                    weatherSunrise = sunrise,
-                    weatherSunset = sunset,
-                    hasWeatherData = true,
-                    hourlyForecast = hourlyForecast,
-                )
-            } else {
-                DashboardWidgetData()
-            }
+            // Combine high/low
+            val minMax = if (high != null && low != null) "$high° / $low°" else null
+            
+            DashboardWidgetData(
+                weatherTemp = temp,
+                weatherDesc = desc,
+                weatherIconRes = icon?.toIntOrNull() ?: com.macrotracker.R.drawable.ic_weather_sun,
+                dailyMinMax = minMax,
+                weatherHigh = high,
+                weatherLow = low,
+                weatherDescription = desc,
+                weatherLocation = location,
+                weatherFeelsLike = feelsLike,
+                weatherHumidity = humidity,
+                weatherWindSpeed = windSpeed,
+                weatherSunrise = sunrise,
+                weatherSunset = sunset,
+                hasWeatherData = temp != null,
+                hourlyForecast = hourlyForecast,
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load weather: ${e.message}", e)
             DashboardWidgetData()
@@ -594,11 +657,11 @@ object DashboardWidgetDataProvider {
 
     /** Weather-focused insight for the Weather widget. */
     private fun buildWeatherPrompt(d: DashboardWidgetData): String {
-        if (!d.hasWeatherData) return "Reply with exactly ONE complete outdoor activity tip sentence (max 20 words, must end with a period)."
+        if (d.weatherTemp == null) return "Reply with exactly ONE complete outdoor activity tip sentence (max 20 words, must end with a period)."
         val parts = mutableListOf<String>()
         parts += "Temp: ${d.weatherTemp}°C"
-        if (d.weatherDescription != null) parts += "Conditions: ${d.weatherDescription}"
-        if (d.weatherHigh != null && d.weatherLow != null) parts += "High ${d.weatherHigh}° Low ${d.weatherLow}°"
+        if (d.weatherDesc != null) parts += "Conditions: ${d.weatherDesc}"
+        if (d.dailyMinMax != null) parts += "Range: ${d.dailyMinMax}"
         return "Today's weather: ${parts.joinToString(", ")}. Reply with exactly ONE complete clothing or outdoor activity tip sentence (max 20 words, must end with a period)."
     }
 

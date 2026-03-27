@@ -25,8 +25,8 @@ internal fun F1WidgetStatusTag(data: F1WidgetData, c: F1Clr, sc: WScale) {
             text = when {
                 data.lastUpdatedAt <= 0L && data.isLoading -> "syncing"
                 data.lastUpdatedAt <= 0L -> "waiting"
-                data.isStale -> "⏱ ${relativeTimeString(Instant.ofEpochMilli(data.lastUpdatedAt))} · cached"
-                else -> "⏱ ${relativeTimeString(Instant.ofEpochMilli(data.lastUpdatedAt))}"
+                data.isStale -> "Updated ${relativeTimeString(Instant.ofEpochMilli(data.lastUpdatedAt))} · cached"
+                else -> relativeTimeString(Instant.ofEpochMilli(data.lastUpdatedAt))
             },
             style = TextStyle(
                 fontSize = sc.fxs,
@@ -39,11 +39,19 @@ internal fun F1WidgetStatusTag(data: F1WidgetData, c: F1Clr, sc: WScale) {
 }
 
 /** Compact status label text for embedding inside a header Row, right before the reload button. */
-internal fun statusTagText(data: F1WidgetData): String = when {
-    data.lastUpdatedAt <= 0L && data.isLoading -> "syncing…"
-    data.lastUpdatedAt <= 0L -> "—"
-    data.isStale -> "⏱ ${relativeTimeLabel(data.lastUpdatedAt)} · old"
-    else -> "⏱ ${relativeTimeLabel(data.lastUpdatedAt)}"
+internal fun statusTagText(data: F1WidgetData): String {
+    val loading = data.isLoading
+    return when {
+        loading && data.lastUpdatedAt <= 0L -> "Loading..."
+        loading -> "Syncing..."
+        data.lastUpdatedAt <= 0L -> "—"
+        else -> {
+            when {
+                data.isStale -> "${relativeTimeString(Instant.ofEpochMilli(data.lastUpdatedAt))} · cached"
+                else -> relativeTimeString(Instant.ofEpochMilli(data.lastUpdatedAt))
+            }
+        }
+    }
 }
 
 internal fun f1WidgetEmptyMessage(data: F1WidgetData, fallback: String): String = when {
@@ -52,3 +60,8 @@ internal fun f1WidgetEmptyMessage(data: F1WidgetData, fallback: String): String 
     else -> fallback
 }
 
+internal fun f1WidgetStatusText(data: F1WidgetData): String = when {
+    data.lastUpdatedAt <= 0L -> ""
+    data.isStale -> "${relativeTimeLabel(data.lastUpdatedAt)} · old"
+    else -> relativeTimeLabel(data.lastUpdatedAt)
+}

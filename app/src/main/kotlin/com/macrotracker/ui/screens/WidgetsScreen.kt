@@ -5,6 +5,7 @@ import android.content.ComponentName
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,6 +27,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SportsMotorsports
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.GridView
@@ -286,20 +289,27 @@ fun WidgetsScreen(
         }
 
         // ── Info banner if pin not supported ─────────────────────────────
-        if (!pinSupported) {
-            Box(
+        AnimatedVisibility(
+            visible = !pinSupported,
+            enter = fadeIn() + expandVertically(),
+        ) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .background(
-                        color = Color(0xFFFF8C42).copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(10.dp),
-                    )
-                    .border(1.dp, Color(0xFFFF8C42).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                    .padding(12.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Surface.copy(alpha = 0.5f))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Default.Info,
+                    contentDescription = "Info",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
                 Text(
-                    text = "ℹ️  Your launcher doesn't support direct widget pinning. " +
+                    text = "Your launcher doesn't support direct widget pinning. " +
                         "Long-press your home screen → Widgets → DailyDash to add widgets manually.",
                     fontSize = 12.sp,
                     color = TextPrimary,
@@ -321,7 +331,7 @@ fun WidgetsScreen(
                 WidgetSectionHeader(
                     title = "DailyDash",
                     subtitle = "Nutrition · Health · Weather · Calendar",
-                    icon = "📊",
+                    icon = androidx.compose.material.icons.Icons.Outlined.Widgets,
                     accentColor = Primary,
                     delayMs = 50L,
                     widgetCount = CORE_WIDGETS.size,
@@ -357,7 +367,7 @@ fun WidgetsScreen(
                 WidgetSectionHeader(
                     title = "Formula 1",
                     subtitle = "Race countdown · Standings · Schedule",
-                    icon = "🏎",
+                    icon = androidx.compose.material.icons.Icons.Default.SportsMotorsports,
                     accentColor = F1_RED,
                     delayMs = 350L,
                     widgetCount = F1_WIDGETS.size,
@@ -396,7 +406,7 @@ fun WidgetsScreen(
 private fun WidgetSectionHeader(
     title: String,
     subtitle: String,
-    icon: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     accentColor: Color,
     delayMs: Long = 0L,
     widgetCount: Int = 0,
@@ -418,7 +428,12 @@ private fun WidgetSectionHeader(
                 .fillMaxWidth()
                 .padding(top = 20.dp, bottom = 10.dp),
         ) {
-            Text(text = icon, fontSize = 20.sp)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(24.dp)
+            )
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -682,4 +697,3 @@ private fun WidgetCard(
         }
     }
 }
-

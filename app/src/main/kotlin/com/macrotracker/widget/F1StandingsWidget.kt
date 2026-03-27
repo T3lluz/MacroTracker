@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
-import androidx.glance.LocalSize
+
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -27,6 +27,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -34,16 +35,7 @@ import androidx.glance.text.TextStyle
 import com.macrotracker.MainActivity
 
 /**
- * F1 Standings Widget — 3×2 to 5×3.
- *
- * All sizes ≥ COMPACT are fully scrollable via LazyColumn.
- * The combined standings list (Drivers → Constructors) is rendered as a
- * single sealed-class item list so section headers and rows share one scroll.
- *
- * TINY    (2×2)   — P1 trophy card only
- * COMPACT (*×2)   — header + all standings scrollable (no hero card)
- * MEDIUM  (2-3×3) — header + P1 leader card + scrollable rest
- * FULL    (4-5×3) — header + P1 leader card (bigger) + scrollable rest
+ * F1 Standings Widget
  */
 class F1StandingsWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Single
@@ -53,27 +45,20 @@ class F1StandingsWidget : GlanceAppWidget() {
     }
 }
 
-// ── Root ──────────────────────────────────────────────────────────
+// ——— Root —————————————————————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun F1StandingsRoot(data: F1WidgetData) {
-    val sz = LocalSize.current
-    val ws = classify(sz.width, sz.height)
     val c  = F1Clr()
     val sc = WScale.from()
     Box(
         modifier = GlanceModifier.fillMaxSize().cornerRadius(sc.corner).background(c.bg)
             .clickable(actionStartActivity<MainActivity>()).padding(sc.pad),
     ) {
-        when (ws) {
-            WSize.TINY    -> StandingsTiny(data, c, sc)
-            WSize.COMPACT -> StandingsCompact(data, c, sc, sz.width)
-            WSize.MEDIUM  -> StandingsMedium(data, c, sc)
-            WSize.FULL    -> StandingsFull(data, c, sc)
-        }
+        StandingsFull(data, c, sc)
     }
 }
 
-// ── Shared header ─────────────────────────────────────────────────
+// ——— Shared header ————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun StandingsHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WScale) {
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -103,108 +88,23 @@ private fun StandingsHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WSc
     }
 }
 
-// ── TINY: 2×2 — P1 trophy + P2 gap ──────────────────────────────
-@Composable
-private fun StandingsTiny(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    val p1 = d.driverStandings.firstOrNull()
-    val p2 = d.driverStandings.getOrNull(1)
-    Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("🏆", style = TextStyle(fontSize = sc.iconMd))
-        Spacer(GlanceModifier.height(sc.spaceXs))
-        if (p1 != null) {
-            Text(p1.acronym, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = teamColorProvider(p1.teamColor)))
-            Text("${p1.points.toInt()} pts", style = TextStyle(fontSize = sc.fxs, color = c.sub))
-            if (p1.wins > 0)
-                Text("${p1.wins}W  ${p1.podiums}P", style = TextStyle(fontSize = sc.fxs, color = c.gold))
-        } else {
-            Text(f1WidgetEmptyMessage(d, "No data"), style = TextStyle(fontSize = sc.fxs, color = c.sub))
-        }
-        // Gap to P2
-        if (p1 != null && p2 != null) {
-            Spacer(GlanceModifier.height(sc.spaceXs))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(GlanceModifier.width(3.dp).height(sc.fxs.value.dp).cornerRadius(2.dp)
-                    .background(teamColorProvider(p2.teamColor))) {}
-                Spacer(GlanceModifier.width(3.dp))
-                Text(p2.acronym, style = TextStyle(fontSize = sc.fxs, color = c.sub))
-                Spacer(GlanceModifier.width(3.dp))
-                val gap = if (p2.gapToLeader.isNotEmpty()) p2.gapToLeader
-                    else "-${(p1.points - p2.points).toInt()}"
-                Text(gap, style = TextStyle(fontSize = sc.fxs, color = c.sub))
-            }
-        }
-    }
-}
-
-// ── COMPACT: *×2 — header + full scrollable standings ─────────────
-@Composable
-private fun StandingsCompact(d: F1WidgetData, c: F1Clr, sc: WScale, w: Dp) {
-    Column(GlanceModifier.fillMaxSize()) {
-        StandingsHeader("Standings", d, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceSm))
-        if (d.driverStandings.isEmpty()) {
-            Spacer(GlanceModifier.defaultWeight())
-            Box(GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card), contentAlignment = Alignment.Center) {
-                Text(f1WidgetEmptyMessage(d, "No standings data"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
-            }
-            Spacer(GlanceModifier.defaultWeight())
-        } else {
-            LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
-                items(buildStandingsList(d, includeP1 = true)) { item ->
-                    StandingsItemRow(item, c, sc, showTeam = w >= 260.dp)
-                    Spacer(GlanceModifier.height(sc.spaceXs))
-                }
-            }
-        }
-    }
-}
-
-// ── MEDIUM: 2-3×3 — leader card pinned + last race strip + scrollable ─
-@Composable
-private fun StandingsMedium(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    Column(GlanceModifier.fillMaxSize()) {
-        StandingsHeader("Championship", d, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceSm))
-        if (d.driverStandings.isEmpty()) {
-            Spacer(GlanceModifier.defaultWeight())
-            Column(GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏆", style = TextStyle(fontSize = sc.iconHero))
-                Text(f1WidgetEmptyMessage(d, "No standings available"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
-            }
-            Spacer(GlanceModifier.defaultWeight())
-        } else {
-            val p1 = d.driverStandings.first()
-            LeaderCard(p1, c, sc)
-            Spacer(GlanceModifier.height(sc.spaceSm))
-            LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
-                if (d.lastRaceResults.isNotEmpty()) {
-                    items(listOf(Unit)) {
-                        Column(GlanceModifier.fillMaxWidth()) {
-                            LastRaceStrip(d, c, sc)
-                            Spacer(GlanceModifier.height(sc.spaceSm))
-                        }
-                    }
-                }
-                items(buildStandingsList(d, includeP1 = false)) { item ->
-                    StandingsItemRow(item, c, sc, showTeam = true)
-                    Spacer(GlanceModifier.height(sc.spaceXs))
-                }
-            }
-        }
-    }
-}
-
-// ── FULL: 4-5×3 — leader card + last race mini + all scrollable ────
+// ——— FULL —————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun StandingsFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
     Column(GlanceModifier.fillMaxSize()) {
-        StandingsHeader("F1 Championship  ·  ${java.time.LocalDate.now().year}", d, c, sc)
+        StandingsHeader("F1 Championship    ${java.time.LocalDate.now().year}", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
         if (d.driverStandings.isEmpty()) {
             Spacer(GlanceModifier.defaultWeight())
-            Column(GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏆", style = TextStyle(fontSize = sc.iconHero))
-                Text(f1WidgetEmptyMessage(d, "No standings available"), style = TextStyle(fontSize = sc.fsm, color = c.sub))
+            Column(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.glance.Image(
+                    provider = androidx.glance.ImageProvider(com.macrotracker.R.drawable.ic_trophy),
+                    contentDescription = null,
+                    colorFilter = androidx.glance.ColorFilter.tint(c.text),
+                    modifier = GlanceModifier.size(32.dp)
+                )
+                Text(f1WidgetEmptyMessage(d, "No standings data"), style = TextStyle(fontSize = sc.fmd, color = c.sub))
             }
             Spacer(GlanceModifier.defaultWeight())
         } else {
@@ -237,7 +137,7 @@ private fun StandingsFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
     }
 }
 
-// ── LAST RACE STRIP (horizontal P1/P2/P3 for FULL size) ──────────
+// ——— LAST RACE STRIP (horizontal P1/P2/P3) ————————————————————————————————————
 @Composable
 private fun LastRaceStrip(d: F1WidgetData, c: F1Clr, sc: WScale) {
     Box(
@@ -276,7 +176,7 @@ private fun LastRaceStrip(d: F1WidgetData, c: F1Clr, sc: WScale) {
     }
 }
 
-// ── QUALIFYING GRID STRIP ─────────────────────────────────────────
+// ——— QUALIFYING GRID STRIP —————————————————————————————————————————————————
 /** Compact single-row qualifying grid P1-P3 — mirrors LastRaceStrip style. */
 @Composable
 private fun QualiGridStrip(d: F1WidgetData, c: F1Clr, sc: WScale) {

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Bloodtype
@@ -437,12 +438,23 @@ fun SettingsScreen(
             )
 
             if (keyFeedback != null) {
-                Text(
-                    text = keyFeedback,
-                    fontSize = 12.sp,
-                    color = Error,
+                Row(
                     modifier = Modifier.padding(top = 4.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Doesn't look like a Gemini key (should start with AIza…)",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))

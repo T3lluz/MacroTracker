@@ -453,7 +453,7 @@ class HomeViewModel @Inject constructor(
             val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
 
-            // Build hourly forecast string: "3 PM|⛅|18|20|12 km/h|Clear sky"
+            // Build hourly forecast string: "3 PM|213000|18|20|12 km/h|Clear sky"
             // Take next 24 hours (scrollable list)
             val hourlyStr = weather.hourlyForecasts.take(24).joinToString("|") { h ->
                 val displayHour = try {
@@ -470,12 +470,12 @@ class HomeViewModel @Inject constructor(
                 val wind = "${h.windSpeed.toInt()} km/h"
                 val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
                 // Yr.no doesn't provide precipitation probability, use 0 as placeholder
-                "$displayHour|${h.icon}|$temp|0|$wind|$desc"
+                "$displayHour|${h.iconRes}|$temp|0|$wind|$desc"
             }
 
             prefs.edit {
                 putString("temp", weather.temperature.toInt().toString())
-                putString("icon", weather.icon)
+                putString("icon", weather.iconRes.toString())
                 putString("description", weather.description)
                 putString("location", weather.locationName)
                 putString("high", todayForecast?.maxTemp?.toInt()?.toString())

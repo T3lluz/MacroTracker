@@ -2,12 +2,11 @@ package com.macrotracker.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
-import androidx.glance.LocalSize
+
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -17,6 +16,10 @@ import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.Image
+import androidx.glance.ImageProvider
+import androidx.glance.ColorFilter
+import androidx.glance.unit.ColorProvider
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -26,12 +29,13 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import com.macrotracker.MainActivity
+import com.macrotracker.R
 
 /**
  * Weather widget optimized for fixed 5x3 with a guaranteed visible hourly section.
@@ -64,27 +68,26 @@ private fun WeatherRoot(d: DashboardWidgetData) {
 
             if (!d.hasWeatherData) {
                 Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    NoDataPlaceholder("🌤", "No weather data", c, sc)
+                    NoDataPlaceholder(R.drawable.ic_weather_cloud_sun, "No weather data", c, sc)
                 }
-                return@Column
-            }
-
-            WeatherHeroCard(d, c, sc)
-            Spacer(GlanceModifier.height(sc.spaceXs))
-
-            WeatherMetaLine(d, c, sc)
-            Spacer(GlanceModifier.height(sc.spaceXs))
-            Spacer(GlanceModifier.defaultWeight())
-
-            Text("Hourly forecast", style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-            Spacer(GlanceModifier.height(sc.spaceXs))
-            Box(GlanceModifier.fillMaxWidth().height(118.dp)) {
-                HourlyScrollableSection(d.hourlyForecast.take(12), c, sc)
-            }
-
-            if (!d.aiInsightWeather.isNullOrBlank() && d.hourlyForecast.isEmpty()) {
+            } else {
+                WeatherHeroCard(d, c, sc)
                 Spacer(GlanceModifier.height(sc.spaceXs))
-                AiInsightBanner("🤖 ${d.aiInsightWeather}", c, sc)
+
+                WeatherExtendedDetailsGrid(d, c, sc)
+                Spacer(GlanceModifier.height(sc.spaceXs))
+                Spacer(GlanceModifier.defaultWeight())
+
+                Text("Hourly forecast", style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
+                Spacer(GlanceModifier.height(sc.spaceXs))
+                Box(GlanceModifier.fillMaxWidth().height(118.dp)) {
+                    HourlyScrollableSection(d.hourlyForecast.take(12), c, sc)
+                }
+
+                if (!d.aiInsightWeather.isNullOrBlank() && d.hourlyForecast.isEmpty()) {
+                    Spacer(GlanceModifier.height(sc.spaceXs))
+                    AiInsightBanner("🤖 ${d.aiInsightWeather}", c, sc)
+                }
             }
         }
     }
@@ -100,25 +103,30 @@ private fun WeatherHeroCard(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
             .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
     ) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(d.weatherIcon ?: "🌡️", style = TextStyle(fontSize = sc.iconHero))
+            val iconRes = d.weatherIconRes ?: R.drawable.ic_weather_sun
+            Image(
+                provider = ImageProvider(iconRes),
+                contentDescription = null,
+                modifier = GlanceModifier.width(56.dp).height(56.dp)
+            )
             Spacer(GlanceModifier.width(sc.spaceSm))
 
             Column(GlanceModifier.defaultWeight()) {
                 Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${d.weatherTemp ?: "--"}°",
+                        d.weatherTemp ?: "--",
                         style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.weather),
                         maxLines = 1,
                     )
                     Spacer(GlanceModifier.width(sc.spaceSm))
                     Text(
-                        "↑${d.weatherHigh ?: "--"}°",
+                        "↑${d.weatherHigh ?: "--"}",
                         style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.cal),
                         maxLines = 1,
                     )
                     Spacer(GlanceModifier.width(sc.spaceSm))
                     Text(
-                        "↓${d.weatherLow ?: "--"}°",
+                        "↓${d.weatherLow ?: "--"}",
                         style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.steps),
                         maxLines = 1,
                     )
@@ -126,7 +134,7 @@ private fun WeatherHeroCard(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
 
                 val desc = d.weatherDescription?.replaceFirstChar { it.uppercase() }.orEmpty()
                 if (desc.isNotBlank()) {
-                    Text(desc, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
+                    Text(desc, style = TextStyle(fontSize = sc.fxs, color = c.sub, fontWeight = FontWeight.Medium), maxLines = 1)
                 }
             }
         }
@@ -134,13 +142,43 @@ private fun WeatherHeroCard(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
 }
 
 @Composable
-private fun WeatherMetaLine(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
-    val line = buildString {
-        append("Feels ${d.weatherFeelsLike ?: d.weatherTemp ?: "--"}°")
-        append(" • Wind ${d.weatherWindSpeed ?: "--"} km/h")
-        append(" • Humid ${d.weatherHumidity ?: "--"}%")
+private fun WeatherExtendedDetailsGrid(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
+    Column(GlanceModifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val feelsLike = d.weatherFeelsLike ?: d.weatherTemp ?: "--"
+            DetailPill("Feels $feelsLike", c, sc)
+            Spacer(GlanceModifier.width(sc.spaceSm))
+            
+            val wind = d.weatherWindSpeed?.let { "${it}km/h" } ?: "--"
+            DetailPill("💨 $wind", c, sc)
+            Spacer(GlanceModifier.width(sc.spaceSm))
+            
+            val humid = d.weatherHumidity?.let { "$it%" } ?: "--"
+            DetailPill("💧 $humid", c, sc)
+        }
+        
+        if (d.weatherSunrise != null || d.weatherSunset != null) {
+            Spacer(GlanceModifier.height(sc.spaceXs))
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                d.weatherSunrise?.let {
+                    DetailPill("🌅 $it", c, sc)
+                    Spacer(GlanceModifier.width(sc.spaceSm))
+                }
+                d.weatherSunset?.let {
+                    DetailPill("🌇 $it", c, sc)
+                }
+            }
+        }
     }
-    Text(line, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
+}
+
+@Composable
+private fun DetailPill(text: String, c: WidgetClr, sc: WScale) {
+    Box(
+        GlanceModifier.cornerRadius(12.dp).background(c.cardAlt).padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(text, style = TextStyle(fontSize = sc.fxs, color = c.sub, fontWeight = FontWeight.Medium), maxLines = 1)
+    }
 }
 
 @Composable
@@ -186,12 +224,17 @@ private fun HourlyForecastRow(slot: HourlyForecast, c: WidgetClr, sc: WScale) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(slot.hour, style = TextStyle(fontSize = sc.fsm, color = c.sub, fontWeight = FontWeight.Medium))
             Spacer(GlanceModifier.width(sc.spaceSm))
-            Text(slot.icon, style = TextStyle(fontSize = sc.iconMd))
+            val hrIcon = slot.iconRes
+            Image(
+                provider = ImageProvider(hrIcon),
+                contentDescription = null,
+                modifier = GlanceModifier.width(28.dp).height(28.dp)
+            )
             Spacer(GlanceModifier.width(sc.spaceSm))
 
             Column(GlanceModifier.defaultWeight()) {
                 val line1 = buildString {
-                    append("${slot.temp}°")
+                    append(slot.temp)
                     slot.pop?.takeIf { it > 0 }?.let { append(" • 💧$it%") }
                 }
                 Text(
@@ -220,7 +263,7 @@ private fun WeatherHeaderBlock(
     d: DashboardWidgetData,
     c: WidgetClr,
     sc: WScale,
-    showGreeting: Boolean = false,
+    showGreeting: Boolean,
 ) {
     Column(GlanceModifier.fillMaxWidth()) {
         WidgetHeader(
@@ -234,11 +277,15 @@ private fun WeatherHeaderBlock(
         if (!d.weatherLocation.isNullOrBlank()) {
             Spacer(GlanceModifier.height(sc.spaceXs))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📍", style = TextStyle(fontSize = sc.fsm))
+                Image(
+                    provider = ImageProvider(R.drawable.ic_weather_sun), // Or map pin icon if there is one
+                    contentDescription = null,
+                    modifier = GlanceModifier.width(22.dp).height(22.dp),
+                    colorFilter = ColorFilter.tint(c.sub)
+                )
                 Spacer(GlanceModifier.width(sc.spaceXs))
                 Text(d.weatherLocation, style = TextStyle(fontSize = sc.fsm, color = c.sub), maxLines = 1)
             }
         }
     }
 }
-

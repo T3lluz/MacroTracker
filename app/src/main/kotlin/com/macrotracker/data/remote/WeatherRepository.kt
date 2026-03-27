@@ -13,11 +13,12 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToLong
+import com.macrotracker.R
 
 data class HourlyForecast(
     val time: String,       // e.g. "14:00"
     val temperature: Double,
-    val icon: String,
+    val iconRes: Int,
     val windSpeed: Double,
     val description: String,
 )
@@ -27,7 +28,7 @@ data class DailyForecast(
     val dateFull: String,   // e.g. "2026-03-07"
     val minTemp: Double,
     val maxTemp: Double,
-    val icon: String,
+    val iconRes: Int,
     val description: String,
 )
 
@@ -36,7 +37,7 @@ data class WeatherInfo(
     val windSpeed: Double,
     val symbolCode: String,
     val description: String,
-    val icon: String, // emoji
+    val iconRes: Int,
     val locationName: String = "",
     val feelsLike: Double? = null,      // dew-point-based approximation from Yr.no
     val humidity: Double? = null,       // relative_humidity from Yr.no
@@ -132,7 +133,7 @@ class WeatherRepository @Inject constructor(
             else -> "cloudy"
         }
 
-        val (description, icon) = mapSymbolCode(symbolCode)
+        val (description, iconRes) = mapSymbolCode(symbolCode)
 
         // Parse hourly forecasts (next 24 entries)
         val hourlyForecasts = mutableListOf<HourlyForecast>()
@@ -156,10 +157,10 @@ class WeatherRepository @Inject constructor(
                             .getString("symbol_code")
                     else -> symbolCode
                 }
-                val (entryDesc, entryIcon) = mapSymbolCode(entrySymbol)
+                val (entryDesc, entryIconRes) = mapSymbolCode(entrySymbol)
                 // Extract hour from ISO time (e.g. "2026-03-06T14:00:00Z" -> "14:00")
                 val hour = time.substringAfter("T").take(5)
-                hourlyForecasts.add(HourlyForecast(hour, temp, entryIcon, wind, entryDesc))
+                hourlyForecasts.add(HourlyForecast(hour, temp, entryIconRes, wind, entryDesc))
             } catch (e: Exception) {
                 Log.w(TAG, "Skipping hourly entry $i: ${e.message}")
             }
@@ -199,14 +200,14 @@ class WeatherRepository @Inject constructor(
 
         val dailyForecasts = dailyMap.entries.drop(1).take(7).map { (dateStr, temps) ->
             val sym = dailySymbols[dateStr] ?: symbolCode
-            val (dayDesc, dayIcon) = mapSymbolCode(sym)
+            val (dayDesc, dayIconRes) = mapSymbolCode(sym)
             // Format date as day name
             val dayName = try {
                 LocalDate.parse(dateStr)
                     .dayOfWeek
                     .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault())
             } catch (_: Exception) { dateStr }
-            DailyForecast(dayName, dateStr, temps.min(), temps.max(), dayIcon, dayDesc)
+            DailyForecast(dayName, dateStr, temps.min(), temps.max(), dayIconRes, dayDesc)
         }
 
         val (sunrise, sunset) = SunCalculator.calculate(lat, lon, LocalDate.now(), ZoneId.systemDefault()) ?: (null to null)
@@ -216,7 +217,7 @@ class WeatherRepository @Inject constructor(
             windSpeed = windSpeed,
             symbolCode = symbolCode,
             description = description,
-            icon = icon,
+            iconRes = iconRes,
             locationName = locationName,
             feelsLike = feelsLike,
             humidity = humidity,
@@ -227,30 +228,28 @@ class WeatherRepository @Inject constructor(
         )
     }
 
-    private fun mapSymbolCode(code: String): Pair<String, String> {
+    private fun mapSymbolCode(code: String): Pair<String, Int> {
         // Yr.no symbol codes: https://api.met.no/weatherapi/weathericon/2.0/documentation
         // Strip _day/_night/_polartwilight suffix for matching
         val base = code.replace("_day", "").replace("_night", "").replace("_polartwilight", "")
         return when {
-            base == "clearsky" -> "Clear Sky" to "☀️"
-            base == "fair" -> "Fair" to "🌤️"
-            base.startsWith("partlycloudy") -> "Partly Cloudy" to "⛅"
-            base == "cloudy" -> "Cloudy" to "☁️"
-            base == "fog" -> "Fog" to "🌫️"
-            base.contains("thunder") && base.contains("rain") -> "Thunderstorm" to "⛈️"
-            base.contains("thunder") -> "Thunder" to "🌩️"
-            base == "lightrain" || base == "lightrainshowers" -> "Light Rain" to "🌦️"
-            base == "rain" || base == "rainshowers" -> "Rain" to "🌧️"
-            base == "heavyrain" || base == "heavyrainshowers" -> "Heavy Rain" to "🌧️"
-            base.contains("sleet") -> "Sleet" to "🌨️"
-            base == "lightsnow" || base == "lightsnowshowers" -> "Light Snow" to "🌨️"
-            base == "snow" || base == "snowshowers" -> "Snow" to "❄️"
-            base == "heavysnow" || base == "heavysnowshowers" -> "Heavy Snow" to "❄️"
-            base.contains("rain") -> "Rain" to "🌧️"
-            base.contains("snow") -> "Snow" to "❄️"
-            else -> code.replace("_", " ").replaceFirstChar { it.uppercase() } to "🌡️"
+            base == "clearsky" -> "Clear Sky" to R.drawable.ic_weather_sun
+            base == "fair" -> "Fair" to R.drawable.ic_weather_cloud_sun
+            base.startsWith("partlycloudy") -> "Partly Cloudy" to R.drawable.ic_weather_cloud_sun
+            base == "cloudy" -> "Cloudy" to R.drawable.ic_weather_cloud
+            base == "fog" -> "Fog" to R.drawable.ic_weather_fog
+            base.contains("thunder") && base.contains("rain") -> "Thunderstorm" to R.drawable.ic_weather_storm
+            base.contains("thunder") -> "Thunder" to R.drawable.ic_weather_lightning
+            base == "lightrain" || base == "lightrainshowers" -> "Light Rain" to R.drawable.ic_weather_rain
+            base == "rain" || base == "rainshowers" -> "Rain" to R.drawable.ic_weather_rain
+            base == "heavyrain" || base == "heavyrainshowers" -> "Heavy Rain" to R.drawable.ic_weather_rain
+            base.contains("sleet") -> "Sleet" to R.drawable.ic_weather_snow
+            base == "lightsnow" || base == "lightsnowshowers" -> "Light Snow" to R.drawable.ic_weather_snow
+            base == "snow" || base == "snowshowers" -> "Snow" to R.drawable.ic_weather_snow
+            base == "heavysnow" || base == "heavysnowshowers" -> "Heavy Snow" to R.drawable.ic_weather_snow
+            base.contains("rain") -> "Rain" to R.drawable.ic_weather_rain
+            base.contains("snow") -> "Snow" to R.drawable.ic_weather_snow
+            else -> code.replace("_", " ").replaceFirstChar { it.uppercase() } to R.drawable.ic_weather_sun
         }
     }
 }
-
-

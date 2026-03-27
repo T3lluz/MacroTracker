@@ -126,6 +126,9 @@ dependencies {
     // Glance (App Widgets)
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
+    
+    // Installed icon library for full-app usage (Weather, UI, etc.)
+    implementation(libs.tabler.icons)
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)

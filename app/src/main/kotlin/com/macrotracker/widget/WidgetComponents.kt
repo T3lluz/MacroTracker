@@ -29,6 +29,9 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.glance.Image
+import androidx.glance.ImageProvider
+import androidx.glance.ColorFilter
 import com.macrotracker.R
 import java.time.LocalTime
 
@@ -247,7 +250,7 @@ fun greeting(): String {
 }
 
 data class CardInfo(
-    val icon: String,
+    val iconRes: Int,
     val value: String,
     val label: String,
     val accent: ColorProvider,
@@ -282,8 +285,8 @@ fun isDataStale(lastUpdatedAt: Long): Boolean {
 
 fun widgetStatusText(lastUpdatedAt: Long): String = when {
     lastUpdatedAt <= 0L -> ""
-    isDataStale(lastUpdatedAt) -> "⏱ ${relativeTimeLabel(lastUpdatedAt)} · cached"
-    else -> "⏱ ${relativeTimeLabel(lastUpdatedAt)}"
+    isDataStale(lastUpdatedAt) -> "Updated ${relativeTimeLabel(lastUpdatedAt)} · cached"
+    else -> relativeTimeLabel(lastUpdatedAt)
 }
 
 @Composable
@@ -353,13 +356,18 @@ fun WidgetHeader(
 // ─────────────────────────────────────────────────────────────────
 
 @Composable
-fun NoDataPlaceholder(icon: String, message: String, c: WidgetClr, sc: WScale) {
+fun NoDataPlaceholder(iconRes: Int, message: String, c: WidgetClr, sc: WScale) {
     Column(
-        GlanceModifier.fillMaxWidth(),
+        GlanceModifier.fillMaxWidth().fillMaxHeight().padding(sc.pad),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(icon, style = TextStyle(fontSize = sc.iconHero))
+        Image(
+            provider = ImageProvider(iconRes),
+            contentDescription = null,
+            modifier = GlanceModifier.size(24.dp),
+            colorFilter = ColorFilter.tint(c.sub)
+        )
         Spacer(GlanceModifier.height(sc.spaceSm))
         Text(message, style = TextStyle(fontSize = sc.fsm, color = c.sub), maxLines = 2)
     }
@@ -452,7 +460,7 @@ fun LabeledBar(
 
 @Composable
 fun EnhancedLabeledBar(
-    icon: String,
+    iconRes: Int,
     label: String,
     value: String,
     progress: Float,
@@ -468,8 +476,13 @@ fun EnhancedLabeledBar(
     Column(GlanceModifier.fillMaxWidth()) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (showIcon) {
-                Text(icon, style = TextStyle(fontSize = sc.iconSm))
-                Spacer(GlanceModifier.width(sc.spaceXs))
+                Image(
+                    provider = ImageProvider(iconRes),
+                    contentDescription = null,
+                    modifier = GlanceModifier.size(16.dp),
+                    colorFilter = ColorFilter.tint(c.text)
+                )
+                Spacer(GlanceModifier.width(sc.spaceSm))
             }
             Text(label, style = TextStyle(fontSize = sc.fsm, fontWeight = FontWeight.Bold, color = c.text), maxLines = 1)
             Spacer(GlanceModifier.defaultWeight())
@@ -499,7 +512,12 @@ fun StatCard(info: CardInfo, c: WidgetClr, sc: WScale, modifier: GlanceModifier)
         contentAlignment = Alignment.TopStart,
     ) {
         Column(GlanceModifier.fillMaxWidth()) {
-            Text(info.icon, style = TextStyle(fontSize = sc.iconSm))
+            Image(
+                provider = ImageProvider(info.iconRes),
+                contentDescription = null,
+                modifier = GlanceModifier.size(16.dp),
+                colorFilter = ColorFilter.tint(info.accent)
+            )
             Spacer(GlanceModifier.height(sc.spaceXs))
             Text(info.value, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = info.accent), maxLines = 1)
             Spacer(GlanceModifier.height(sc.spaceXs))

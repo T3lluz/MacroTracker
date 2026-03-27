@@ -292,7 +292,7 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("⚠", fontSize = 16.sp)
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                         Text("Lost telemetry uplink", color = TextSecondary, fontSize = 13.sp)
                     }
                 }
@@ -701,7 +701,7 @@ private fun getCircuitSvgUrl(circuitId: String): String? = when (circuitId) {
     "zandvoort"     -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Netherlands_Circuit.png.transform/7col/image.png"
     "monza"         -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Italy_Circuit.png.transform/7col/image.png"
     "baku"          -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Baku_Circuit.png.transform/7col/image.png"
-    "marina_bay"    -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Singapore_Circuit.png.transform/7col/image.png"
+    "marina_bay"    -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244990/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Singapore_Circuit.png.transform/7col/image.png"
     "suzuka"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Japan_Circuit.png.transform/7col/image.png"
     "austin"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/USA_Circuit.png.transform/7col/image.png"
     "rodriguez"     -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Mexico_Circuit.png.transform/7col/image.png"
@@ -1098,7 +1098,11 @@ private fun WDCBattleContent(drivers: List<SeasonDriverStanding>, haptics: com.m
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                         Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(F1Red.copy(alpha = 0.18f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
-                            Text("🏆 WDC BATTLE", color = F1Red, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = F1Red, modifier = Modifier.size(10.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("WDC BATTLE", color = F1Red, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            }
                         }
                     }
                     Row(
@@ -1212,7 +1216,7 @@ private fun DriverBattleCard(driver: SeasonDriverStanding, pos: Int, tc: Color, 
             }
         }
         Text(driver.driverAcronym, color = tc, fontWeight = FontWeight.Black, fontSize = 13.sp, letterSpacing = 0.5.sp)
-        Text(driver.constructorName.split(" ").first(), color = TextSecondary, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(driver.constructorName.split(" ").first().take(8).uppercase(), color = TextSecondary, fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -1682,9 +1686,10 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
                 Text(results.firstOrNull()?.driverAcronym ?: "---", color = F1Gold, fontWeight = FontWeight.Black, fontSize = 13.sp)
             }
             Box(modifier = Modifier.width(1.dp).height(28.dp).background(Border.copy(alpha = 0.4f)))
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("⚡ FASTEST", color = TextSecondary, fontSize = 7.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
-                Text(flDriver?.driverAcronym ?: "---", color = FL_Purple, fontWeight = FontWeight.Black, fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Bolt, null, tint = TextSecondary, modifier = Modifier.size(10.dp))
+                Spacer(Modifier.width(2.dp))
+                Text("FASTEST", color = TextSecondary, fontSize = 7.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
             }
             Box(modifier = Modifier.width(1.dp).height(28.dp).background(Border.copy(alpha = 0.4f)))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1755,7 +1760,10 @@ private fun RaceResultRow(r: RaceResult) {
         }
         if (r.fastestLap) {
             Box(modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(FL_Purple.copy(alpha = 0.18f)).padding(horizontal = 4.dp, vertical = 2.dp).padding(end = 3.dp)) {
-                Text("⚡FL", color = FL_Purple, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Bolt, null, tint = FL_Purple, modifier = Modifier.size(10.dp))
+                    Text("FL", color = FL_Purple, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                }
             }
         }
         Column(horizontalAlignment = Alignment.End) {
@@ -1796,7 +1804,10 @@ private fun PodiumDriver(result: RaceResult, pos: Int, height: Dp) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.width(96.dp)) {
         if (result.fastestLap) {
             Box(modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(FL_Purple.copy(alpha = 0.2f)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                Text("⚡ FL", color = FL_Purple, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Bolt, null, tint = FL_Purple, modifier = Modifier.size(10.dp))
+                    Text("FL", color = FL_Purple, fontSize = 7.sp, fontWeight = FontWeight.Black)
+                }
             }
         } else if (pos == 1) {
             Text("👑", fontSize = 14.sp)
@@ -1821,7 +1832,7 @@ private fun PodiumDriver(result: RaceResult, pos: Int, height: Dp) {
         if (result.time != null && pos > 1) Text(result.time, color = TextSecondary, fontSize = 7.sp)
         if (pos == 1 && result.time != null) Text(result.time, color = F1Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         Box(
-            modifier = Modifier.width(76.dp).height(height).clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+            modifier = Modifier.width(76.dp).height(height).clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = if (pos == 3) 6.dp else 0.dp, bottomEnd = if (pos == 3) 6.dp else 0.dp))
                 .background(Brush.verticalGradient(listOf(medal.copy(alpha = 0.3f), medal.copy(alpha = 0.1f)))),
             contentAlignment = Alignment.TopCenter
         ) {
