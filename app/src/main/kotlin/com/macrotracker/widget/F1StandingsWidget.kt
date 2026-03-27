@@ -46,7 +46,7 @@ import com.macrotracker.MainActivity
  * FULL    (4-5×3) — header + P1 leader card (bigger) + scrollable rest
  */
 class F1StandingsWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(WidgetSizes.F1_TALL)
+    override val sizeMode = SizeMode.Single
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = F1WidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { F1StandingsRoot(data) } }

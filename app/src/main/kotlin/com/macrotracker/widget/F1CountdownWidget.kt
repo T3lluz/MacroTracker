@@ -49,7 +49,7 @@ import java.time.format.DateTimeFormatter
  * FULL    (4-5×3) — header + race info row + giant segmented timer + session list
  */
 class F1CountdownWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(WidgetSizes.F1_SMALL)
+    override val sizeMode = SizeMode.Single
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = F1WidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { F1CountdownRoot(data) } }

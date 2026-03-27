@@ -12,6 +12,8 @@ data class HourlyForecast(
     val icon: String,
     val temp: String,
     val pop: Int? = null,
+    val windSpeed: String? = null,
+    val description: String? = null,
 )
 
 /**
@@ -20,7 +22,8 @@ data class HourlyForecast(
 data class CalendarEvent(
     val title: String,
     val time: String,          // e.g. "3:00 PM" or "All day"
-    val relativeDay: String,   // "Today", "Tomorrow", or weekday name
+    val relativeDay: String,   // "Today", "Tomorrow", or weekday abbreviation e.g. "Mon"
+    val date: String = "",     // e.g. "Mar 12" — shown as the numeric date below the day label
     val isAllDay: Boolean,
 )
 
@@ -62,6 +65,9 @@ data class DashboardWidgetData(
     val weatherLocation: String? = null,
     val weatherFeelsLike: String? = null,
     val weatherHumidity: String? = null,
+    val weatherWindSpeed: String? = null,
+    val weatherSunrise: String? = null,
+    val weatherSunset: String? = null,
     val hasWeatherData: Boolean = false,
     // Hourly forecast (next 6–8 hours, cached from OWM)
     val hourlyForecast: List<HourlyForecast> = emptyList(),
@@ -80,5 +86,3 @@ data class DashboardWidgetData(
     val aiInsightWeather: String? = null,    // weather widget
     val aiInsightCalendar: String? = null,   // calendar widget
 )
-
-

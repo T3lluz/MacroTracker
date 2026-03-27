@@ -11,7 +11,7 @@ import androidx.glance.appwidget.updateAll
  * Triggered by the refresh button in the widget header.
  *
  * 1. Invalidate the in-memory cache so stale data isn't reused.
- * 2. Re-render all widgets immediately with fresh local data (instant).
+ * 2. Re-render only placed widgets immediately with fresh local data.
  * 3. Enqueue a background worker to fetch fresh AI insights + re-render again.
  */
 class RefreshWidgetAction : ActionCallback {
@@ -19,15 +19,19 @@ class RefreshWidgetAction : ActionCallback {
         // 1. Invalidate in-memory cache
         DashboardWidgetDataProvider.invalidate()
 
-        // 2. Re-render all dashboard widgets immediately (uses fast local-data path)
-        DashboardWidget().updateAll(context)
-        MacrosWidget().updateAll(context)
-        HealthWidget().updateAll(context)
-        WeatherWidget().updateAll(context)
-        CalendarWidget().updateAll(context)
+        // 2. Re-render only placed dashboard widgets immediately
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.DASHBOARD))
+            DashboardWidget().updateAll(context)
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.MACROS))
+            MacrosWidget().updateAll(context)
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.HEALTH))
+            HealthWidget().updateAll(context)
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.WEATHER))
+            WeatherWidget().updateAll(context)
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.CALENDAR))
+            CalendarWidget().updateAll(context)
 
         // 3. Enqueue background worker to fetch fresh AI insights + APIs, then re-render
         WidgetRefreshWorker.enqueueImmediateRefresh(context)
     }
 }
-

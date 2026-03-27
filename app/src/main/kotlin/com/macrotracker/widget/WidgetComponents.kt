@@ -18,11 +18,12 @@ import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
+import androidx.glance.layout.Spacer
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -76,7 +77,7 @@ object WidgetSizes {
 //
 //  TINY        2×2  (146×146)           — hero number/icon only
 //  COMPACT     *×2 where w >= 3         — header + 1-2 rows, wide
-//  MEDIUM      2×3 / 3×3  (narrow tall) — header + bars + small grid
+//  MEDIUM      2×3 / 3×3  (narrow tall) — header + bars + 2-col grid
 //  FULL        4×3 / 5×3  (wide+tall)   — full layout, max density
 // ─────────────────────────────────────────────────────────────────
 enum class WSize { TINY, COMPACT, MEDIUM, FULL }
@@ -134,40 +135,42 @@ data class WScale(
                 cardCorner = 12.dp, cardPad = 6.dp,
             )
             // COMPACT ≈ *×2 — wide + short; header + info rows, no tall cards
+            // Tight vertical budget (146dp − 16dp pad = 130dp usable), so spacing/
+            // font sizes are trimmed compared to MEDIUM to prevent bottom clipping.
             WSize.COMPACT -> WScale(
-                pad = 10.dp, padSm = 8.dp,
+                pad = 8.dp, padSm = 6.dp,
                 corner = 20.dp, cornerSm = 12.dp,
-                spaceXs = 2.dp, spaceSm = 4.dp, spaceMd = 7.dp, spaceLg = 9.dp,
-                btnSize = 22.dp, btnCorner = 11.dp, btnPad = 3.dp,
-                barH = 5.dp, barCorner = 2.5.dp,
-                fxxl = 26.sp, fxl = 19.sp, flg = 13.sp,
-                fmd = 12.sp, fsm = 11.sp, fxs = 9.5.sp,
-                iconHero = 24.sp, iconMd = 15.sp, iconSm = 12.sp,
-                cardCorner = 12.dp, cardPad = 7.dp,
+                spaceXs = 2.dp, spaceSm = 3.dp, spaceMd = 5.dp, spaceLg = 7.dp,
+                btnSize = 20.dp, btnCorner = 10.dp, btnPad = 3.dp,
+                barH = 4.dp, barCorner = 2.dp,
+                fxxl = 23.sp, fxl = 17.sp, flg = 12.5.sp,
+                fmd = 11.5.sp, fsm = 10.5.sp, fxs = 9.sp,
+                iconHero = 20.sp, iconMd = 14.sp, iconSm = 11.sp,
+                cardCorner = 11.dp, cardPad = 6.dp,
             )
             // MEDIUM ≈ 2×3 / 3×3 — taller but narrow; header + bars + 2-col card grid
             WSize.MEDIUM -> WScale(
-                pad = 11.dp, padSm = 8.dp,
+                pad = 10.dp, padSm = 7.dp,
                 corner = 20.dp, cornerSm = 12.dp,
-                spaceXs = 2.dp, spaceSm = 4.dp, spaceMd = 7.dp, spaceLg = 9.dp,
+                spaceXs = 2.dp, spaceSm = 3.dp, spaceMd = 5.dp, spaceLg = 8.dp,
                 btnSize = 22.dp, btnCorner = 11.dp, btnPad = 3.dp,
-                barH = 6.dp, barCorner = 3.dp,
-                fxxl = 28.sp, fxl = 19.sp, flg = 13.5.sp,
-                fmd = 12.5.sp, fsm = 11.sp, fxs = 9.5.sp,
-                iconHero = 26.sp, iconMd = 15.sp, iconSm = 12.sp,
-                cardCorner = 12.dp, cardPad = 8.dp,
+                barH = 5.dp, barCorner = 2.5.dp,
+                fxxl = 26.sp, fxl = 18.sp, flg = 13.sp,
+                fmd = 12.sp, fsm = 10.5.sp, fxs = 9.sp,
+                iconHero = 24.sp, iconMd = 14.sp, iconSm = 11.sp,
+                cardCorner = 12.dp, cardPad = 7.dp,
             )
             // FULL ≈ 4×3 / 5×3 — widest + tallest; all detail, multi-col card grid
             WSize.FULL -> WScale(
-                pad = 12.dp, padSm = 9.dp,
+                pad = 11.dp, padSm = 8.dp,
                 corner = 22.dp, cornerSm = 13.dp,
-                spaceXs = 2.dp, spaceSm = 5.dp, spaceMd = 8.dp, spaceLg = 11.dp,
+                spaceXs = 2.dp, spaceSm = 4.dp, spaceMd = 6.dp, spaceLg = 9.dp,
                 btnSize = 24.dp, btnCorner = 12.dp, btnPad = 4.dp,
                 barH = 6.dp, barCorner = 3.dp,
-                fxxl = 34.sp, fxl = 22.sp, flg = 14.sp,
-                fmd = 13.sp, fsm = 11.5.sp, fxs = 10.sp,
-                iconHero = 32.sp, iconMd = 16.sp, iconSm = 12.sp,
-                cardCorner = 13.dp, cardPad = 9.dp,
+                fxxl = 32.sp, fxl = 21.sp, flg = 13.5.sp,
+                fmd = 12.5.sp, fsm = 11.sp, fxs = 9.5.sp,
+                iconHero = 30.sp, iconMd = 15.sp, iconSm = 12.sp,
+                cardCorner = 13.dp, cardPad = 8.dp,
             )
         }
     }
@@ -205,17 +208,14 @@ private fun Dp.scale(f: Float): Dp = (value * f).dp
 private fun TextUnit.scale(f: Float): TextUnit = (value * f).sp
 
 // ─────────────────────────────────────────────────────────────────
-//  COLOUR TOKENS
+//  COLOUR TOKENS  (shared with F1 palette)
 // ─────────────────────────────────────────────────────────────────
 class WidgetClr {
-    // Use the same R.color.f1_* resources as the F1 widgets so that both
-    // light and dark-mode variants (values-night/colors.xml) resolve
-    // identically across all widget types.
     val bg: ColorProvider        = ColorProvider(R.color.f1_surface)
     val card: ColorProvider      = ColorProvider(R.color.f1_card)
     val cardAlt: ColorProvider   = ColorProvider(R.color.f1_card_alt)
-    val text: ColorProvider      = ColorProvider(R.color.widget_on_surface)
-    val sub: ColorProvider       = ColorProvider(R.color.widget_subtitle)
+    val text: ColorProvider      = ColorProvider(R.color.f1_text)
+    val sub: ColorProvider       = ColorProvider(R.color.f1_sub)
     val pill: ColorProvider      = ColorProvider(R.color.f1_pill)
     val divider: ColorProvider   = ColorProvider(R.color.f1_divider)
     val cal: ColorProvider       = ColorProvider(R.color.widget_calorie)
@@ -231,6 +231,7 @@ class WidgetClr {
     val primary: ColorProvider   = ColorProvider(R.color.widget_primary)
     val secondary: ColorProvider = ColorProvider(R.color.widget_secondary)
     val accent: ColorProvider    = ColorProvider(R.color.f1_red)
+    val gold: ColorProvider      = ColorProvider(R.color.f1_gold)
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -269,11 +270,48 @@ fun relativeTimeLabel(epochMillis: Long): String {
     }
 }
 
+/** Whether data is stale (> 30 min old). */
+fun isDataStale(lastUpdatedAt: Long): Boolean {
+    if (lastUpdatedAt <= 0L) return false
+    return System.currentTimeMillis() - lastUpdatedAt > 30 * 60 * 1000L
+}
+
 // ─────────────────────────────────────────────────────────────────
-//  UI COMPONENTS
+//  STATUS TAG  (matches F1 widget style)
 // ─────────────────────────────────────────────────────────────────
 
-/** Header: title/greeting left, optional timestamp + refresh right */
+fun widgetStatusText(lastUpdatedAt: Long): String = when {
+    lastUpdatedAt <= 0L -> ""
+    isDataStale(lastUpdatedAt) -> "⏱ ${relativeTimeLabel(lastUpdatedAt)} · cached"
+    else -> "⏱ ${relativeTimeLabel(lastUpdatedAt)}"
+}
+
+@Composable
+fun WidgetStatusTag(lastUpdatedAt: Long, c: WidgetClr, sc: WScale) {
+    val stale = isDataStale(lastUpdatedAt)
+    val text = widgetStatusText(lastUpdatedAt)
+    if (text.isBlank()) return
+    Box(
+        GlanceModifier.cornerRadius(sc.btnCorner)
+            .background(if (stale) c.cardAlt else c.card)
+            .padding(horizontal = sc.spaceSm, vertical = 2.dp),
+    ) {
+        Text(
+            text = text,
+            style = TextStyle(
+                fontSize = sc.fxs,
+                fontWeight = FontWeight.Medium,
+                color = if (stale) c.gold else c.sub,
+            ),
+            maxLines = 1,
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  HEADER  (accent bar + title + status tag + refresh button)
+// ─────────────────────────────────────────────────────────────────
+
 @Composable
 fun WidgetHeader(
     title: String,
@@ -281,15 +319,13 @@ fun WidgetHeader(
     sc: WScale,
     showGreeting: Boolean = false,
     lastUpdatedAt: Long = 0L,
+    accent: ColorProvider? = null,
 ) {
+    val accentColor = accent ?: c.accent
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // Accent stripe (mirrors F1 header style)
         Box(
-            GlanceModifier
-                .width(3.dp)
-                .height((sc.flg.value + 2).dp)
-                .cornerRadius(2.dp)
-                .background(c.accent),
+            GlanceModifier.width(3.dp).height((sc.flg.value + 4).dp)
+                .cornerRadius(2.dp).background(accentColor),
         ) {}
         Spacer(GlanceModifier.width(sc.spaceSm))
         Text(
@@ -298,23 +334,10 @@ fun WidgetHeader(
             maxLines = 1,
         )
         Spacer(GlanceModifier.defaultWeight())
-        val timeLabel = relativeTimeLabel(lastUpdatedAt)
-        if (timeLabel.isNotEmpty()) {
-            Box(
-                GlanceModifier
-                    .cornerRadius(sc.btnCorner)
-                    .background(c.card)
-                    .padding(horizontal = sc.spaceSm, vertical = sc.spaceXs),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("⏱ $timeLabel", style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-            }
-            Spacer(GlanceModifier.width(sc.spaceSm))
-        }
+        WidgetStatusTag(lastUpdatedAt, c, sc)
+        Spacer(GlanceModifier.width(sc.spaceSm))
         Box(
-            GlanceModifier
-                .size(sc.btnSize)
-                .cornerRadius(sc.btnCorner)
+            GlanceModifier.size(sc.btnSize).cornerRadius(sc.btnCorner)
                 .background(c.card)
                 .clickable(actionRunCallback<RefreshWidgetAction>())
                 .padding(sc.btnPad),
@@ -324,6 +347,10 @@ fun WidgetHeader(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  NO DATA PLACEHOLDER
+// ─────────────────────────────────────────────────────────────────
 
 @Composable
 fun NoDataPlaceholder(icon: String, message: String, c: WidgetClr, sc: WScale) {
@@ -338,22 +365,34 @@ fun NoDataPlaceholder(icon: String, message: String, c: WidgetClr, sc: WScale) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  AI INSIGHT BANNER
+// ─────────────────────────────────────────────────────────────────
+
 @Composable
 fun AiInsightBanner(text: String, c: WidgetClr, sc: WScale) {
+    val sz = LocalSize.current
+    val lines = if (sz.height < 200.dp) 1 else 2
     Box(
-        GlanceModifier
-            .fillMaxWidth()
-            .cornerRadius(sc.cornerSm)
-            .background(c.cardAlt)
-            .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
+        GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm)
+            .background(c.cardAlt).padding(horizontal = sc.padSm, vertical = sc.spaceSm),
     ) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Text("✨", style = TextStyle(fontSize = sc.iconSm))
+            Box(
+                GlanceModifier.cornerRadius(4.dp).background(c.primary)
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+            ) {
+                Text("AI", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = (sc.fxs.value * 0.8f).sp, color = c.bg))
+            }
             Spacer(GlanceModifier.width(sc.spaceSm))
-            Text(text, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 2)
+            Text(text, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = lines)
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  PROGRESS BAR
+// ─────────────────────────────────────────────────────────────────
 
 @Composable
 fun WidgetProgressBar(
@@ -361,14 +400,24 @@ fun WidgetProgressBar(
     accent: ColorProvider,
     track: ColorProvider,
     sc: WScale,
+    contentWidth: Dp? = null,
 ) {
-    val totalW = LocalSize.current.width - (sc.pad.value * 2).dp
-    val filled = (totalW.value * progress.coerceIn(0f, 1f)).coerceAtLeast(0f).dp
-    Box(GlanceModifier.fillMaxWidth().height(sc.barH).cornerRadius(sc.barCorner).background(track)) {
+    val sz = LocalSize.current
+    val availW = (contentWidth ?: (sz.width - sc.pad * 2)).coerceAtLeast(8.dp)
+    val filled = (availW.value * progress.coerceIn(0f, 1f)).dp.coerceIn(0.dp, availW)
+    val trackMod = if (contentWidth != null)
+        GlanceModifier.width(availW).height(sc.barH).cornerRadius(sc.barCorner).background(track)
+    else
+        GlanceModifier.fillMaxWidth().height(sc.barH).cornerRadius(sc.barCorner).background(track)
+    Box(trackMod) {
         if (progress > 0f)
             Box(GlanceModifier.width(filled).height(sc.barH).cornerRadius(sc.barCorner).background(accent)) {}
     }
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  LABELED BAR  (label + value + bar)
+// ─────────────────────────────────────────────────────────────────
 
 @Composable
 fun LabeledBar(
@@ -379,6 +428,7 @@ fun LabeledBar(
     track: ColorProvider,
     c: WidgetClr,
     sc: WScale,
+    contentWidth: Dp? = null,
 ) {
     val pctInt = (progress * 100).toInt().coerceIn(0, 100)
     Column(GlanceModifier.fillMaxWidth()) {
@@ -392,32 +442,68 @@ fun LabeledBar(
             )
         }
         Spacer(GlanceModifier.height(sc.spaceXs))
-        WidgetProgressBar(progress, accent, track, sc)
+        WidgetProgressBar(progress, accent, track, sc, contentWidth = contentWidth)
     }
 }
 
-/**
- * Stat card — fills its parent's height so a Row of cards is uniform.
- */
+// ─────────────────────────────────────────────────────────────────
+//  ENHANCED LABELED BAR  (icon + label + value + pill% + bar)
+// ─────────────────────────────────────────────────────────────────
+
+@Composable
+fun EnhancedLabeledBar(
+    icon: String,
+    label: String,
+    value: String,
+    progress: Float,
+    accent: ColorProvider,
+    track: ColorProvider,
+    c: WidgetClr,
+    sc: WScale,
+    contentWidth: Dp? = null,
+) {
+    val sz = LocalSize.current
+    val showIcon = sz.width >= 200.dp
+    val pctInt = (progress * 100).toInt().coerceIn(0, 100)
+    Column(GlanceModifier.fillMaxWidth()) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (showIcon) {
+                Text(icon, style = TextStyle(fontSize = sc.iconSm))
+                Spacer(GlanceModifier.width(sc.spaceXs))
+            }
+            Text(label, style = TextStyle(fontSize = sc.fsm, fontWeight = FontWeight.Bold, color = c.text), maxLines = 1)
+            Spacer(GlanceModifier.defaultWeight())
+            Text(value, style = TextStyle(fontSize = sc.fxs, color = accent), maxLines = 1)
+            Spacer(GlanceModifier.width(sc.spaceSm))
+            Box(
+                GlanceModifier.cornerRadius(999.dp).background(c.pill)
+                    .padding(horizontal = (sc.spaceXs.value + 2f).dp, vertical = 1.dp),
+            ) {
+                Text("$pctInt%", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = accent))
+            }
+        }
+        Spacer(GlanceModifier.height(sc.spaceXs))
+        WidgetProgressBar(progress, accent, track, sc, contentWidth = contentWidth)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  STAT CARD + CARD GRID
+// ─────────────────────────────────────────────────────────────────
+
 @Composable
 fun StatCard(info: CardInfo, c: WidgetClr, sc: WScale, modifier: GlanceModifier) {
     Box(
-        modifier
-            .cornerRadius(sc.cardCorner)
-            .background(c.card)
-            .padding(sc.cardPad),
+        modifier.fillMaxHeight().cornerRadius(sc.cardCorner)
+            .background(c.card).padding(horizontal = sc.cardPad, vertical = sc.spaceSm),
         contentAlignment = Alignment.TopStart,
     ) {
         Column(GlanceModifier.fillMaxWidth()) {
-            Text(info.icon, style = TextStyle(fontSize = sc.iconMd))
-            Spacer(GlanceModifier.height(sc.spaceXs + 2.dp))
-            Text(
-                info.value,
-                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = info.accent),
-                maxLines = 1,
-            )
+            Text(info.icon, style = TextStyle(fontSize = sc.iconSm))
             Spacer(GlanceModifier.height(sc.spaceXs))
-            Text(info.label, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 2)
+            Text(info.value, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = info.accent), maxLines = 1)
+            Spacer(GlanceModifier.height(sc.spaceXs))
+            Text(info.label, style = TextStyle(fontSize = sc.fsm, color = c.sub), maxLines = 2)
         }
     }
 }
@@ -435,8 +521,8 @@ fun CardGrid(
     Column(modifier) {
         rows.forEachIndexed { i, row ->
             if (i > 0) Spacer(GlanceModifier.height(sc.spaceSm))
-            val rowModifier = if (fillRows) GlanceModifier.defaultWeight().fillMaxWidth() else GlanceModifier.fillMaxWidth()
-            Row(rowModifier) {
+            val rowMod = if (fillRows) GlanceModifier.defaultWeight().fillMaxWidth() else GlanceModifier.fillMaxWidth()
+            Row(rowMod) {
                 row.forEachIndexed { j, card ->
                     if (j > 0) Spacer(GlanceModifier.width(sc.spaceSm))
                     StatCard(card, c, sc, GlanceModifier.defaultWeight())
@@ -450,4 +536,50 @@ fun CardGrid(
             }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  SECTION LABEL
+// ─────────────────────────────────────────────────────────────────
+
+@Composable
+fun SectionLabel(label: String, accent: ColorProvider, c: WidgetClr, sc: WScale) {
+    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(GlanceModifier.width(3.dp).height(sc.fsm.value.dp).cornerRadius(2.dp).background(accent)) {}
+        Spacer(GlanceModifier.width(sc.spaceSm))
+        Text(label, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.sub))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  METRIC CHIP  (compact card with value + label)
+// ─────────────────────────────────────────────────────────────────
+
+@Composable
+fun MetricChip(
+    value: String,
+    label: String,
+    accent: ColorProvider,
+    c: WidgetClr,
+    sc: WScale,
+    modifier: GlanceModifier = GlanceModifier,
+) {
+    Box(
+        modifier.cornerRadius(sc.cornerSm).background(c.card)
+            .padding(horizontal = sc.padSm, vertical = sc.spaceXs),
+    ) {
+        Column(GlanceModifier.fillMaxWidth()) {
+            Text(value, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = accent), maxLines = 1)
+            Text(label, style = TextStyle(fontSize = sc.fsm, color = c.sub), maxLines = 1)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  DIVIDER
+// ─────────────────────────────────────────────────────────────────
+
+@Composable
+fun WidgetDivider(c: WidgetClr) {
+    Box(GlanceModifier.fillMaxWidth().height(1.dp).background(c.divider)) {}
 }

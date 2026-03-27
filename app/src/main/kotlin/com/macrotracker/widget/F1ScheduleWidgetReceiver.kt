@@ -15,6 +15,11 @@ class F1ScheduleWidgetReceiver : GlanceAppWidgetReceiver() {
         WidgetRefreshWorker.enqueueImmediateF1Refresh(context, replace = true)
     }
 
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        WidgetRefreshWorker.cancelPeriodicRefreshIfNoWidgets(context)
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {

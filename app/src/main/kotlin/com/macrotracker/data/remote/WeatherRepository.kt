@@ -1,6 +1,9 @@
 package com.macrotracker.data.remote
 
 import android.util.Log
+import com.macrotracker.util.SunCalculator
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -39,6 +42,8 @@ data class WeatherInfo(
     val humidity: Double? = null,       // relative_humidity from Yr.no
     val hourlyForecasts: List<HourlyForecast> = emptyList(),
     val dailyForecasts: List<DailyForecast> = emptyList(),
+    val sunrise: String? = null,
+    val sunset: String? = null,
 )
 
 @Singleton
@@ -87,7 +92,7 @@ class WeatherRepository @Inject constructor(
                 Log.e(TAG, "Weather API error ${response.code}: $body")
                 throw Exception("Weather API error: ${response.code}")
             }
-            parseWeatherResponse(body, locationName)
+            parseWeatherResponse(body, locationName, lat, lon)
         }
         cachedWeather = result
         cachedLat = roundedLat
@@ -96,7 +101,7 @@ class WeatherRepository @Inject constructor(
         result
     }
 
-    private fun parseWeatherResponse(json: String, locationName: String): WeatherInfo {
+    private fun parseWeatherResponse(json: String, locationName: String, lat: Double, lon: Double): WeatherInfo {
         val root = JSONObject(json)
         val timeseries = root
             .getJSONObject("properties")
@@ -197,12 +202,14 @@ class WeatherRepository @Inject constructor(
             val (dayDesc, dayIcon) = mapSymbolCode(sym)
             // Format date as day name
             val dayName = try {
-                java.time.LocalDate.parse(dateStr)
+                LocalDate.parse(dateStr)
                     .dayOfWeek
                     .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault())
             } catch (_: Exception) { dateStr }
             DailyForecast(dayName, dateStr, temps.min(), temps.max(), dayIcon, dayDesc)
         }
+
+        val (sunrise, sunset) = SunCalculator.calculate(lat, lon, LocalDate.now(), ZoneId.systemDefault()) ?: (null to null)
 
         return WeatherInfo(
             temperature = temperature,
@@ -215,6 +222,8 @@ class WeatherRepository @Inject constructor(
             humidity = humidity,
             hourlyForecasts = hourlyForecasts,
             dailyForecasts = dailyForecasts,
+            sunrise = sunrise,
+            sunset = sunset,
         )
     }
 
@@ -243,6 +252,5 @@ class WeatherRepository @Inject constructor(
         }
     }
 }
-
 
 

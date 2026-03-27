@@ -36,6 +36,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
 
 sealed class WeatherUiState {
@@ -452,9 +453,9 @@ class HomeViewModel @Inject constructor(
             val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
 
-            // Build hourly forecast string: "3 PM|⛅|18|20|6 PM|🌧|16|60|…"
-            // Take next 8 hours, convert "HH:MM" → "h a" (e.g. "14:00" → "2 PM")
-            val hourlyStr = weather.hourlyForecasts.take(8).joinToString("|") { h ->
+            // Build hourly forecast string: "3 PM|⛅|18|20|12 km/h|Clear sky"
+            // Take next 24 hours (scrollable list)
+            val hourlyStr = weather.hourlyForecasts.take(24).joinToString("|") { h ->
                 val displayHour = try {
                     val parts = h.time.split(":")
                     val hr = parts[0].toInt()
@@ -466,8 +467,10 @@ class HomeViewModel @Inject constructor(
                     }
                 } catch (_: Exception) { h.time }
                 val temp = h.temperature.toInt().toString()
+                val wind = "${h.windSpeed.toInt()} km/h"
+                val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
                 // Yr.no doesn't provide precipitation probability, use 0 as placeholder
-                "$displayHour|${h.icon}|$temp|0"
+                "$displayHour|${h.icon}|$temp|0|$wind|$desc"
             }
 
             prefs.edit {
@@ -477,8 +480,11 @@ class HomeViewModel @Inject constructor(
                 putString("location", weather.locationName)
                 putString("high", todayForecast?.maxTemp?.toInt()?.toString())
                 putString("low", todayForecast?.minTemp?.toInt()?.toString())
-                putString("feels_like", weather.feelsLike?.toInt()?.toString())
+                putString("feels_like", (weather.feelsLike ?: weather.temperature).toInt().toString())
                 putString("humidity", weather.humidity?.toInt()?.toString())
+                putString("wind_speed", weather.windSpeed.toInt().toString())
+                putString("sunrise", weather.sunrise)
+                putString("sunset", weather.sunset)
                 putString("hourly_forecast", hourlyStr.ifEmpty { null })
             }
         } catch (e: Exception) {

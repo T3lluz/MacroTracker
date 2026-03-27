@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +51,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.macrotracker.R
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.theme.Background
@@ -123,10 +127,10 @@ private val CORE_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — Weather",
         description = "Current temperature, conditions, high/low forecast, and an AI-generated daily weather summary.",
-        size        = "3 × 2",
-        sizeLabel   = "Wide",
+        size        = "5 × 3",
+        sizeLabel   = "Large",
         previewRes  = R.drawable.widget_preview_weather,
-        previewRatio = 1.5f,
+        previewRatio = 1.67f,
         receiverClass = WeatherWidgetReceiver::class.java,
         accentColor = Color(0xFF42A5F5),
     ),
@@ -183,6 +187,7 @@ fun WidgetsScreen(
 ) {
     val context = LocalContext.current
     val haptics = rememberHaptics()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     val appWidgetManager = remember { AppWidgetManager.getInstance(context) }
     val pinSupported = remember {
@@ -191,6 +196,45 @@ fun WidgetsScreen(
 
     // Track which widgets have just been pinned (for brief success feedback)
     val recentlyPinned = remember { mutableStateOf(setOf<String>()) }
+
+    // ── Live counts of placed widget instances (refreshes on every resume) ──
+    var placedCounts by remember { mutableStateOf(mapOf<Class<*>, Int>()) }
+    var refreshTick by remember { mutableIntStateOf(0) }
+
+    // Refresh placed-counts every time we resume (covers both in-app pin and
+    // widgets added/removed via Android picker while the screen was backgrounded)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Small delay lets the widget manager update after a pin request
+            delay(300)
+            val counts = mutableMapOf<Class<*>, Int>()
+            (CORE_WIDGETS + F1_WIDGETS).forEach { widget ->
+                val ids = appWidgetManager.getAppWidgetIds(
+                    ComponentName(context, widget.receiverClass)
+                )
+                counts[widget.receiverClass] = ids.size
+            }
+            placedCounts = counts
+            refreshTick++
+        }
+    }
+
+    // Also refresh after in-app pin action with a longer delay
+    LaunchedEffect(recentlyPinned.value) {
+        if (recentlyPinned.value.isNotEmpty()) {
+            delay(1500)
+            val counts = mutableMapOf<Class<*>, Int>()
+            (CORE_WIDGETS + F1_WIDGETS).forEach { widget ->
+                val ids = appWidgetManager.getAppWidgetIds(
+                    ComponentName(context, widget.receiverClass)
+                )
+                counts[widget.receiverClass] = ids.size
+            }
+            placedCounts = counts
+        }
+    }
+
+    val totalPlaced = placedCounts.values.sum()
 
     Column(
         modifier = Modifier
@@ -231,7 +275,10 @@ fun WidgetsScreen(
                     color = HeaderColor,
                 )
                 Text(
-                    text = "${CORE_WIDGETS.size + F1_WIDGETS.size} widgets available",
+                    text = if (totalPlaced > 0)
+                        "$totalPlaced active · ${CORE_WIDGETS.size + F1_WIDGETS.size} available"
+                    else
+                        "${CORE_WIDGETS.size + F1_WIDGETS.size} widgets available",
                     fontSize = 12.sp,
                     color = TextSecondary,
                 )
@@ -270,20 +317,28 @@ fun WidgetsScreen(
         ) {
             // DailyDash section
             item {
+                val corePlaced = CORE_WIDGETS.count { (placedCounts[it.receiverClass] ?: 0) > 0 }
                 WidgetSectionHeader(
                     title = "DailyDash",
                     subtitle = "Nutrition · Health · Weather · Calendar",
                     icon = "📊",
                     accentColor = Primary,
                     delayMs = 50L,
+                    widgetCount = CORE_WIDGETS.size,
+                    placedCount = corePlaced,
                 )
             }
 
             itemsIndexed(CORE_WIDGETS) { index, widget ->
+                val instanceCount = placedCounts[widget.receiverClass] ?: 0
+                val alreadyPlaced = instanceCount > 0
+
                 WidgetCard(
                     info = widget,
                     pinSupported = pinSupported,
                     isPinned = recentlyPinned.value.contains(widget.name),
+                    isAlreadyPlaced = alreadyPlaced,
+                    instanceCount = instanceCount,
                     delayMs = 80L + index * 60L,
                     onAddToHomeScreen = {
                         haptics.confirm()
@@ -298,20 +353,28 @@ fun WidgetsScreen(
             // F1 section
             item {
                 Spacer(modifier = Modifier.height(8.dp))
+                val f1Placed = F1_WIDGETS.count { (placedCounts[it.receiverClass] ?: 0) > 0 }
                 WidgetSectionHeader(
                     title = "Formula 1",
                     subtitle = "Race countdown · Standings · Schedule",
                     icon = "🏎",
                     accentColor = F1_RED,
                     delayMs = 350L,
+                    widgetCount = F1_WIDGETS.size,
+                    placedCount = f1Placed,
                 )
             }
 
             itemsIndexed(F1_WIDGETS) { index, widget ->
+                val instanceCount = placedCounts[widget.receiverClass] ?: 0
+                val alreadyPlaced = instanceCount > 0
+
                 WidgetCard(
                     info = widget,
                     pinSupported = pinSupported,
                     isPinned = recentlyPinned.value.contains(widget.name),
+                    isAlreadyPlaced = alreadyPlaced,
+                    instanceCount = instanceCount,
                     delayMs = 380L + index * 60L,
                     onAddToHomeScreen = {
                         haptics.confirm()
@@ -336,6 +399,8 @@ private fun WidgetSectionHeader(
     icon: String,
     accentColor: Color,
     delayMs: Long = 0L,
+    widgetCount: Int = 0,
+    placedCount: Int = 0,
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -368,15 +433,22 @@ private fun WidgetSectionHeader(
                     color = TextSecondary,
                 )
             }
-            // Accent pill
+            // Accent pill — shows placed / total
             Box(
                 modifier = Modifier
-                    .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .background(
+                        if (placedCount > 0) accentColor.copy(alpha = 0.15f)
+                        else accentColor.copy(alpha = 0.15f),
+                        RoundedCornerShape(8.dp),
+                    )
                     .border(1.dp, accentColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 Text(
-                    text = if (title == "Formula 1") "3 widgets" else "5 widgets",
+                    text = if (placedCount > 0)
+                        "$placedCount / $widgetCount active"
+                    else
+                        "$widgetCount widgets",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = accentColor,
@@ -393,6 +465,8 @@ private fun WidgetCard(
     info: WidgetInfo,
     pinSupported: Boolean,
     isPinned: Boolean,
+    isAlreadyPlaced: Boolean,
+    instanceCount: Int,
     delayMs: Long = 0L,
     onAddToHomeScreen: () -> Unit,
 ) {
@@ -437,6 +511,36 @@ private fun WidgetCard(
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize(),
             )
+
+            // ── "Active" badge overlay when widget is placed ──
+            if (isAlreadyPlaced) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .background(
+                            Success.copy(alpha = 0.9f),
+                            RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (instanceCount > 1) "Active × $instanceCount" else "Active",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -514,29 +618,35 @@ private fun WidgetCard(
 
         // ── Add button ───────────────────────────────────────────────────
         if (pinSupported) {
+            val showPlaced = isAlreadyPlaced || isPinned
             androidx.compose.material3.Button(
                 onClick = onAddToHomeScreen,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = if (isPinned) Success.copy(alpha = 0.15f)
+                    containerColor = if (showPlaced) Success.copy(alpha = 0.15f)
                                      else info.accentColor,
-                    contentColor   = if (isPinned) Success else Color.White,
+                    contentColor   = if (showPlaced) Success else Color.White,
                 ),
-                border = if (isPinned)
+                border = if (showPlaced)
                     androidx.compose.foundation.BorderStroke(
                         1.dp, Success.copy(alpha = 0.5f),
                     ) else null,
             ) {
                 Icon(
-                    imageVector = if (isPinned) Icons.Outlined.CheckCircle
+                    imageVector = if (showPlaced) Icons.Outlined.CheckCircle
                                   else Icons.Outlined.Add,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (isPinned) "Added!" else "Add to Home Screen",
+                    text = when {
+                        isPinned && !isAlreadyPlaced -> "Added!"
+                        isAlreadyPlaced && instanceCount > 1 -> "On Home Screen (×$instanceCount) · Add Another"
+                        isAlreadyPlaced -> "On Home Screen · Add Another"
+                        else -> "Add to Home Screen"
+                    },
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(vertical = 2.dp),
@@ -559,15 +669,17 @@ private fun WidgetCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Text(
-                    text = "Long-press your home screen → Widgets → DailyDash → ${info.name.substringAfter("— ")}",
+                    text = if (isAlreadyPlaced)
+                        "✅ Already on your home screen" +
+                            if (instanceCount > 1) " (×$instanceCount)" else ""
+                    else
+                        "Long-press your home screen → Widgets → DailyDash → ${info.name.substringAfter("— ")}",
                     fontSize = 12.sp,
-                    color = TextSecondary,
+                    color = if (isAlreadyPlaced) Success else TextSecondary,
                     lineHeight = 16.sp,
                 )
             }
         }
     }
 }
-
-
 

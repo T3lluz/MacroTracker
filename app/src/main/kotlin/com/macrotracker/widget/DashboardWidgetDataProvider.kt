@@ -69,10 +69,34 @@ object DashboardWidgetDataProvider {
     @Volatile private var cached: DashboardWidgetData? = null
     @Volatile private var cachedAt: Long = 0L
 
+    /** Singleton Room database — avoids rebuilding on every load call. */
+    @Volatile private var dbInstance: MacroDatabase? = null
+    private val dbLock = Any()
+
+    private fun getDb(context: Context): MacroDatabase {
+        return dbInstance ?: synchronized(dbLock) {
+            dbInstance ?: Room.databaseBuilder(
+                context.applicationContext,
+                MacroDatabase::class.java,
+                "macro_tracker.db",
+            ).build().also { dbInstance = it }
+        }
+    }
+
     /** Invalidate in-memory cache so the next [loadData] re-reads local sources. */
     fun invalidate() {
         cached = null
         cachedAt = 0L
+    }
+
+    /**
+     * Pre-warm the data cache — call this from receivers when a widget is first
+     * placed so that [provideGlance] never shows empty/stale data.
+     * This is a suspend function that loads local data and caches it.
+     */
+    suspend fun preWarm(context: Context) {
+        invalidate()
+        loadData(context)
     }
 
     /**
@@ -171,6 +195,9 @@ object DashboardWidgetDataProvider {
             weatherLocation = weather.weatherLocation,
             weatherFeelsLike = weather.weatherFeelsLike,
             weatherHumidity = weather.weatherHumidity,
+            weatherWindSpeed = weather.weatherWindSpeed,
+            weatherSunrise = weather.weatherSunrise,
+            weatherSunset = weather.weatherSunset,
             hasWeatherData = weather.hasWeatherData,
             hourlyForecast = weather.hourlyForecast,
             nextEventTitle = calendar.nextEventTitle,
@@ -184,12 +211,7 @@ object DashboardWidgetDataProvider {
 
     private suspend fun loadMacros(context: Context): DashboardWidgetData {
         return try {
-            val db = Room.databaseBuilder(
-                context.applicationContext,
-                MacroDatabase::class.java,
-                "macro_tracker.db",
-            ).build()
-
+            val db = getDb(context)
             val dao = db.macroDao()
             val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
             val yesterday = LocalDate.now().minusDays(1).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
@@ -199,7 +221,6 @@ object DashboardWidgetDataProvider {
             val yesterdayCalories = totalsMap[yesterday]?.totalCalories ?: 0
             val goals = dao.getGoals() ?: GoalsEntity()
             val logs = dao.getLogsForDate(today)
-            db.close()
 
             // Build recent meals list: "Food Name · 420 kcal"
             val recentMeals = logs.take(5).map { "${it.foodName} · ${it.calories} kcal" }
@@ -227,19 +248,19 @@ object DashboardWidgetDataProvider {
     private suspend fun loadHealth(context: Context): DashboardWidgetData {
         return try {
             if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) {
-                return DashboardWidgetData()
+                return DashboardWidgetData(hasHealthData = false)
             }
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
-            val needed = setOf(
-                HealthPermission.getReadPermission(StepsRecord::class),
-                HealthPermission.getReadPermission(HeartRateRecord::class),
-                HealthPermission.getReadPermission(SleepSessionRecord::class),
-                HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
-            )
-            if (!needed.all { it in granted }) {
-                return DashboardWidgetData()
-            }
+            // Require at least the steps permission — load any additional metrics
+            // for which permissions are granted. hasHealthData = true as long as
+            // Health Connect is available and at least steps is permitted, even if
+            // today's activity values happen to be zero.
+            val stepsPermission = HealthPermission.getReadPermission(StepsRecord::class)
+            if (stepsPermission !in granted) return DashboardWidgetData(hasHealthData = false)
+            val heartGranted = HealthPermission.getReadPermission(HeartRateRecord::class) in granted
+            val sleepGranted = HealthPermission.getReadPermission(SleepSessionRecord::class) in granted
+            val calGranted   = HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class) in granted
 
             val zone = ZoneId.systemDefault()
             val now = Instant.now()
@@ -248,28 +269,26 @@ object DashboardWidgetDataProvider {
             val sleepStart = LocalDate.now(zone).minusDays(1).atTime(18, 0).atZone(zone).toInstant()
             val sleepRange = TimeRangeFilter.between(sleepStart, now)
 
+            val aggMetrics = buildSet {
+                add(StepsRecord.COUNT_TOTAL)
+                if (heartGranted) add(HeartRateRecord.BPM_AVG)
+                if (calGranted)   add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
+            }
             val response = client.aggregate(
-                AggregateRequest(
-                    metrics = setOf(
-                        StepsRecord.COUNT_TOTAL,
-                        HeartRateRecord.BPM_AVG,
-                        ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
-                    ),
-                    timeRangeFilter = todayRange,
-                ),
+                AggregateRequest(metrics = aggMetrics, timeRangeFilter = todayRange),
             )
 
-            val sleepResponse = client.aggregate(
+            val sleepResponse = if (sleepGranted) client.aggregate(
                 AggregateRequest(
                     metrics = setOf(SleepSessionRecord.SLEEP_DURATION_TOTAL),
                     timeRangeFilter = sleepRange,
                 ),
-            )
+            ) else null
 
-            val steps = response[StepsRecord.COUNT_TOTAL] ?: 0L
-            val avgHr = response[HeartRateRecord.BPM_AVG] ?: 0L
-            val sleepMin = sleepResponse[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L
-            val activeCal = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
+            val steps    = response[StepsRecord.COUNT_TOTAL] ?: 0L
+            val avgHr    = if (heartGranted) response[HeartRateRecord.BPM_AVG] ?: 0L else 0L
+            val sleepMin = sleepResponse?.get(SleepSessionRecord.SLEEP_DURATION_TOTAL)?.toMinutes() ?: 0L
+            val activeCal = if (calGranted) response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0 else 0.0
 
             DashboardWidgetData(
                 steps = steps,
@@ -277,11 +296,18 @@ object DashboardWidgetDataProvider {
                 avgHeartRate = avgHr,
                 sleepMinutes = sleepMin,
                 activeCaloriesBurned = activeCal,
-                hasHealthData = steps > 0 || avgHr > 0 || sleepMin > 0 || activeCal > 0,
+                // true as long as permissions are granted — data may legitimately be 0 for today
+                hasHealthData = true,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load health: ${e.message}", e)
-            DashboardWidgetData()
+            // If the HC SDK is installed, show zero values rather than "Connect" so we don't
+            // mislead the user.  The IPC call may have failed transiently; the next refresh
+            // will attempt again.
+            val sdkOk = try {
+                HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+            } catch (_: Exception) { false }
+            DashboardWidgetData(hasHealthData = sdkOk, stepsGoal = 10_000)
         }
     }
 
@@ -296,18 +322,23 @@ object DashboardWidgetDataProvider {
             val low = prefs.getString("low", null)
             val feelsLike = prefs.getString("feels_like", null)
             val humidity = prefs.getString("humidity", null)
+            val windSpeed = prefs.getString("wind_speed", null)
+            val sunrise = prefs.getString("sunrise", null)
+            val sunset = prefs.getString("sunset", null)
 
             // Hourly forecast: stored as pipe-separated segments
-            // Format: "3 PM|⛅|18|20|6 PM|🌧|16|60|…"
+            // Format: "3 PM|⛅|18|20|12 km/h|Short desc"
             val hourlyRaw = prefs.getString("hourly_forecast", null)
             val hourlyForecast: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
-                hourlyRaw.split("|").chunked(4).mapNotNull { seg ->
+                hourlyRaw.split("|").chunked(6).mapNotNull { seg ->
                     if (seg.size < 3) null
                     else HourlyForecast(
                         hour = seg[0],
                         icon = seg[1],
                         temp = seg[2],
                         pop  = seg.getOrNull(3)?.toIntOrNull(),
+                        windSpeed = seg.getOrNull(4)?.takeIf { it.isNotBlank() },
+                        description = seg.getOrNull(5)?.takeIf { it.isNotBlank() },
                     )
                 }
             } else emptyList()
@@ -322,6 +353,9 @@ object DashboardWidgetDataProvider {
                     weatherLocation = location,
                     weatherFeelsLike = feelsLike,
                     weatherHumidity = humidity,
+                    weatherWindSpeed = windSpeed,
+                    weatherSunrise = sunrise,
+                    weatherSunset = sunset,
                     hasWeatherData = true,
                     hourlyForecast = hourlyForecast,
                 )
@@ -403,11 +437,12 @@ object DashboardWidgetDataProvider {
                     val eventDate = eventDt.toLocalDate()
                     val today = LocalDate.now()
 
+                    val monthDay = eventDate.format(DateTimeFormatter.ofPattern("MMM d"))
                     val relativeDay = when {
                         eventDate == today -> "Today"
-                        eventDate == today.plusDays(1) -> "Tomorrow"
-                        else -> eventDate.dayOfWeek.name.lowercase()
-                            .replaceFirstChar { c -> c.uppercase() }
+                        eventDate == today.plusDays(1) -> "Tmrw"
+                        else -> eventDate.dayOfWeek.name.take(3)
+                            .lowercase().replaceFirstChar { c -> c.uppercase() }
                     }
 
                     val timeStr = if (isAllDay) {
@@ -429,6 +464,7 @@ object DashboardWidgetDataProvider {
                             title = title,
                             time = timeStr,
                             relativeDay = relativeDay,
+                            date = monthDay,
                             isAllDay = isAllDay,
                         )
                     }

@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.Intent
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class CalendarWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = CalendarWidget()
@@ -12,11 +16,15 @@ class CalendarWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
         WidgetRefreshWorker.enqueuePeriodicRefresh(context)
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            DashboardWidgetDataProvider.preWarm(context)
+        }
         WidgetRefreshWorker.enqueueImmediateRefresh(context)
     }
 
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
+        WidgetRefreshWorker.cancelPeriodicRefreshIfNoWidgets(context)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -27,4 +35,3 @@ class CalendarWidgetReceiver : GlanceAppWidgetReceiver() {
         }
     }
 }
-

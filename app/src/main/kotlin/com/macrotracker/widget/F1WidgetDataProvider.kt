@@ -143,7 +143,16 @@ object F1WidgetDataProvider {
         cachedAt = 0L
     }
 
-    fun hasCachedData(context: Context): Boolean = context.f1Repository().getCachedF1Data() != null
+    /**
+     * Returns true only when the repo cache contains actually useful data (non-empty standings
+     * or schedule). A non-null but all-empty F1Standings written during a failed network sweep
+     * must NOT be treated as "has data" — doing so would suppress retries in the refresh worker
+     * and leave the widget stuck in the "no data / Syncing…" state.
+     */
+    fun hasCachedData(context: Context): Boolean {
+        val data = context.f1Repository().getCachedF1Data() ?: return false
+        return data.driverStandings.isNotEmpty() || data.schedule.isNotEmpty()
+    }
 
     /**
      * Fast path for `provideGlance`.
@@ -166,15 +175,22 @@ object F1WidgetDataProvider {
         val repoCache = repo.getCachedF1Data()
         if (repoCache != null) {
             val data = buildWidgetData(repoCache, repo.lastFetchTimeMs)
-            cache(data)
-            if (data.isStale) {
-                // Enqueue a background refresh — but return stale data immediately
-                WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
+            if (data.hasData) {
+                cache(data)
+                if (data.isStale) {
+                    // Enqueue a background refresh — but return stale data immediately
+                    WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
+                }
+                return data
             }
-            return data
+            // repoCache is non-null but empty — this happens when a previous forced refresh
+            // wrote an all-empty F1Standings because every API endpoint failed. Do NOT return
+            // here; fall through to the inline fetch so the widget can self-heal immediately
+            // instead of staying stuck until the next periodic 15-min worker fires.
+            Log.d(TAG, "Repo cache exists but has no data — falling through to inline fetch")
         }
 
-        // 3. No cache at all — try inline fetch with timeout
+        // 3. No usable cache — try inline fetch with timeout
         Log.d(TAG, "No F1 cache, attempting inline fetch…")
         val inlineFetch = try {
             withTimeoutOrNull(INLINE_FETCH_TIMEOUT) {
@@ -186,8 +202,13 @@ object F1WidgetDataProvider {
         }
         if (inlineFetch != null) {
             val data = buildWidgetData(inlineFetch, repo.lastFetchTimeMs)
-            cache(data)
-            return data
+            if (data.hasData) {
+                cache(data)
+                return data
+            }
+            // Inline fetch returned an empty result (all APIs still failing) — fall through
+            // to step 4 so the background worker is enqueued for when network recovers.
+            Log.w(TAG, "Inline F1 fetch returned empty data — enqueueing background retry")
         }
 
         // 4. All attempts failed — return empty loading state; do NOT cache it

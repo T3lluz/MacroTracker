@@ -128,6 +128,20 @@ class F1RepositoryImpl @Inject constructor(
                 lastRaceName = lastRaceName,
             )
 
+            // Guard: never overwrite a valid cache with an all-empty result from a failed
+            // network sweep. Each individual API call is wrapped in try/catch and returns
+            // emptyList() on failure, so both drivers AND schedule being empty almost
+            // certainly means every endpoint failed. Returning the existing cache prevents
+            // the widget being stuck in "no data" state due to a momentary network blip.
+            val resultIsEmpty = drivers.isEmpty() && schedule.isEmpty()
+            val existingCacheIsValid = cachedStandings?.let {
+                it.driverStandings.isNotEmpty() || it.schedule.isNotEmpty()
+            } ?: false
+            if (resultIsEmpty && existingCacheIsValid) {
+                Log.w(TAG, "All API calls returned empty — keeping existing valid cache to avoid data loss")
+                return@withLock Result.success(cachedStandings!!)
+            }
+
             cachedStandings = result
             lastFetchTime = now
             cachedYear = currentYear

@@ -32,9 +32,12 @@ class RefreshF1WidgetAction : ActionCallback {
         //    so the full background worker pipeline (retry, backoff, network constraint) is used
         WidgetRefreshWorker.enqueueImmediateF1Refresh(context, replace = true)
 
-        // 4. Re-render all three F1 widgets with whatever data is now available
-        F1CountdownWidget().updateAll(context)
-        F1StandingsWidget().updateAll(context)
-        F1ScheduleWidget().updateAll(context)
+        // 4. Re-render only placed F1 widgets
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.F1_COUNTDOWN))
+            F1CountdownWidget().updateAll(context)
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.F1_STANDINGS))
+            F1StandingsWidget().updateAll(context)
+        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.F1_SCHEDULE))
+            F1ScheduleWidget().updateAll(context)
     }
 }
