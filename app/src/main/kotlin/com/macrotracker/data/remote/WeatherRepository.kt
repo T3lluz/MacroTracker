@@ -9,6 +9,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.Instant
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,6 +24,9 @@ data class HourlyForecast(
     val iconRes: Int,
     val windSpeed: Double,
     val description: String,
+    val symbolCode: String,
+    val dateStr: String? = null, // ISO date "yyyy-MM-dd"
+    val precipitation: Double? = null, // mm for next_1_hours
 )
 
 data class DailyForecast(
@@ -30,6 +36,7 @@ data class DailyForecast(
     val maxTemp: Double,
     val iconRes: Int,
     val description: String,
+    val symbolCode: String,
 )
 
 data class WeatherInfo(
@@ -56,7 +63,37 @@ class WeatherRepository @Inject constructor(
         private const val BASE_URL =
             "https://api.met.no/weatherapi/locationforecast/2.0/compact"
         private const val USER_AGENT = "DailyDash/1.0 (Android; daily-dash-app)"
-        private const val CACHE_TTL_MS = 30 * 60 * 1000L // 30 minutes
+        private const val CACHE_TTL_MS = 15 * 60 * 1000L // 15 minutes
+
+        fun mapSymbolCode(code: String): Pair<String, Int> {
+            // Yr.no symbol codes: https://api.met.no/weatherapi/weathericon/2.0/documentation
+            // Strip _day/_night/_polartwilight suffix for matching
+            val base = code.replace("_day", "").replace("_night", "").replace("_polartwilight", "")
+            return when {
+                base == "clearsky" -> "Clear Sky" to R.drawable.ic_weather_sun
+                base == "fair" -> "Fair" to R.drawable.ic_weather_cloud_sun
+                base.startsWith("partlycloudy") -> "Partly Cloudy" to R.drawable.ic_weather_cloud_sun
+                base == "cloudy" -> "Cloudy" to R.drawable.ic_weather_cloud
+                base == "fog" -> "Fog" to R.drawable.ic_weather_fog
+                base.contains("thunder") && base.contains("rain") -> "Thunderstorm" to R.drawable.ic_weather_storm
+                base.contains("thunder") -> "Thunder" to R.drawable.ic_weather_lightning
+                base.contains("heavyrain") -> "Heavy Rain" to R.drawable.ic_weather_rain
+                base.contains("rain") -> "Rain" to R.drawable.ic_weather_rain
+                base.contains("sleet") -> "Sleet" to R.drawable.ic_weather_snow
+                base.contains("snow") -> "Snow" to R.drawable.ic_weather_snow
+                else -> {
+                    val fallbackName = code.replace("_", " ").replaceFirstChar { it.uppercase() }
+                    val fallbackIcon = when {
+                        base.contains("cloud") -> R.drawable.ic_weather_cloud
+                        base.contains("rain") -> R.drawable.ic_weather_rain
+                        base.contains("snow") || base.contains("sleet") -> R.drawable.ic_weather_snow
+                        base.contains("sun") || base.contains("clear") -> R.drawable.ic_weather_sun
+                        else -> R.drawable.ic_weather_cloud // Better neutral fallback than sun
+                    }
+                    fallbackName to fallbackIcon
+                }
+            }
+        }
     }
 
     // In-memory cache — keyed by rounded lat/lon so nearby locations reuse the same result
@@ -102,6 +139,13 @@ class WeatherRepository @Inject constructor(
         result
     }
 
+    /** Forcing a refresh by clearing the cache for the current location. */
+    fun clearCache() {
+        cachedWeather = null
+        cachedLat = Double.NaN
+        cachedLon = Double.NaN
+    }
+
     private fun parseWeatherResponse(json: String, locationName: String, lat: Double, lon: Double): WeatherInfo {
         val root = JSONObject(json)
         val timeseries = root
@@ -110,7 +154,18 @@ class WeatherRepository @Inject constructor(
 
         if (timeseries.length() == 0) throw Exception("No weather data available")
 
-        val first = timeseries.getJSONObject(0)
+        // Find the most relevant current entry (not too far in the past)
+        var first = timeseries.getJSONObject(0)
+        val now = Instant.now()
+        for (i in 0 until timeseries.length()) {
+            val entry = timeseries.getJSONObject(i)
+            val time = entry.getString("time")
+            if (Instant.parse(time).plusSeconds(3600).isAfter(now)) {
+                first = entry
+                break
+            }
+        }
+
         val data = first.getJSONObject("data")
         val instant = data.getJSONObject("instant").getJSONObject("details")
 
@@ -135,13 +190,23 @@ class WeatherRepository @Inject constructor(
 
         val (description, iconRes) = mapSymbolCode(symbolCode)
 
-        // Parse hourly forecasts (next 24 entries)
+        // Parse hourly forecasts (next 72 entries)
         val hourlyForecasts = mutableListOf<HourlyForecast>()
-        val hourlyCount = minOf(timeseries.length(), 24)
-        for (i in 0 until hourlyCount) {
+        val nowInstant = Instant.now()
+        for (i in 0 until timeseries.length()) {
+            if (hourlyForecasts.size >= 72) break
             try {
                 val entry = timeseries.getJSONObject(i)
                 val time = entry.getString("time") // ISO 8601
+                
+                // Parse ISO 8601 time string
+                val zdt = ZonedDateTime.parse(time)
+                
+                // Skip entries that are more than 45 minutes in the past
+                if (zdt.toInstant().isBefore(nowInstant.minusSeconds(45 * 60))) {
+                    continue
+                }
+
                 val entryData = entry.getJSONObject("data")
                 val entryInstant = entryData.getJSONObject("instant").getJSONObject("details")
                 val temp = entryInstant.getDouble("air_temperature")
@@ -158,9 +223,20 @@ class WeatherRepository @Inject constructor(
                     else -> symbolCode
                 }
                 val (entryDesc, entryIconRes) = mapSymbolCode(entrySymbol)
-                // Extract hour from ISO time (e.g. "2026-03-06T14:00:00Z" -> "14:00")
-                val hour = time.substringAfter("T").take(5)
-                hourlyForecasts.add(HourlyForecast(hour, temp, entryIconRes, wind, entryDesc))
+                
+                // Precipitation for the next 1 hour
+                val entryPrecip = if (entryData.has("next_1_hours")) {
+                    entryData.getJSONObject("next_1_hours")
+                        .getJSONObject("details")
+                        .optDouble("precipitation_amount", 0.0)
+                } else null
+
+                // Convert to local timezone for display
+                val localZdt = zdt.withZoneSameInstant(ZoneId.systemDefault())
+                val hour = localZdt.format(DateTimeFormatter.ofPattern("h a", Locale.US))
+                val dateStr = localZdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+                hourlyForecasts.add(HourlyForecast(hour, temp, entryIconRes, wind, entryDesc, entrySymbol, dateStr, entryPrecip))
             } catch (e: Exception) {
                 Log.w(TAG, "Skipping hourly entry $i: ${e.message}")
             }
@@ -207,7 +283,7 @@ class WeatherRepository @Inject constructor(
                     .dayOfWeek
                     .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault())
             } catch (_: Exception) { dateStr }
-            DailyForecast(dayName, dateStr, temps.min(), temps.max(), dayIconRes, dayDesc)
+            DailyForecast(dayName, dateStr, temps.min(), temps.max(), dayIconRes, dayDesc, sym)
         }
 
         val (sunrise, sunset) = SunCalculator.calculate(lat, lon, LocalDate.now(), ZoneId.systemDefault()) ?: (null to null)
@@ -228,28 +304,5 @@ class WeatherRepository @Inject constructor(
         )
     }
 
-    private fun mapSymbolCode(code: String): Pair<String, Int> {
-        // Yr.no symbol codes: https://api.met.no/weatherapi/weathericon/2.0/documentation
-        // Strip _day/_night/_polartwilight suffix for matching
-        val base = code.replace("_day", "").replace("_night", "").replace("_polartwilight", "")
-        return when {
-            base == "clearsky" -> "Clear Sky" to R.drawable.ic_weather_sun
-            base == "fair" -> "Fair" to R.drawable.ic_weather_cloud_sun
-            base.startsWith("partlycloudy") -> "Partly Cloudy" to R.drawable.ic_weather_cloud_sun
-            base == "cloudy" -> "Cloudy" to R.drawable.ic_weather_cloud
-            base == "fog" -> "Fog" to R.drawable.ic_weather_fog
-            base.contains("thunder") && base.contains("rain") -> "Thunderstorm" to R.drawable.ic_weather_storm
-            base.contains("thunder") -> "Thunder" to R.drawable.ic_weather_lightning
-            base == "lightrain" || base == "lightrainshowers" -> "Light Rain" to R.drawable.ic_weather_rain
-            base == "rain" || base == "rainshowers" -> "Rain" to R.drawable.ic_weather_rain
-            base == "heavyrain" || base == "heavyrainshowers" -> "Heavy Rain" to R.drawable.ic_weather_rain
-            base.contains("sleet") -> "Sleet" to R.drawable.ic_weather_snow
-            base == "lightsnow" || base == "lightsnowshowers" -> "Light Snow" to R.drawable.ic_weather_snow
-            base == "snow" || base == "snowshowers" -> "Snow" to R.drawable.ic_weather_snow
-            base == "heavysnow" || base == "heavysnowshowers" -> "Heavy Snow" to R.drawable.ic_weather_snow
-            base.contains("rain") -> "Rain" to R.drawable.ic_weather_rain
-            base.contains("snow") -> "Snow" to R.drawable.ic_weather_snow
-            else -> code.replace("_", " ").replaceFirstChar { it.uppercase() } to R.drawable.ic_weather_sun
-        }
-    }
+    private fun mapSymbolCode(code: String): Pair<String, Int> = WeatherRepository.mapSymbolCode(code)
 }

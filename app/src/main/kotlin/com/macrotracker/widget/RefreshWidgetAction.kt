@@ -5,7 +5,6 @@ import android.widget.Toast
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,22 +24,7 @@ class RefreshWidgetAction : ActionCallback {
             Toast.makeText(context, "Refreshing widgets...", Toast.LENGTH_SHORT).show()
         }
 
-        // 2. Invalidate in-memory cache
-        DashboardWidgetDataProvider.invalidate()
-
-        // 3. Re-render only placed dashboard widgets immediately
-        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.DASHBOARD))
-            DashboardWidget().updateAll(context)
-        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.MACROS))
-            MacrosWidget().updateAll(context)
-        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.HEALTH))
-            HealthWidget().updateAll(context)
-        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.WEATHER))
-            WeatherWidget().updateAll(context)
-        if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.CALENDAR))
-            CalendarWidget().updateAll(context)
-
-        // 4. Enqueue background worker to fetch fresh AI insights + APIs, then re-render
-        WidgetRefreshWorker.enqueueImmediateRefresh(context)
+        // 2. Full update: invalidate, re-render, and enqueue worker
+        WidgetUpdater.updateAllWidgets(context)
     }
 }

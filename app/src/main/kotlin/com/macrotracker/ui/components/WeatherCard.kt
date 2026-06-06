@@ -8,6 +8,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,9 +23,9 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.LocationOff
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.theme.Border
@@ -424,15 +426,12 @@ fun WeatherCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                // Replaced raw text emoji with vector drawable
-                                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        painter = painterResource(weather.iconRes),
-                                        contentDescription = null,
-                                        modifier = Modifier.requiredSize(64.dp),
-                                        tint = Color.Unspecified
-                                    )
-                                }
+                                Icon(
+                                    painter = painterResource(weather.iconRes),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(82.dp),
+                                    tint = Color.Unspecified
+                                )
                                 Spacer(Modifier.width(16.dp))
                                 Column {
                                     Text("${weather.temperature.toInt()}°C", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -440,7 +439,12 @@ fun WeatherCard(
                                 }
                                 Spacer(modifier = Modifier.weight(1f))
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Outlined.Air, contentDescription = "Wind", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                                    Icon(
+                                        painter = painterResource(com.macrotracker.R.drawable.ic_weather_wind),
+                                        contentDescription = "Wind",
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text("${weather.windSpeed.toInt()} m/s", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
                                 }
@@ -553,14 +557,12 @@ fun WeatherCard(
                                                 ) {
                                                     Text(hourly.time, fontSize = 11.sp, color = Color.White.copy(alpha = 0.65f))
                                                     Spacer(Modifier.height(4.dp))
-                                                    Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                                                        Icon(
-                                                            painter = painterResource(hourly.iconRes),
-                                                            contentDescription = null,
-                                                            modifier = Modifier.requiredSize(32.dp),
-                                                            tint = Color.Unspecified
-                                                        )
-                                                    }
+                                                    Icon(
+                                                        painter = painterResource(hourly.iconRes),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(32.dp),
+                                                        tint = Color.Unspecified
+                                                    )
                                                     Spacer(Modifier.height(4.dp))
                                                     Text("${hourly.temperature.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                                 }
@@ -584,14 +586,12 @@ fun WeatherCard(
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Text(daily.date, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.White, modifier = Modifier.width(44.dp))
-                                                Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        painter = painterResource(daily.iconRes),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.requiredSize(32.dp),
-                                                        tint = Color.Unspecified
-                                                    )
-                                                }
+                                                Icon(
+                                                    painter = painterResource(daily.iconRes),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(32.dp),
+                                                    tint = Color.Unspecified
+                                                )
                                                 Text(daily.description, fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
                                                 Row {
                                                     Text("${daily.minTemp.toInt()}°", fontSize = 14.sp, color = Color.White.copy(alpha = 0.5f))

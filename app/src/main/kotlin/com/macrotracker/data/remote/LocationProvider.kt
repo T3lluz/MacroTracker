@@ -99,13 +99,16 @@ class LocationProvider @Inject constructor(
             val addresses = geocoder.getFromLocation(lat, lon, 1)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
-                // Build a precise, human-readable name: neighbourhood/suburb + city, or city + region
+                // Build a precise, human-readable name: street + neighbourhood/city
+                val street = addr.thoroughfare ?: addr.subThoroughfare
                 val neighbourhood = addr.subLocality
                 val city = addr.locality ?: addr.subAdminArea
                 val region = addr.adminArea
                 val country = addr.countryCode
 
                 when {
+                    street != null && neighbourhood != null -> "$street, $neighbourhood"
+                    street != null && city != null -> "$street, $city"
                     neighbourhood != null && city != null -> "$neighbourhood, $city"
                     city != null && region != null && city != region -> "$city, $region"
                     city != null && country != null -> "$city, $country"

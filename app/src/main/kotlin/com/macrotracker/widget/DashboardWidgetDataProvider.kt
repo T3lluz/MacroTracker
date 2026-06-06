@@ -16,6 +16,7 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.room.Room
+import com.macrotracker.data.remote.WeatherRepository
 import com.macrotracker.BuildConfig
 import com.macrotracker.data.local.GoalsEntity
 import com.macrotracker.data.local.MacroDatabase
@@ -62,6 +63,7 @@ object DashboardWidgetDataProvider {
     private const val AI_WEATHER_TS_KEY = "ai_insight_weather_ts"
     private const val AI_CALENDAR_KEY = "ai_insight_calendar"
     private const val AI_CALENDAR_TS_KEY = "ai_insight_calendar_ts"
+    private const val LAST_UPDATED_KEY = "last_updated_at"
     private const val AI_INSIGHT_TTL = 60 * 60 * 1000L // 1 hour
 
     /** In-memory cache — avoids redundant local reads across multiple widget renders. */
@@ -84,9 +86,14 @@ object DashboardWidgetDataProvider {
     }
 
     /** Invalidate in-memory cache so the next [loadData] re-reads local sources. */
-    fun invalidate() {
+    fun invalidate(context: Context) {
         cached = null
         cachedAt = 0L
+        try {
+            context.widgetEntryPoint().weatherRepository().clearCache()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear weather repository cache: ${e.message}")
+        }
     }
 
     /**
@@ -95,7 +102,7 @@ object DashboardWidgetDataProvider {
      * This is a suspend function that loads local data and caches it.
      */
     suspend fun preWarm(context: Context) {
-        invalidate()
+        invalidate(context)
         loadData(context)
     }
 
@@ -113,13 +120,15 @@ object DashboardWidgetDataProvider {
 
         // Read cached AI insights from SharedPrefs (no network)
         val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+        val lastUpdated = prefs.getLong(LAST_UPDATED_KEY, 0L)
+        
         val result = merged.copy(
             aiInsight = prefs.getString(AI_INSIGHT_KEY, null),
             aiInsightNutrition = prefs.getString(AI_NUTRITION_KEY, null),
             aiInsightHealth = prefs.getString(AI_HEALTH_KEY, null),
             aiInsightWeather = prefs.getString(AI_WEATHER_KEY, null),
             aiInsightCalendar = prefs.getString(AI_CALENDAR_KEY, null),
-            lastUpdatedAt = now,
+            lastUpdatedAt = if (lastUpdated > 0L) lastUpdated else now,
         )
         cache(result)
         return result
@@ -131,7 +140,7 @@ object DashboardWidgetDataProvider {
      * Updates both memory and disk caches.
      */
     suspend fun refreshNow(context: Context): DashboardWidgetData {
-        fetchLiveWeather(context)
+        fetchLiveWeather(context, force = true)
         val merged = loadLocalData(context)
 
         // Fetch all AI insights in parallel (each has its own TTL check)
@@ -154,19 +163,23 @@ object DashboardWidgetDataProvider {
             listOf(insight.await(), nutrition.await(), health.await(), weather.await(), calendar.await())
         }
 
+        val now = System.currentTimeMillis()
+        context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+            .edit().putLong(LAST_UPDATED_KEY, now).apply()
+
         val result = merged.copy(
             aiInsight = results[0],
             aiInsightNutrition = results[1],
             aiInsightHealth = results[2],
             aiInsightWeather = results[3],
             aiInsightCalendar = results[4],
-            lastUpdatedAt = System.currentTimeMillis(),
+            lastUpdatedAt = now,
         )
         cache(result)
         return result
     }
 
-    private suspend fun fetchLiveWeather(context: Context) {
+    private suspend fun fetchLiveWeather(context: Context, force: Boolean = false) {
         try {
             val hiltEntryPoint = context.widgetEntryPoint()
             val settings = hiltEntryPoint.settingsRepository()
@@ -181,6 +194,7 @@ object DashboardWidgetDataProvider {
             
             val locationProvider = hiltEntryPoint.locationProvider()
             val weatherRepository = hiltEntryPoint.weatherRepository()
+            if (force) weatherRepository.clearCache()
             
             val location = locationProvider.getLocation() ?: return
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
@@ -189,33 +203,26 @@ object DashboardWidgetDataProvider {
             val prefs = context.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
             
-            val hourlyStr = weather.hourlyForecasts.take(24).joinToString("|") { h ->
-                val displayHour = try {
-                    val parts = h.time.split(":")
-                    val hr = parts[0].toInt()
-                    when {
-                        hr == 0  -> "12 AM"
-                        hr < 12  -> "$hr AM"
-                        hr == 12 -> "12 PM"
-                        else     -> "${hr - 12} PM"
-                    }
-                } catch (_: Exception) { h.time }
+            val hourlyStr = weather.hourlyForecasts.take(72).joinToString("|") { h ->
+                val displayHour = h.time
                 val temp = h.temperature.toInt().toString()
-                val wind = "${h.windSpeed.toInt()} km/h"
+                val wind = "${h.windSpeed.toInt()} m/s"
                 val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
-                "$displayHour|${h.iconRes}|$temp|0|$wind|$desc"
+                val dateStr = h.dateStr ?: ""
+                val precip = if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else ""
+                "$displayHour|${h.symbolCode}|$temp|0|$wind|$desc|$dateStr|$precip"
             }
             
             prefs.edit().apply {
                 putString("temp", weather.temperature.toInt().toString())
-                putString("icon", weather.iconRes.toString())
+                putString("symbol_code", weather.symbolCode)
                 putString("description", weather.description)
                 putString("location", weather.locationName)
                 putString("high", todayForecast?.maxTemp?.toInt()?.toString())
                 putString("low", todayForecast?.minTemp?.toInt()?.toString())
                 putString("feels_like", (weather.feelsLike ?: weather.temperature).toInt().toString())
                 putString("humidity", weather.humidity?.toInt()?.toString())
-                putString("wind_speed", weather.windSpeed.toInt().toString())
+                putString("wind_speed", weather.windSpeed.toInt().toString()) // Storing raw number, but formatted string below uses "m/s"
                 putString("sunrise", weather.sunrise)
                 putString("sunset", weather.sunset)
                 putString("hourly_forecast", hourlyStr.ifEmpty { null })
@@ -377,7 +384,8 @@ object DashboardWidgetDataProvider {
         return try {
             val prefs = context.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val temp = prefs.getString("temp", null)
-            val icon = prefs.getString("icon", null)
+            val symbolCode = prefs.getString("symbol_code", "clearsky") ?: "clearsky"
+            val iconRes = WeatherRepository.mapSymbolCode(symbolCode).second
             val desc = prefs.getString("description", null)
             val location = prefs.getString("location", null)
             val high = prefs.getString("high", null)
@@ -389,19 +397,25 @@ object DashboardWidgetDataProvider {
             val sunset = prefs.getString("sunset", null)
 
             // Hourly forecast: stored as pipe-separated segments
-            // Format: "3 PM|213000|18|20|12 km/h|Short desc"
+            // Format: "3 PM|clearsky|18|0|12 m/s|Short desc|2024-06-12|0.5mm"
             val hourlyRaw = prefs.getString("hourly_forecast", null)
             val hourlyForecast: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
-                hourlyRaw.split("|").chunked(6).mapNotNull { seg ->
+                hourlyRaw.split("|").chunked(8).mapNotNull { seg ->
                     if (seg.size < 3) null
-                    else HourlyForecast(
-                        hour = seg[0],
-                        iconRes = seg[1].toIntOrNull() ?: com.macrotracker.R.drawable.ic_weather_sun,
-                        temp = seg[2],
-                        pop  = seg.getOrNull(3)?.toIntOrNull(),
-                        windSpeed = seg.getOrNull(4)?.takeIf { it.isNotBlank() },
-                        description = seg.getOrNull(5)?.takeIf { it.isNotBlank() },
-                    )
+                    else {
+                        val sym = seg[1]
+                        val res = WeatherRepository.mapSymbolCode(sym).second
+                        HourlyForecast(
+                            hour = seg[0],
+                            iconRes = res,
+                            temp = seg[2],
+                            pop  = seg.getOrNull(3)?.toIntOrNull(),
+                            windSpeed = seg.getOrNull(4)?.takeIf { it.isNotBlank() },
+                            description = seg.getOrNull(5)?.takeIf { it.isNotBlank() },
+                            dayName = seg.getOrNull(6)?.takeIf { it.isNotBlank() },
+                            precipitation = seg.getOrNull(7)?.takeIf { it.isNotBlank() },
+                        )
+                    }
                 }
             } else emptyList()
 
@@ -411,7 +425,7 @@ object DashboardWidgetDataProvider {
             DashboardWidgetData(
                 weatherTemp = temp,
                 weatherDesc = desc,
-                weatherIconRes = icon?.toIntOrNull() ?: com.macrotracker.R.drawable.ic_weather_sun,
+                weatherIconRes = iconRes,
                 dailyMinMax = minMax,
                 weatherHigh = high,
                 weatherLow = low,

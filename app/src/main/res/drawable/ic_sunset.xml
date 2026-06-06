@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Sunset: Sun is lower, partially below the horizon -->
+    <path
+        android:pathData="M12,22m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0"
+        android:fillColor="#E64A19" />
+
+    <!-- Horizon line (higher up to submerge sun) -->
+    <path
+        android:pathData="M2,20h20"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+
+    <!-- Downward arrows/rays to signify setting -->
+    <path
+        android:pathData="M12,8l0,4 M12,12l-2,-2 M12,12l2,-2"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFAB91"
+        android:strokeLineCap="round" />
+</vector>
