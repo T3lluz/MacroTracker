@@ -46,7 +46,7 @@ class F1ApiServiceImpl @Inject constructor(
         val familyNameLower = familyName.lowercase()
         when {
             familyNameLower.contains("antonelli") ->
-                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ANDANT01_Andrea_Kimi_Antonelli/andant01.png.transform/1col/image.png"
+                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/K/KIMANT01_Kimi_Antonelli/kimant01.png.transform/1col/image.png"
             familyNameLower.contains("lindblad") ->
                 return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png"
             familyNameLower.contains("bortoleto") ->
@@ -266,9 +266,13 @@ class F1ApiServiceImpl @Inject constructor(
                     sprintDate = race["Sprint"]?.jsonObject?.get("date")?.jsonPrimitive?.content,
                     sprintTime = race["Sprint"]?.jsonObject?.get("time")?.jsonPrimitive?.content,
                     fp1Date = race["FirstPractice"]?.jsonObject?.get("date")?.jsonPrimitive?.content,
+                    fp1Time = race["FirstPractice"]?.jsonObject?.get("time")?.jsonPrimitive?.content,
                     fp2Date = race["SecondPractice"]?.jsonObject?.get("date")?.jsonPrimitive?.content,
+                    fp2Time = race["SecondPractice"]?.jsonObject?.get("time")?.jsonPrimitive?.content,
                     fp3Date = race["ThirdPractice"]?.jsonObject?.get("date")?.jsonPrimitive?.content,
+                    fp3Time = race["ThirdPractice"]?.jsonObject?.get("time")?.jsonPrimitive?.content,
                     countryCode = countryToFlag(country),
+                    flagUrl = getFlagUrl(country),
                     circuitId = circuitId,
                     laps = meta.laps,
                     lapRecord = meta.lapRecord,
@@ -323,7 +327,7 @@ class F1ApiServiceImpl @Inject constructor(
             "monaco" -> "🇲🇨"
             "spain" -> "🇪🇸"
             "austria" -> "🇦🇹"
-            "uk", "united kingdom" -> "🇬🇧"
+            "uk", "united kingdom", "great britain" -> "🇬🇧"
             "belgium" -> "🇧🇪"
             "hungary" -> "🇭🇺"
             "netherlands" -> "🇳🇱"
@@ -336,6 +340,39 @@ class F1ApiServiceImpl @Inject constructor(
             "uae", "abu dhabi" -> "🇦🇪"
             "las vegas" -> "🇺🇸"
             else -> "🏁"
+        }
+    }
+
+    private fun getFlagUrl(country: String): String {
+        val iso = countryToIso(country)
+        if (iso.isEmpty()) return "https://media.formula1.com/content/dam/fom-website/manual/f1-logo.png"
+        return "https://flagcdn.com/w320/$iso.png"
+    }
+
+    private fun countryToIso(country: String): String {
+        return when (country.lowercase().trim()) {
+            "australia" -> "au"
+            "china" -> "cn"
+            "japan" -> "jp"
+            "bahrain" -> "bh"
+            "saudi arabia" -> "sa"
+            "usa", "united states", "las vegas", "united states of america" -> "us"
+            "canada" -> "ca"
+            "monaco" -> "mc"
+            "spain" -> "es"
+            "austria" -> "at"
+            "uk", "united kingdom", "great britain" -> "gb"
+            "belgium" -> "be"
+            "hungary" -> "hu"
+            "netherlands" -> "nl"
+            "italy" -> "it"
+            "azerbaijan" -> "az"
+            "singapore" -> "sg"
+            "mexico" -> "mx"
+            "brazil" -> "br"
+            "qatar" -> "qa"
+            "uae", "abu dhabi", "united arab emirates" -> "ae"
+            else -> ""
         }
     }
 

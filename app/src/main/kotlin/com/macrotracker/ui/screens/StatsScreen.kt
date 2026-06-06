@@ -60,6 +60,7 @@ fun StatsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
             .padding(top = 24.dp, bottom = 120.dp),

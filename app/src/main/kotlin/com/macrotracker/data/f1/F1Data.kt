@@ -114,9 +114,13 @@ data class RaceScheduleEntry(
     val sprintDate: String? = null,
     val sprintTime: String? = null,
     val fp1Date: String? = null,
+    val fp1Time: String? = null,
     val fp2Date: String? = null,
+    val fp2Time: String? = null,
     val fp3Date: String? = null,
+    val fp3Time: String? = null,
     val countryCode: String? = null,  // for flag emoji
+    val flagUrl: String? = null,       // for flag PNG
     val circuitId: String? = null,    // for track visualization
     val laps: Int? = null,
     val lapRecord: String? = null,

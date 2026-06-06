@@ -1,10 +1,18 @@
 package com.macrotracker.widget
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.util.Log
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.macrotracker.data.f1.F1Standings
 import com.macrotracker.data.f1.RaceScheduleEntry
 import com.macrotracker.data.f1.f1Repository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -28,6 +36,8 @@ data class F1WidgetData(
     val nextRaceFlag: String? = null,
     val nextRaceDate: String? = null,
     val nextRaceTime: String? = null,
+    val flagUrl: String? = null,
+    val flagBitmap: Bitmap? = null,
     val daysUntil: Long = -1,
     val hoursUntil: Long = -1,
     val minutesUntil: Long = -1,
@@ -106,9 +116,16 @@ data class ScheduleRow(
     val country: String,
     val raceDate: String,
     val raceTime: String? = null,
+    val flagUrl: String? = null,
+    val flagBitmap: Bitmap? = null,
     val isPast: Boolean,
     val isNext: Boolean,
     val hasSprint: Boolean,
+    val fp1Time: String? = null,
+    val fp2Time: String? = null,
+    val fp3Time: String? = null,
+    val qualiTime: String? = null,
+    val sprintTime: String? = null,
 )
 
 /** Compact result row for the last race podium display. */
@@ -166,27 +183,31 @@ object F1WidgetDataProvider {
      */
     suspend fun loadData(context: Context): F1WidgetData {
         val now = System.currentTimeMillis()
-        // 1. Memory cache
-        cached?.takeIf { it.hasData && now - cachedAt < MEMORY_TTL }?.let { return it }
+        // 1. Memory cache (must have data AND we check if it needs bitmap enrichment)
+        cached?.takeIf { it.hasData && now - cachedAt < MEMORY_TTL }?.let {
+            if (it.flagUrl != null && it.flagBitmap == null) {
+                // Bitmaps missing (e.g. after refreshNow), enrich and update cache
+                val enriched = enrichWithBitmaps(context, it)
+                cache(enriched)
+                return enriched
+            }
+            return it
+        }
 
         val repo = context.f1Repository()
 
         // 2. Repo / disk cache
         val repoCache = repo.getCachedF1Data()
         if (repoCache != null) {
-            val data = buildWidgetData(repoCache, repo.lastFetchTimeMs)
+            var data = buildWidgetData(repoCache, repo.lastFetchTimeMs)
             if (data.hasData) {
+                data = enrichWithBitmaps(context, data)
                 cache(data)
                 if (data.isStale) {
-                    // Enqueue a background refresh — but return stale data immediately
                     WidgetRefreshWorker.enqueueImmediateF1Refresh(context)
                 }
                 return data
             }
-            // repoCache is non-null but empty — this happens when a previous forced refresh
-            // wrote an all-empty F1Standings because every API endpoint failed. Do NOT return
-            // here; fall through to the inline fetch so the widget can self-heal immediately
-            // instead of staying stuck until the next periodic 15-min worker fires.
             Log.d(TAG, "Repo cache exists but has no data — falling through to inline fetch")
         }
 
@@ -201,13 +222,12 @@ object F1WidgetDataProvider {
             null
         }
         if (inlineFetch != null) {
-            val data = buildWidgetData(inlineFetch, repo.lastFetchTimeMs)
+            var data = buildWidgetData(inlineFetch, repo.lastFetchTimeMs)
             if (data.hasData) {
+                data = enrichWithBitmaps(context, data)
                 cache(data)
                 return data
             }
-            // Inline fetch returned an empty result (all APIs still failing) — fall through
-            // to step 4 so the background worker is enqueued for when network recovers.
             Log.w(TAG, "Inline F1 fetch returned empty data — enqueueing background retry")
         }
 
@@ -222,12 +242,67 @@ object F1WidgetDataProvider {
         )
     }
 
+    private suspend fun enrichWithBitmaps(context: Context, data: F1WidgetData): F1WidgetData = coroutineScope {
+        // Fetch hero flag and ALL flags in the schedule (so "full calendar" is covered)
+        val nextFlagDeferred = async {
+            if (data.flagUrl != null && data.flagBitmap == null) {
+                Log.d(TAG, "Fetching next race flag bitmap from: ${data.flagUrl}")
+                fetchBitmap(context, data.flagUrl)
+            }
+            else data.flagBitmap
+        }
+        val scheduleDeferred = data.schedule.map { race ->
+            async {
+                if (race.flagUrl != null && race.flagBitmap == null) {
+                    Log.d(TAG, "Fetching race R${race.round} flag bitmap from: ${race.flagUrl}")
+                    race.copy(flagBitmap = fetchBitmap(context, race.flagUrl))
+                } else {
+                    if (race.flagUrl == null) Log.w(TAG, "Race R${race.round} has NULL flagUrl")
+                    race
+                }
+            }
+        }
+        data.copy(
+            flagBitmap = nextFlagDeferred.await(),
+            schedule = scheduleDeferred.map { it.await() }
+        )
+    }
+
+    private suspend fun fetchBitmap(context: Context, url: String): Bitmap? = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "fetchBitmap starting for: $url")
+            val loader = context.imageLoader
+            val request = ImageRequest.Builder(context)
+                .data(url)
+                .allowHardware(false) // Hardware bitmaps don't work well with RemoteViews
+                .size(240, 160) // Increased size for better quality on dense displays
+                .build()
+            val result = loader.execute(request)
+            val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+            if (bitmap != null) {
+                Log.d(TAG, "fetchBitmap SUCCESS for: $url (${bitmap.width}x${bitmap.height})")
+            } else {
+                Log.w(TAG, "fetchBitmap returned NULL drawable/bitmap for: $url")
+            }
+            bitmap
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching bitmap from $url: ${e.message}", e)
+            null
+        }
+    }
+
     suspend fun refreshNow(context: Context, force: Boolean = true): Boolean {
         val repo = context.f1Repository()
         val before = repo.lastFetchTimeMs
         val result = repo.getOverallF1Data(forceRefresh = force)
         val after = repo.lastFetchTimeMs
-        result.getOrNull()?.let { buildWidgetData(it, after).also(::cache) }
+        result.getOrNull()?.let {
+            var data = buildWidgetData(it, after)
+            if (data.hasData) {
+                data = enrichWithBitmaps(context, data)
+                cache(data)
+            }
+        }
         return after > before
     }
 
@@ -388,9 +463,15 @@ object F1WidgetDataProvider {
                 country = entry.country,
                 raceDate = entry.raceDate,
                 raceTime = entry.raceTime,
+                flagUrl = entry.flagUrl,
                 isPast = rd?.isBefore(today) ?: false,
                 isNext = entry == nextEntry,
                 hasSprint = entry.sprintDate != null,
+                fp1Time = entry.fp1Time,
+                fp2Time = entry.fp2Time,
+                fp3Time = entry.fp3Time,
+                qualiTime = entry.qualifyingTime,
+                sprintTime = entry.sprintTime,
             )
         }
 
@@ -458,6 +539,7 @@ object F1WidgetDataProvider {
             nextRaceFlag = nextEntry?.countryCode ?: "🏁",
             nextRaceDate = nextEntry?.raceDate,
             nextRaceTime = nextEntry?.raceTime,
+            flagUrl = nextEntry?.flagUrl,
             daysUntil = daysUntil,
             hoursUntil = hoursUntil,
             minutesUntil = minutesUntil,
@@ -488,9 +570,9 @@ object F1WidgetDataProvider {
     }
 
     private fun buildSessions(entry: RaceScheduleEntry): List<Triple<String, String, String?>> = listOfNotNull(
-        entry.fp1Date?.let { Triple("FP1", it, null as String?) },
-        entry.fp2Date?.let { Triple("FP2", it, null) },
-        entry.fp3Date?.let { Triple("FP3", it, null) },
+        entry.fp1Date?.let { Triple("FP1", it, entry.fp1Time) },
+        entry.fp2Date?.let { Triple("FP2", it, entry.fp2Time) },
+        entry.fp3Date?.let { Triple("FP3", it, entry.fp3Time) },
         entry.sprintDate?.let { Triple("Sprint", it, entry.sprintTime) },
         entry.qualifyingDate?.let { Triple("Qualifying", it, entry.qualifyingTime) },
         Triple("Race", entry.raceDate, entry.raceTime),

@@ -200,7 +200,7 @@ fun HomeScreen(
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { onRefresh() },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().background(Background)
     ) {
         val visibleConfigs by remember(parsedConfigs) {
             derivedStateOf { parsedConfigs.filter { it.isVisible } }

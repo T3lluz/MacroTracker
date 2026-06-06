@@ -2,6 +2,7 @@ package com.macrotracker.ui.navigation
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -19,6 +20,7 @@ import com.macrotracker.ui.screens.WidgetsScreen
 import com.macrotracker.ui.screens.onboarding.PermissionsScreen
 import com.macrotracker.ui.screens.onboarding.TutorialScreen
 import com.macrotracker.ui.screens.onboarding.WelcomeScreen
+import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.MacroMotion
 
 @Composable
@@ -29,14 +31,34 @@ fun DailyDashNavHost(
     onboardingCompleted: Boolean = false,
     onOnboardingComplete: () -> Unit = {},
 ) {
+    val tabOrder = listOf(
+        Screen.Home.route,
+        Screen.Health.route,
+        Screen.AI.route,
+        Screen.History.route,
+        Screen.Settings.route
+    )
+
+    fun getTabDirection(initial: String?, target: String?): Boolean {
+        val initialIdx = tabOrder.indexOf(initial).takeIf { it != -1 } ?: 0
+        val targetIdx = tabOrder.indexOf(target).takeIf { it != -1 } ?: 0
+        return targetIdx > initialIdx
+    }
+
     NavHost(
         navController    = navController,
         startDestination = startDestination,
-        modifier         = modifier,
-        enterTransition  = { MacroMotion.contentEnter },
-        exitTransition   = { MacroMotion.contentExit },
-        popEnterTransition = { MacroMotion.contentEnter },
-        popExitTransition  = { MacroMotion.contentExit },
+        modifier         = modifier.background(Background),
+        enterTransition  = {
+            val toRight = getTabDirection(initialState.destination.route, targetState.destination.route)
+            MacroMotion.tabEnter(toRight)
+        },
+        exitTransition   = {
+            val toRight = getTabDirection(initialState.destination.route, targetState.destination.route)
+            MacroMotion.tabExit(toRight)
+        },
+        popEnterTransition = { MacroMotion.subScreenPopEnter },
+        popExitTransition  = { MacroMotion.subScreenPopExit },
     ) {
         // ── Onboarding flow ──────────────────────────────────────────────
         composable(

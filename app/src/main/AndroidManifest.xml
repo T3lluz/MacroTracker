@@ -42,6 +42,7 @@
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.DailyDash">
 
         <activity

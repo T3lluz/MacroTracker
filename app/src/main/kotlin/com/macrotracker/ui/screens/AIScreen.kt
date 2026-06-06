@@ -1,5 +1,6 @@
 package com.macrotracker.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -76,6 +77,7 @@ fun AIScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Background)
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
             .padding(bottom = 120.dp),

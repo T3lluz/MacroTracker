@@ -3,7 +3,9 @@ package com.macrotracker.ui.components
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -15,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -24,6 +27,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.navigation.Screen
+import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextSecondary
@@ -53,7 +57,6 @@ fun PillNavigationBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .padding(bottom = 12.dp, start = 20.dp, end = 20.dp)
             .height(84.dp),
         contentAlignment = Alignment.BottomCenter
@@ -64,8 +67,16 @@ fun PillNavigationBar(
                 .fillMaxWidth()
                 .height(56.dp)
                 .onSizeChanged { containerSize = it }
+                // Lighter background than the app surface + prominent shadow
+                .shadow(
+                    elevation = 16.dp, 
+                    shape = RoundedCornerShape(28.dp),
+                    ambientColor = Color.Black,
+                    spotColor = Color.Black.copy(alpha = 0.5f)
+                )
                 .clip(RoundedCornerShape(28.dp))
-                .background(Surface)
+                .background(Color(0xFF1B2436)) // Distinct slightly lighter dark blue
+                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(28.dp))
         )
 
         // 2. Floating Indicator (Pill) - Performance Optimized

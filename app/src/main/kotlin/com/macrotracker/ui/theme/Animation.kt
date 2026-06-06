@@ -68,28 +68,38 @@ object MacroMotion {
         shrinkVertically(tween(SLIDE_MS, easing = FastOutSlowInEasing)) +
             fadeOut(tween(FADE_OUT_MS))
 
-    // ── Sub-screen slide transitions (Stats, CameraScan, Help) ───────
-    // Clean horizontal slide with decelerate easing. The content rides
-    // in with the page — no extra element-level movement.
+    // ── Native-style slide transitions (Stats, CameraScan, Help) ───────
+    // 100% slide for the "active" screen, 30% parallax for the "background" screen.
     val subScreenEnter: EnterTransition =
-        fadeIn(tween(FADE_IN_MS)) + slideInHorizontally(
+        slideInHorizontally(
             animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
-        ) { it / 4 }
+        ) { it }
 
     val subScreenExit: ExitTransition =
-        fadeOut(tween(FADE_OUT_MS)) + slideOutHorizontally(
+        slideOutHorizontally(
             animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
-        ) { -it / 4 }
+        ) { -it / 3 }
 
     val subScreenPopEnter: EnterTransition =
-        fadeIn(tween(FADE_IN_MS)) + slideInHorizontally(
+        slideInHorizontally(
             animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
-        ) { -it / 4 }
+        ) { -it / 3 }
 
     val subScreenPopExit: ExitTransition =
-        fadeOut(tween(FADE_OUT_MS)) + slideOutHorizontally(
+        slideOutHorizontally(
             animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
-        ) { it / 4 }
+        ) { it }
+
+    // ── Directional tab transitions ──────────────────────────────────
+    fun tabEnter(toRight: Boolean): EnterTransition =
+        slideInHorizontally(
+            animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
+        ) { if (toRight) it else -it }
+
+    fun tabExit(toRight: Boolean): ExitTransition =
+        slideOutHorizontally(
+            animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
+        ) { if (toRight) -it / 3 else it / 3 }
 }
 
 
