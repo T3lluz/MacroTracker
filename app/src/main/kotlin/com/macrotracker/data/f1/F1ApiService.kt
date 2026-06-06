@@ -42,11 +42,29 @@ class F1ApiServiceImpl @Inject constructor(
      * imageId = first3(firstName) + first3(lastName) + "01" (all lowercase)
      */
     private fun buildHeadshotUrl(givenName: String, familyName: String): String {
+        // Known overrides for drivers where the standard formula fails or who are new
+        val familyNameLower = familyName.lowercase()
+        when {
+            familyNameLower.contains("antonelli") ->
+                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ANDANT01_Andrea_Kimi_Antonelli/andant01.png.transform/1col/image.png"
+            familyNameLower.contains("lindblad") ->
+                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png"
+            familyNameLower.contains("bortoleto") ->
+                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GABBOR01_Gabriel_Bortoleto/gabbor01.png.transform/1col/image.png"
+            familyNameLower.contains("bearman") ->
+                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/O/OLIBEA01_Oliver_Bearman/olibea01.png.transform/1col/image.png"
+        }
+
         val firstName = givenName.split(" ").first()
-        val imageId = (firstName.take(3) + familyName.take(3)).lowercase() + "01"
+        val imageId = (firstName.take(3) + familyName.replace(" ", "").take(3)).lowercase() + "01"
         val imageIdUpper = imageId.uppercase()
         val folderLetter = firstName.first().uppercaseChar()
-        return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/$folderLetter/${imageIdUpper}_${firstName}_${familyName}/${imageId}.png.transform/1col/image.png"
+
+        // Use full names with underscores for the directory name to handle multi-part names
+        val givenNamePath = givenName.replace(" ", "_")
+        val familyNamePath = familyName.replace(" ", "_")
+
+        return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/$folderLetter/${imageIdUpper}_${givenNamePath}_${familyNamePath}/${imageId}.png.transform/1col/image.png"
     }
 
     override suspend fun getSeasonDriverStandings(): List<SeasonDriverStanding> {

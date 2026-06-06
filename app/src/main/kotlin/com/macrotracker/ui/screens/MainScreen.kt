@@ -26,6 +26,10 @@ fun MainScreen(
 ) {
     val onboardingCompleted by onboardingViewModel.onboardingCompleted.collectAsState()
     val splashShown         by onboardingViewModel.splashShown.collectAsState()
+    
+    // We also need to check if the AI screen should be visible
+    val homeViewModel: com.macrotracker.ui.viewmodel.HomeViewModel = hiltViewModel()
+    val hasAiApiKey = homeViewModel.hasAiApiKey
 
     // NavHost starts directly at the right destination — the splash is
     // a separate overlay and never a nav destination.
@@ -34,9 +38,13 @@ fun MainScreen(
     }
 
     val navController = rememberNavController()
-    val items = listOf(
-        Screen.Home, Screen.Health, Screen.AI, Screen.History, Screen.Settings,
-    )
+    val items = remember(hasAiApiKey) {
+        if (hasAiApiKey) {
+            listOf(Screen.Home, Screen.Health, Screen.AI, Screen.History, Screen.Settings)
+        } else {
+            listOf(Screen.Home, Screen.Health, Screen.History, Screen.Settings)
+        }
+    }
 
     // Outer Box so the SplashOverlay can sit above the Scaffold at true
     // window size — completely outside inset/padding influence.

@@ -454,7 +454,8 @@ fun WeatherCard(
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     // AI Summary — first thing in expanded, right under current weather
-                                    if (successState.aiSummaryLoading || successState.aiSummary != null) {
+                                    val showAi = (successState.aiSummaryLoading || successState.aiSummary != null)
+                                    if (showAi) {
                                         Spacer(modifier = Modifier.height(12.dp))
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -618,7 +619,7 @@ fun WeatherCard(
                                     expanded = false,
                                     onToggle = { expanded = true; haptics.toggleOn(); onExpand() },
                                     accentColor = Color.White,
-                                    expandLabel = "Forecast & more",
+                                    expandLabel = if (successState.aiSummary == null && !successState.aiSummaryLoading) "Forecast" else "Forecast & AI",
                                 )
                             }
                         }

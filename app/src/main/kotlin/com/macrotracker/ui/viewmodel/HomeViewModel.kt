@@ -123,6 +123,8 @@ class HomeViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
+    val hasAiApiKey: Boolean get() = weatherAiRepository.hasApiKey
+
     private var f1DataJob: Job? = null
 
     val homeWidgetOrder: StateFlow<String> = settingsRepository.homeWidgetOrder

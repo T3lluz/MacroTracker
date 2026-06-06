@@ -2,7 +2,7 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html#sec::toml-dependencies-format
 
 [versions]
-agp = "8.10.1"
+agp = "8.13.2"
 kotlin = "2.2.10"
 compose-bom = "2024.12.01"
 activity-compose = "1.9.3"

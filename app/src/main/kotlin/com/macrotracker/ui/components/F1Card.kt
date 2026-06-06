@@ -155,21 +155,47 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
 @Composable
 private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: String, driverNumber: String?, teamColor: Color, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    
+    // Build a list of potential headshot URLs to try as fallbacks
+    val headshotUrls = remember(url, driverName) {
+        val list = mutableListOf<String>()
+        val nameLower = driverName.lowercase()
+        
+        // Manual overrides for drivers where the standard formula often fails
+        if (nameLower.contains("antonelli")) {
+            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/K/KIMANT01_Kimi_Antonelli/kimant01.png.transform/1col/image.png")
+            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ANDANT01_Andrea_Kimi_Antonelli/andant01.png.transform/1col/image.png")
+        } else if (nameLower.contains("lindblad")) {
+            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png")
+            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png")
+        } else if (nameLower.contains("bortoleto")) {
+            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GABBOR01_Gabriel_Bortoleto/gabbor01.png.transform/1col/image.png")
+        } else if (nameLower.contains("bearman")) {
+            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/O/OLIBEA01_Oliver_Bearman/olibea01.png.transform/1col/image.png")
+        }
+        
+        // Add the provided URL from the API as a primary or fallback
+        if (!url.isNullOrBlank()) {
+            list.add(url)
+        }
+        
+        list.distinct()
+    }
+
+    var urlIndex by remember(headshotUrls) { mutableStateOf(0) }
+    val activeUrl = headshotUrls.getOrNull(urlIndex)
+
     Box(modifier = modifier.clip(RoundedCornerShape(10.dp)).background(teamColor.copy(alpha = 0.08f))) {
-        if (url.isNullOrBlank()) {
-            Box(modifier = Modifier.fillMaxSize().background(teamColor.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(driverAcronym.take(3), color = teamColor, fontWeight = FontWeight.Black, fontSize = 11.sp, letterSpacing = 1.sp)
-                    if (driverNumber != null) Text("#$driverNumber", color = teamColor.copy(alpha = 0.55f), fontWeight = FontWeight.Bold, fontSize = 7.sp)
-                }
-            }
+        if (activeUrl == null) {
+            DriverPlaceholder(driverAcronym, driverNumber, teamColor)
         } else {
-            val request = remember(url) {
+            val request = remember(activeUrl) {
                 ImageRequest.Builder(context)
-                    .data(url)
+                    .data(activeUrl)
                     .crossfade(true)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .diskCachePolicy(CachePolicy.ENABLED)
+                    .setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .size(CoilSize.ORIGINAL)
                     .build()
             }
@@ -186,13 +212,18 @@ private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: Stri
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = teamColor.copy(alpha = 0.4f))
                     }
-                    is AsyncImagePainter.State.Error -> Box(
-                        modifier = Modifier.fillMaxSize().background(teamColor.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text(driverAcronym.take(3), color = teamColor, fontWeight = FontWeight.Black, fontSize = 11.sp, letterSpacing = 1.sp)
-                            if (driverNumber != null) Text("#$driverNumber", color = teamColor.copy(alpha = 0.55f), fontWeight = FontWeight.Bold, fontSize = 7.sp)
+                    is AsyncImagePainter.State.Error -> {
+                        // If one URL fails, try the next one in the list
+                        if (urlIndex < headshotUrls.size - 1) {
+                            LaunchedEffect(activeUrl) {
+                                urlIndex++
+                            }
+                            // Show loading while switching
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = teamColor.copy(alpha = 0.2f))
+                            }
+                        } else {
+                            DriverPlaceholder(driverAcronym, driverNumber, teamColor)
                         }
                     }
                     else -> SubcomposeAsyncImageContent()
@@ -204,6 +235,16 @@ private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: Stri
     }
 }
 
+@Composable
+private fun DriverPlaceholder(driverAcronym: String, driverNumber: String?, teamColor: Color) {
+    Box(modifier = Modifier.fillMaxSize().background(teamColor.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(driverAcronym.take(3), color = teamColor, fontWeight = FontWeight.Black, fontSize = 11.sp, letterSpacing = 1.sp)
+            if (driverNumber != null) Text("#$driverNumber", color = teamColor.copy(alpha = 0.55f), fontWeight = FontWeight.Bold, fontSize = 7.sp)
+        }
+    }
+}
+
 // ── Root card ─────────────────────────────────────────────────────────────────
 @Composable
 fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
@@ -211,6 +252,8 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
     var selectedTab by rememberSaveable { mutableStateOf(F1Tab.NEWS) }
     var expanded by rememberSaveable { mutableStateOf(false) }
 
+    // Logic to fix image loading and visibility
+    val successState = state as? F1UiState.Success
     MacroCard(
         borderColor = F1Red.copy(alpha = 0.22f),
     ) {
@@ -727,7 +770,13 @@ private fun TrackVisualization(circuitId: String, accentColor: Color, raceName: 
         Box(modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF080D14))) {
             if (svgUrl != null) {
                 val request = remember(svgUrl) {
-                    ImageRequest.Builder(context).data(svgUrl).crossfade(true).memoryCachePolicy(CachePolicy.ENABLED).diskCachePolicy(CachePolicy.ENABLED).build()
+                    ImageRequest.Builder(context)
+                        .data(svgUrl)
+                        .crossfade(true)
+                        .setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build()
                 }
                 SubcomposeAsyncImage(model = request, contentDescription = "$raceName circuit map", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
                     when (painter.state) {
@@ -800,8 +849,8 @@ private fun DrawScope.drawTrackPath(points: List<TrackPoint>, accentColor: Color
             path.lineTo(prev.x + (curr.x - prev.x) * partialFraction, prev.y + (curr.y - prev.y) * partialFraction)
         }
     }
-    drawPath(path, color = accentColor.copy(alpha = 0.12f), style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    drawPath(path, color = accentColor.copy(alpha = 0.8f), style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawPath(path, color = accentColor.copy(alpha = 0.25f), style = Stroke(width = 12f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawPath(path, color = accentColor, style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     if (progress > 0.05f) {
         val startPt = tp(points[0])
         drawCircle(color = Color.White.copy(alpha = 0.9f), radius = 5f, center = startPt)
