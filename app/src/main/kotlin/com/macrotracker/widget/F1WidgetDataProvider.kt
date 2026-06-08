@@ -381,9 +381,10 @@ object F1WidgetDataProvider {
                 .sortedByDescending { it.points }
                 .mapIndexed { i, c -> c.copy(position = i + 1) }
 
-        val upcoming = schedule.filter {
-            try { LocalDate.parse(it.raceDate, fmt) >= today } catch (_: Exception) { false }
-        }.sortedBy { it.raceDate }
+        val nowDt = LocalDateTime.now(zone)
+        val upcoming = schedule.filter { entry ->
+            isEntryUpcoming(entry, nowDt, today, zone, fmt)
+        }.sortedWith(compareBy<RaceScheduleEntry> { it.raceDate }.thenBy { it.raceTime ?: "23:59:59Z" })
 
         val nextEntry = upcoming.firstOrNull()
 
@@ -399,20 +400,12 @@ object F1WidgetDataProvider {
         if (nextEntry != null) {
             val raceDate = try { LocalDate.parse(nextEntry.raceDate, fmt) } catch (_: Exception) { null }
             if (raceDate != null) {
-                val sessions = buildSessions(nextEntry).sortedBy { it.second }
-                val nowDt = LocalDateTime.now(zone)
+                val sessions = buildSessions(nextEntry)
+                    .sortedWith(compareBy<Triple<String, String, String?>> { it.second }.thenBy { it.third ?: "23:59:59Z" })
 
                 // Find next upcoming session (future based on datetime if available, else date)
                 val nextSession = sessions.firstOrNull { (_, date, time) ->
-                    try {
-                        if (time != null) {
-                            val clean = time.trimEnd('Z')
-                            val dt = LocalDateTime.parse("${date}T$clean", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                            dt.atZone(ZoneId.of("UTC")).withZoneSameInstant(zone).toLocalDateTime().isAfter(nowDt)
-                        } else {
-                            LocalDate.parse(date, fmt) >= today
-                        }
-                    } catch (_: Exception) { false }
+                    isSessionUpcoming(date, time, nowDt, today, zone, fmt)
                 }
 
                 if (nextSession != null) {
@@ -455,6 +448,7 @@ object F1WidgetDataProvider {
 
         val scheduleRows = schedule.map { entry ->
             val rd = try { LocalDate.parse(entry.raceDate, fmt) } catch (_: Exception) { null }
+            val entryUpcoming = isEntryUpcoming(entry, nowDt, today, zone, fmt)
             ScheduleRow(
                 round = entry.round,
                 raceName = entry.raceName,
@@ -464,7 +458,7 @@ object F1WidgetDataProvider {
                 raceDate = entry.raceDate,
                 raceTime = entry.raceTime,
                 flagUrl = entry.flagUrl,
-                isPast = rd?.isBefore(today) ?: false,
+                isPast = rd != null && !entryUpcoming,
                 isNext = entry == nextEntry,
                 hasSprint = entry.sprintDate != null,
                 fp1Time = entry.fp1Time,
@@ -476,18 +470,10 @@ object F1WidgetDataProvider {
         }
 
         val weekendSessions = nextEntry?.let { entry ->
-            val nowDt = LocalDateTime.now(zone)
-            buildSessions(entry).sortedBy { it.second }.map { (label, date, time) ->
-                val isPastSession = try {
-                    if (time != null) {
-                        val clean = time.trimEnd('Z')
-                        val dt = LocalDateTime.parse("${date}T$clean", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                        dt.atZone(ZoneId.of("UTC")).withZoneSameInstant(zone).toLocalDateTime().isBefore(nowDt)
-                    } else {
-                        val d = LocalDate.parse(date, fmt)
-                        d.isBefore(today)
-                    }
-                } catch (_: Exception) { false }
+            buildSessions(entry)
+                .sortedWith(compareBy<Triple<String, String, String?>> { it.second }.thenBy { it.third ?: "23:59:59Z" })
+                .map { (label, date, time) ->
+                val isPastSession = !isSessionUpcoming(date, time, nowDt, today, zone, fmt)
                 SessionRow(
                     label = label,
                     date = date,
@@ -567,6 +553,45 @@ object F1WidgetDataProvider {
             isStale = isStale,
             isLoading = !hasData && fetchedAt <= 0L,
         )
+    }
+
+    private fun isEntryUpcoming(
+        entry: RaceScheduleEntry,
+        nowDt: LocalDateTime,
+        today: LocalDate,
+        zone: ZoneId,
+        fmt: DateTimeFormatter,
+    ): Boolean = buildSessions(entry).any { (_, date, time) ->
+        isSessionUpcoming(date, time, nowDt, today, zone, fmt)
+    }
+
+    private fun isSessionUpcoming(
+        date: String,
+        time: String?,
+        nowDt: LocalDateTime,
+        today: LocalDate,
+        zone: ZoneId,
+        fmt: DateTimeFormatter,
+    ): Boolean {
+        return try {
+            val localDateTime = parseSessionLocalDateTime(date, time, zone)
+            if (localDateTime != null) {
+                localDateTime.isAfter(nowDt)
+            } else {
+                LocalDate.parse(date, fmt) >= today
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun parseSessionLocalDateTime(date: String, time: String?, zone: ZoneId): LocalDateTime? {
+        if (time.isNullOrBlank()) return null
+        val clean = time.trimEnd('Z')
+        return LocalDateTime.parse("${date}T$clean", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            .atZone(ZoneId.of("UTC"))
+            .withZoneSameInstant(zone)
+            .toLocalDateTime()
     }
 
     private fun buildSessions(entry: RaceScheduleEntry): List<Triple<String, String, String?>> = listOfNotNull(

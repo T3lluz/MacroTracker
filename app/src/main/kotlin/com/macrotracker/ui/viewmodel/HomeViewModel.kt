@@ -224,7 +224,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             loadData()
-            loadWeather(hasLocationPermission)
+            loadWeather(hasLocationPermission, forceRefresh = force)
             loadHealthConnect(silent = true)
             loadCalendar(hasCalendarPermission)
             loadF1Data(forceRefresh = force)
@@ -344,7 +344,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun loadWeather(hasPermission: Boolean) {
+    fun loadWeather(hasPermission: Boolean, forceRefresh: Boolean = false) {
         if (!settingsRepository.weatherEnabled.value) {
             _weatherState.value = WeatherUiState.PermissionRequired
             appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE).edit { clear() }
@@ -372,10 +372,10 @@ class HomeViewModel @Inject constructor(
                     return@launch
                 }
                 val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
+                if (forceRefresh) weatherRepository.clearCache()
                 val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
 
                 val current = _weatherState.value
-                // Only stamp a new fetch time — this is always a real network call (WeatherRepository has no cache)
                 val fetchedAt = Instant.now()
                 if (current is WeatherUiState.Success) {
                     _weatherState.value = current.copy(weather = weather, isPrecise = hasPreciseLocation, lastUpdatedAt = fetchedAt)
@@ -464,7 +464,7 @@ class HomeViewModel @Inject constructor(
                 val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
                 val dateStr = h.dateStr ?: ""
                 val precip = if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else ""
-                
+
                 "$displayHour|${h.symbolCode}|$temp|0|$wind|$desc|$dateStr|$precip"
             }
 

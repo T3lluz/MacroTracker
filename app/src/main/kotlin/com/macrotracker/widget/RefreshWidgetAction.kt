@@ -24,7 +24,7 @@ class RefreshWidgetAction : ActionCallback {
             Toast.makeText(context, "Refreshing widgets...", Toast.LENGTH_SHORT).show()
         }
 
-        // 2. Full update: invalidate, re-render, and enqueue worker
-        WidgetUpdater.updateAllWidgets(context)
+        // 2. Fetch latest live data first, then re-render placed dashboard widgets.
+        WidgetUpdater.forceRefreshDashboardWidgets(context)
     }
 }

@@ -25,6 +25,7 @@ object WidgetUpdater {
      */
     suspend fun updateAllWidgets(context: Context) {
         DashboardWidgetDataProvider.invalidate(context)
+        F1WidgetDataProvider.invalidate()
 
         withContext(Dispatchers.Main) {
             updatePlacedDashboardWidgets(context)
@@ -40,6 +41,18 @@ object WidgetUpdater {
      */
     suspend fun updateDashboardWidgets(context: Context) {
         DashboardWidgetDataProvider.invalidate(context)
+        withContext(Dispatchers.Main) {
+            updatePlacedDashboardWidgets(context)
+        }
+    }
+
+    /**
+     * User-requested dashboard refresh: fetch live widget data before rendering so
+     * the refresh button visibly updates weather/calendar/health data immediately.
+     */
+    suspend fun forceRefreshDashboardWidgets(context: Context) {
+        DashboardWidgetDataProvider.invalidate(context)
+        DashboardWidgetDataProvider.refreshNow(context)
         withContext(Dispatchers.Main) {
             updatePlacedDashboardWidgets(context)
         }

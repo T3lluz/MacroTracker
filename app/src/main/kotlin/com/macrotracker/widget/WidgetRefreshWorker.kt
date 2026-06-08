@@ -87,7 +87,7 @@ class WidgetRefreshWorker(
         private fun noConstraints() = Constraints.Builder().build()
 
         fun enqueuePeriodicRefresh(context: Context) {
-            val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(15, TimeUnit.MINUTES)
+            val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(30, TimeUnit.MINUTES)
                 .setConstraints(networkConstraints())
                 .build()
 

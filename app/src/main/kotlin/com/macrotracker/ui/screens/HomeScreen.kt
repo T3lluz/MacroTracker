@@ -162,10 +162,11 @@ fun HomeScreen(
         }
     }
 
-    fun onRefresh() {
+    fun onRefresh(force: Boolean = false) {
         viewModel.refreshAll(
             hasLocationPermission = hasLocationPermission(),
             hasCalendarPermission = hasCalendarPermission(),
+            force = force,
         )
     }
 
@@ -199,7 +200,7 @@ fun HomeScreen(
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = { onRefresh() },
+        onRefresh = { onRefresh(force = true) },
         modifier = Modifier.fillMaxSize().background(Background)
     ) {
         val visibleConfigs by remember(parsedConfigs) {

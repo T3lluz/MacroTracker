@@ -198,12 +198,13 @@ class WeatherRepository @Inject constructor(
             try {
                 val entry = timeseries.getJSONObject(i)
                 val time = entry.getString("time") // ISO 8601
-                
+
                 // Parse ISO 8601 time string
                 val zdt = ZonedDateTime.parse(time)
-                
-                // Skip entries that are more than 45 minutes in the past
-                if (zdt.toInstant().isBefore(nowInstant.minusSeconds(45 * 60))) {
+
+                // Hourly forecast should start at the next forecast slot, not the
+                // current/previous hour. At 16:31 the first item should be 17:00.
+                if (!zdt.toInstant().isAfter(nowInstant)) {
                     continue
                 }
 
@@ -223,7 +224,7 @@ class WeatherRepository @Inject constructor(
                     else -> symbolCode
                 }
                 val (entryDesc, entryIconRes) = mapSymbolCode(entrySymbol)
-                
+
                 // Precipitation for the next 1 hour
                 val entryPrecip = if (entryData.has("next_1_hours")) {
                     entryData.getJSONObject("next_1_hours")
