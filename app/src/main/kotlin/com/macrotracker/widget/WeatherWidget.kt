@@ -71,7 +71,7 @@ private fun WeatherRoot(d: DashboardWidgetData) {
                     Text(
                         "HOURLY FORECAST",
                         style = TextStyle(fontSize = 10.sp, color = c.sub, fontWeight = FontWeight.Bold),
-                        modifier = GlanceModifier.width(180.dp)
+                        modifier = GlanceModifier.width(190.dp)
                     )
                 }
                 Spacer(GlanceModifier.height(4.dp))
@@ -87,7 +87,7 @@ private fun WeatherRoot(d: DashboardWidgetData) {
                     Spacer(GlanceModifier.width(sc.spaceMd))
 
                     // Right Column: Hourly Forecast
-                    Column(GlanceModifier.width(180.dp).fillMaxHeight()) {
+                    Column(GlanceModifier.width(190.dp).fillMaxHeight()) {
                         Box(GlanceModifier.fillMaxWidth().fillMaxHeight()) {
                             HourlyScrollableSection(d.hourlyForecast.take(72), c, sc)
                         }
@@ -327,50 +327,48 @@ private fun DateHeaderRow(index: Int, hours: List<HourlyForecast>, c: WidgetClr,
 private fun HourlyRow(slot: HourlyForecast, c: WidgetClr, sc: WScale) {
     Row(
         GlanceModifier.fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             slot.hour,
             style = TextStyle(fontSize = 10.sp, color = c.sub, fontWeight = FontWeight.Medium),
-            modifier = GlanceModifier.width(36.dp)
+            modifier = GlanceModifier.width(38.dp)
         )
-        Image(
-            provider = ImageProvider(slot.iconRes),
-            contentDescription = null,
-            modifier = GlanceModifier.size(22.dp)
-        )
-        Spacer(GlanceModifier.width(6.dp))
+        Spacer(GlanceModifier.width(4.dp))
+        Box(GlanceModifier.width(22.dp), contentAlignment = Alignment.Center) {
+            Image(
+                provider = ImageProvider(slot.iconRes),
+                contentDescription = null,
+                modifier = GlanceModifier.size(21.dp)
+            )
+        }
+        Spacer(GlanceModifier.width(4.dp))
 
         Text(
             "${slot.temp}°",
             style = TextStyle(fontSize = 12.sp, color = c.text, fontWeight = FontWeight.Bold),
-            modifier = GlanceModifier.width(28.dp)
+            modifier = GlanceModifier.width(27.dp)
         )
         Spacer(GlanceModifier.width(4.dp))
 
-        // Wind speed
         Text(
             slot.windSpeed ?: "",
-            style = TextStyle(fontSize = 9.sp, color = c.sub, fontWeight = FontWeight.Normal),
-            modifier = GlanceModifier.width(34.dp)
+            style = TextStyle(fontSize = 8.5.sp, color = c.sub, fontWeight = FontWeight.Normal),
+            modifier = GlanceModifier.width(36.dp)
         )
+        Spacer(GlanceModifier.width(4.dp))
 
-        // Rain/Precipitation - use more space
-        Box(modifier = GlanceModifier.defaultWeight(), contentAlignment = Alignment.CenterStart) {
-            if (!slot.precipitation.isNullOrBlank()) {
-                Text(
-                    slot.precipitation,
-                    style = TextStyle(fontSize = 8.5.sp, color = c.weather, fontWeight = FontWeight.Medium),
-                    maxLines = 1
-                )
-            }
-        }
-
-        if (slot.pop != null && slot.pop > 0) {
+        val precipText = slot.precipitation
+            ?: slot.pop?.takeIf { it > 0 }?.let { "$it%" }
+            ?: "—"
+        val precipColor = if (precipText == "—") c.sub else c.weather
+        val precipAlignment = if (precipText == "—") Alignment.Center else Alignment.CenterEnd
+        Box(GlanceModifier.width(31.dp), contentAlignment = precipAlignment) {
             Text(
-                "${slot.pop}%",
-                style = TextStyle(fontSize = 8.5.sp, color = c.weather, fontWeight = FontWeight.Bold)
+                precipText,
+                style = TextStyle(fontSize = 8.sp, color = precipColor, fontWeight = FontWeight.Medium),
+                maxLines = 1
             )
         }
     }
