@@ -67,12 +67,13 @@ class WeatherRepository @Inject constructor(
 
         fun mapSymbolCode(code: String): Pair<String, Int> {
             // Yr.no symbol codes: https://api.met.no/weatherapi/weathericon/2.0/documentation
+            val isNight = code.contains("_night")
             // Strip _day/_night/_polartwilight suffix for matching
             val base = code.replace("_day", "").replace("_night", "").replace("_polartwilight", "")
             return when {
-                base == "clearsky" -> "Clear Sky" to R.drawable.ic_weather_sun
-                base == "fair" -> "Fair" to R.drawable.ic_weather_cloud_sun
-                base.startsWith("partlycloudy") -> "Partly Cloudy" to R.drawable.ic_weather_cloud_sun
+                base == "clearsky" -> "Clear Sky" to if (isNight) R.drawable.ic_weather_moon else R.drawable.ic_weather_sun
+                base == "fair" -> "Fair" to if (isNight) R.drawable.ic_weather_cloud_moon else R.drawable.ic_weather_cloud_sun
+                base.startsWith("partlycloudy") -> "Partly Cloudy" to if (isNight) R.drawable.ic_weather_cloud_moon else R.drawable.ic_weather_cloud_sun
                 base == "cloudy" -> "Cloudy" to R.drawable.ic_weather_cloud
                 base == "fog" -> "Fog" to R.drawable.ic_weather_fog
                 base.contains("thunder") && base.contains("rain") -> "Thunderstorm" to R.drawable.ic_weather_storm

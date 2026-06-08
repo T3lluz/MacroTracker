@@ -3,12 +3,22 @@ package com.macrotracker
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.macrotracker.widget.WidgetRefreshWorker
+import com.macrotracker.widget.WidgetStateProvider
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
 @HiltAndroidApp
 class DailyDashApp : Application(), ImageLoaderFactory {
+
+    override fun onCreate() {
+        super.onCreate()
+        if (WidgetStateProvider.hasAnyWidget(this)) {
+            WidgetRefreshWorker.enqueuePeriodicRefresh(this)
+            WidgetRefreshWorker.enqueueImmediateRefresh(this)
+        }
+    }
 
     override fun newImageLoader(): ImageLoader {
         // Inject a browser-like User-Agent so the F1 media CDN serves real driver
@@ -31,4 +41,3 @@ class DailyDashApp : Application(), ImageLoaderFactory {
             .build()
     }
 }
-

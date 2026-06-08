@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- Moon tucked behind cloud, matching the cloud-sun composition. -->
+    <path
+        android:fillColor="#FFE082"
+        android:pathData="M49,4c-3.4,2 -5.6,5.6 -5.6,9.8c0,6.4 5.2,11.6 11.6,11.6c1.7,0 3.3,-0.4 4.8,-1C57.8,33.5 49.6,40 40,40C28.9,40 20,31.1 20,20C20,10.4 26.5,2.2 35.6,0.2C33.6,2.2 32.4,4.9 32.4,8c0,6.4 5.2,11.6 11.6,11.6c4.3,0 8.1,-2.4 10.1,-5.9C53.4,9.9 51.6,6.5 49,4z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,5l1.2,2.4l2.6,0.4l-1.9,1.8l0.5,2.6L54,11l-2.4,1.2l0.5,-2.6l-1.9,-1.8l2.6,-0.4z" />
+
+    <!-- Cloud shadow and main body use the same layered style as ic_weather_cloud. -->
+    <path
+        android:fillColor="#15000000"
+        android:pathData="M16,54c-6.6,0 -12,-5.4 -12,-12s5.4,-12 12,-12c0.3,0 0.7,0 1,0.1C19.6,22.2 25.7,18 32.7,18c8.8,0 15.9,7.1 15.9,15.9c0,1.2 -0.2,2.4 -0.4,3.5c3.3,1.2 6,4.2 6,7.8c0,4.6 -3.7,8.2 -8.2,8.2L16,54z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,52c-6.6,0 -12,-5.4 -12,-12s5.4,-12 12,-12c0.3,0 0.7,0 1,0.1C19.6,20.2 25.7,16 32.7,16c8.8,0 15.9,7.1 15.9,15.9c0,1.2 -0.2,2.4 -0.4,3.5c3.3,1.2 6,4.2 6,7.8c0,4.6 -3.7,8.2 -8.2,8.2L16,52z" />
+</vector>

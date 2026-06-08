@@ -33,8 +33,10 @@ import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -70,6 +72,8 @@ object DashboardWidgetDataProvider {
     private const val MEMORY_TTL = 30_000L // 30 seconds
     @Volatile private var cached: DashboardWidgetData? = null
     @Volatile private var cachedAt: Long = 0L
+    @Volatile private var lastWeatherStaleRefreshRequestAt: Long = 0L
+    private const val STALE_WEATHER_REFRESH_REQUEST_THROTTLE_MS = 5 * 60 * 1000L
 
     /** Singleton Room database — avoids rebuilding on every load call. */
     @Volatile private var dbInstance: MacroDatabase? = null
@@ -121,7 +125,7 @@ object DashboardWidgetDataProvider {
         // Read cached AI insights from SharedPrefs (no network)
         val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
         val lastUpdated = prefs.getLong(LAST_UPDATED_KEY, 0L)
-        
+
         val result = merged.copy(
             aiInsight = prefs.getString(AI_INSIGHT_KEY, null),
             aiInsightNutrition = prefs.getString(AI_NUTRITION_KEY, null),
@@ -184,25 +188,25 @@ object DashboardWidgetDataProvider {
             val hiltEntryPoint = context.widgetEntryPoint()
             val settings = hiltEntryPoint.settingsRepository()
             if (!settings.weatherEnabled.value) return
-            
+
             val hasPermission = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
             if (!hasPermission) return
-            
+
             val locationProvider = hiltEntryPoint.locationProvider()
             val weatherRepository = hiltEntryPoint.weatherRepository()
             if (force) weatherRepository.clearCache()
-            
+
             val location = locationProvider.getLocation() ?: return
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
             val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
-            
+
             val prefs = context.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
-            
+
             val hourlyStr = weather.hourlyForecasts.take(72).joinToString("|") { h ->
                 val displayHour = h.time
                 val temp = h.temperature.toInt().toString()
@@ -212,7 +216,7 @@ object DashboardWidgetDataProvider {
                 val precip = if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else ""
                 "$displayHour|${h.symbolCode}|$temp|0|$wind|$desc|$dateStr|$precip"
             }
-            
+
             prefs.edit().apply {
                 putString("temp", weather.temperature.toInt().toString())
                 putString("symbol_code", weather.symbolCode)
@@ -399,7 +403,7 @@ object DashboardWidgetDataProvider {
             // Hourly forecast: stored as pipe-separated segments
             // Format: "3 PM|clearsky|18|0|12 m/s|Short desc|2024-06-12|0.5mm"
             val hourlyRaw = prefs.getString("hourly_forecast", null)
-            val hourlyForecast: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
+            val parsedHourly: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
                 hourlyRaw.split("|").chunked(8).mapNotNull { seg ->
                     if (seg.size < 3) null
                     else {
@@ -418,10 +422,14 @@ object DashboardWidgetDataProvider {
                     }
                 }
             } else emptyList()
+            val hourlyForecast = parsedHourly.filterFutureHourlySlots()
+            if (parsedHourly.isNotEmpty() && hourlyForecast.size != parsedHourly.size) {
+                requestWeatherRefreshForStaleCache(context)
+            }
 
             // Combine high/low
             val minMax = if (high != null && low != null) "$high° / $low°" else null
-            
+
             DashboardWidgetData(
                 weatherTemp = temp,
                 weatherDesc = desc,
@@ -442,6 +450,28 @@ object DashboardWidgetDataProvider {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load weather: ${e.message}", e)
             DashboardWidgetData()
+        }
+    }
+
+    private fun requestWeatherRefreshForStaleCache(context: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastWeatherStaleRefreshRequestAt < STALE_WEATHER_REFRESH_REQUEST_THROTTLE_MS) return
+        lastWeatherStaleRefreshRequestAt = now
+        WidgetRefreshWorker.enqueueImmediateRefresh(context)
+    }
+
+    private fun List<HourlyForecast>.filterFutureHourlySlots(): List<HourlyForecast> {
+        val now = LocalDateTime.now()
+        val hourFormatter = DateTimeFormatter.ofPattern("h a", Locale.US)
+        return filter { slot ->
+            val date = slot.dayName?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            val time = runCatching { LocalTime.parse(slot.hour.uppercase(Locale.US), hourFormatter) }.getOrNull()
+
+            // Old cache entries without date/time should not blank the widget, but all
+            // current cached weather writes include both, so normal rows are filtered.
+            if (date == null || time == null) return@filter true
+
+            LocalDateTime.of(date, time).isAfter(now)
         }
     }
 
