@@ -451,6 +451,7 @@ object DashboardWidgetDataProvider {
         } else {
             parseLegacyHourlyForecast(raw)
         }.sortedWith(compareBy<HourlyForecast, Long?>(nullsLast()) { it.epochMillis })
+            .takeContiguousHourlyCadence()
     }
 
     private fun parseHourlyForecastJson(raw: String): List<HourlyForecast> {
@@ -489,6 +490,25 @@ object DashboardWidgetDataProvider {
                 )
             }
         }
+
+    private fun List<HourlyForecast>.takeContiguousHourlyCadence(): List<HourlyForecast> {
+        if (size <= 1) return this
+        val result = mutableListOf<HourlyForecast>()
+        var previousEpoch: Long? = null
+        for (slot in this) {
+            val epoch = slot.epochMillis
+            if (previousEpoch != null && epoch != null) {
+                val gapMinutes = java.time.Duration.between(
+                    Instant.ofEpochMilli(previousEpoch),
+                    Instant.ofEpochMilli(epoch),
+                ).toMinutes()
+                if (gapMinutes > 90) break
+            }
+            result.add(slot)
+            if (epoch != null) previousEpoch = epoch
+        }
+        return result
+    }
 
     private fun requestWeatherRefreshForStaleCache(context: Context) {
         val now = System.currentTimeMillis()

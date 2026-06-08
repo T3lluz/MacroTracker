@@ -195,6 +195,7 @@ class WeatherRepository @Inject constructor(
         // Parse hourly forecasts (next 72 entries)
         val hourlyForecasts = mutableListOf<HourlyForecast>()
         val nowInstant = Instant.now()
+        var lastHourlyInstant: Instant? = null
         for (i in 0 until timeseries.length()) {
             if (hourlyForecasts.size >= 72) break
             try {
@@ -211,11 +212,17 @@ class WeatherRepository @Inject constructor(
                 }
 
                 val entryData = entry.getJSONObject("data")
-                // The hourly rail must contain true hourly forecast buckets only.
-                // Yr switches later entries to next_6_hours; including those creates
-                // repeating 6-hour labels like 2 PM / 8 PM / 2 AM / 8 AM.
+                // The hourly rail must contain true hourly cadence only. Some Yr
+                // locations keep next_1_hours details on sparse 6-hour timestamps;
+                // including those creates sequences like 6 PM, 7 PM, 8 PM, 2 AM.
+                // Stop once the feed leaves contiguous hourly spacing.
+                val previousHourlyInstant = lastHourlyInstant
+                if (previousHourlyInstant != null) {
+                    val gapMinutes = java.time.Duration.between(previousHourlyInstant, zdt.toInstant()).toMinutes()
+                    if (gapMinutes > 90) break
+                }
                 if (!entryData.has("next_1_hours")) {
-                    continue
+                    if (hourlyForecasts.isNotEmpty()) break else continue
                 }
 
                 val entryInstant = entryData.getJSONObject("instant").getJSONObject("details")
@@ -249,6 +256,7 @@ class WeatherRepository @Inject constructor(
                         epochMillis = zdt.toInstant().toEpochMilli(),
                     )
                 )
+                lastHourlyInstant = zdt.toInstant()
             } catch (e: Exception) {
                 Log.w(TAG, "Skipping hourly entry $i: ${e.message}")
             }

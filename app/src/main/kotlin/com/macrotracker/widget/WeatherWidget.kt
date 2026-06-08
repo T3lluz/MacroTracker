@@ -233,9 +233,9 @@ private fun HourlyScrollableSection(hours: List<HourlyForecast>, c: WidgetClr, s
             LazyColumn(GlanceModifier.fillMaxSize()) {
                 hours.forEachIndexed { index, slot ->
                     // Show a date header if it's the first item or if we hit a new day (12 AM)
-                    val isNewDay = slot.hour.contains("12 AM", ignoreCase = true) || 
+                    val isNewDay = slot.hour.contains("12 AM", ignoreCase = true) ||
                                   slot.hour.contains("00:00")
-                    
+
                     if (index == 0 || isNewDay) {
                         item {
                             DateHeaderRow(index, hours, c, sc)
@@ -246,10 +246,10 @@ private fun HourlyScrollableSection(hours: List<HourlyForecast>, c: WidgetClr, s
                         Column(GlanceModifier.fillMaxWidth()) {
                             HourlyRow(slot, c, sc)
                             // Add a subtle divider between items, but not after the last one or before a header
-                            val nextIsNewDay = (index + 1 < hours.size) && 
-                                              (hours[index+1].hour.contains("12 AM", ignoreCase = true) || 
+                            val nextIsNewDay = (index + 1 < hours.size) &&
+                                              (hours[index+1].hour.contains("12 AM", ignoreCase = true) ||
                                                hours[index+1].hour.contains("00:00"))
-                            
+
                             if (index < hours.size - 1 && !nextIsNewDay) {
                                 Box(
                                     modifier = GlanceModifier
@@ -274,7 +274,7 @@ private fun DateHeaderRow(index: Int, hours: List<HourlyForecast>, c: WidgetClr,
         else -> {
             val slot = hours[index]
             val dateStr = slot.dayName
-            
+
             if (dateStr != null && dateStr.isNotBlank()) {
                 try {
                     val localDate = LocalDate.parse(dateStr)
@@ -284,7 +284,7 @@ private fun DateHeaderRow(index: Int, hours: List<HourlyForecast>, c: WidgetClr,
                         localDate == today.plusDays(1) -> "TOMORROW"
                         else -> {
                             localDate.dayOfWeek.getDisplayName(
-                                java.time.format.TextStyle.FULL, 
+                                java.time.format.TextStyle.FULL,
                                 java.util.Locale.getDefault()
                             ).uppercase()
                         }
@@ -333,26 +333,27 @@ private fun HourlyRow(slot: HourlyForecast, c: WidgetClr, sc: WScale) {
         Text(
             slot.hour,
             style = TextStyle(fontSize = 10.sp, color = c.sub, fontWeight = FontWeight.Medium),
-            modifier = GlanceModifier.width(42.dp)
+            modifier = GlanceModifier.width(36.dp)
         )
         Image(
             provider = ImageProvider(slot.iconRes),
             contentDescription = null,
-            modifier = GlanceModifier.size(24.dp)
+            modifier = GlanceModifier.size(22.dp)
         )
-        Spacer(GlanceModifier.width(10.dp))
-        
+        Spacer(GlanceModifier.width(6.dp))
+
         Text(
             "${slot.temp}°",
             style = TextStyle(fontSize = 12.sp, color = c.text, fontWeight = FontWeight.Bold),
-            modifier = GlanceModifier.width(32.dp)
+            modifier = GlanceModifier.width(28.dp)
         )
-        
+        Spacer(GlanceModifier.width(4.dp))
+
         // Wind speed
         Text(
             slot.windSpeed ?: "",
-            style = TextStyle(fontSize = 10.sp, color = c.sub, fontWeight = FontWeight.Normal),
-            modifier = GlanceModifier.width(42.dp)
+            style = TextStyle(fontSize = 9.sp, color = c.sub, fontWeight = FontWeight.Normal),
+            modifier = GlanceModifier.width(34.dp)
         )
 
         // Rain/Precipitation - use more space
@@ -360,23 +361,16 @@ private fun HourlyRow(slot: HourlyForecast, c: WidgetClr, sc: WScale) {
             if (!slot.precipitation.isNullOrBlank()) {
                 Text(
                     slot.precipitation,
-                    style = TextStyle(fontSize = 9.5.sp, color = c.weather, fontWeight = FontWeight.Medium),
+                    style = TextStyle(fontSize = 8.5.sp, color = c.weather, fontWeight = FontWeight.Medium),
                     maxLines = 1
                 )
             }
         }
-        
+
         if (slot.pop != null && slot.pop > 0) {
             Text(
                 "${slot.pop}%",
-                style = TextStyle(fontSize = 9.sp, color = c.weather, fontWeight = FontWeight.Bold)
-            )
-        }
-        
-        if (slot.pop != null && slot.pop > 0) {
-            Text(
-                "${slot.pop}%",
-                style = TextStyle(fontSize = 9.sp, color = c.weather, fontWeight = FontWeight.Bold)
+                style = TextStyle(fontSize = 8.5.sp, color = c.weather, fontWeight = FontWeight.Bold)
             )
         }
     }
