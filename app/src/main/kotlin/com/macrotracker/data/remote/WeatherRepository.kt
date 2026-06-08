@@ -19,7 +19,7 @@ import kotlin.math.roundToLong
 import com.macrotracker.R
 
 data class HourlyForecast(
-    val time: String,       // e.g. "14:00"
+    val time: String,       // e.g. "5 PM"
     val temperature: Double,
     val iconRes: Int,
     val windSpeed: Double,
@@ -27,6 +27,7 @@ data class HourlyForecast(
     val symbolCode: String,
     val dateStr: String? = null, // ISO date "yyyy-MM-dd"
     val precipitation: Double? = null, // mm for next_1_hours
+    val epochMillis: Long? = null,
 )
 
 data class DailyForecast(
@@ -210,35 +211,44 @@ class WeatherRepository @Inject constructor(
                 }
 
                 val entryData = entry.getJSONObject("data")
+                // The hourly rail must contain true hourly forecast buckets only.
+                // Yr switches later entries to next_6_hours; including those creates
+                // repeating 6-hour labels like 2 PM / 8 PM / 2 AM / 8 AM.
+                if (!entryData.has("next_1_hours")) {
+                    continue
+                }
+
                 val entryInstant = entryData.getJSONObject("instant").getJSONObject("details")
                 val temp = entryInstant.getDouble("air_temperature")
                 val wind = entryInstant.getDouble("wind_speed")
-                val entrySymbol = when {
-                    entryData.has("next_1_hours") ->
-                        entryData.getJSONObject("next_1_hours")
-                            .getJSONObject("summary")
-                            .getString("symbol_code")
-                    entryData.has("next_6_hours") ->
-                        entryData.getJSONObject("next_6_hours")
-                            .getJSONObject("summary")
-                            .getString("symbol_code")
-                    else -> symbolCode
-                }
+                val nextHour = entryData.getJSONObject("next_1_hours")
+                val entrySymbol = nextHour
+                    .getJSONObject("summary")
+                    .getString("symbol_code")
                 val (entryDesc, entryIconRes) = mapSymbolCode(entrySymbol)
 
-                // Precipitation for the next 1 hour
-                val entryPrecip = if (entryData.has("next_1_hours")) {
-                    entryData.getJSONObject("next_1_hours")
-                        .getJSONObject("details")
-                        .optDouble("precipitation_amount", 0.0)
-                } else null
+                val entryPrecip = nextHour
+                    .getJSONObject("details")
+                    .optDouble("precipitation_amount", 0.0)
 
                 // Convert to local timezone for display
                 val localZdt = zdt.withZoneSameInstant(ZoneId.systemDefault())
                 val hour = localZdt.format(DateTimeFormatter.ofPattern("h a", Locale.US))
                 val dateStr = localZdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
-                hourlyForecasts.add(HourlyForecast(hour, temp, entryIconRes, wind, entryDesc, entrySymbol, dateStr, entryPrecip))
+                hourlyForecasts.add(
+                    HourlyForecast(
+                        time = hour,
+                        temperature = temp,
+                        iconRes = entryIconRes,
+                        windSpeed = wind,
+                        description = entryDesc,
+                        symbolCode = entrySymbol,
+                        dateStr = dateStr,
+                        precipitation = entryPrecip,
+                        epochMillis = zdt.toInstant().toEpochMilli(),
+                    )
+                )
             } catch (e: Exception) {
                 Log.w(TAG, "Skipping hourly entry $i: ${e.message}")
             }

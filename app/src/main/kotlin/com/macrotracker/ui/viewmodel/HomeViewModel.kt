@@ -38,6 +38,8 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
+import org.json.JSONArray
+import org.json.JSONObject
 
 sealed class WeatherUiState {
     data object Loading : WeatherUiState()
@@ -455,18 +457,7 @@ class HomeViewModel @Inject constructor(
             val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
 
-            // Build hourly forecast string: "3 PM|clearsky|18|0|12 m/s|Short desc|2024-06-12"
-            // Take next 72 hours (scrollable list)
-            val hourlyStr = weather.hourlyForecasts.take(72).joinToString("|") { h ->
-                val displayHour = h.time
-                val temp = h.temperature.toInt().toString()
-                val wind = "${h.windSpeed.toInt()} m/s"
-                val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-                val dateStr = h.dateStr ?: ""
-                val precip = if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else ""
-
-                "$displayHour|${h.symbolCode}|$temp|0|$wind|$desc|$dateStr|$precip"
-            }
+            val hourlyStr = buildHourlyForecastJson(weather)
 
             prefs.edit {
                 putString("temp", weather.temperature.toInt().toString())
@@ -485,6 +476,24 @@ class HomeViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to cache weather for widget: ${e.message}")
         }
+    }
+
+    private fun buildHourlyForecastJson(weather: WeatherInfo): String {
+        val arr = JSONArray()
+        weather.hourlyForecasts.take(72).forEach { h ->
+            val obj = JSONObject()
+                .put("time", h.time)
+                .put("symbol", h.symbolCode)
+                .put("temp", h.temperature.toInt().toString())
+                .put("pop", 0)
+                .put("wind", "${h.windSpeed.toInt()} m/s")
+                .put("description", h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() })
+                .put("date", h.dateStr ?: "")
+                .put("precipitation", if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else "")
+                .put("epochMillis", h.epochMillis ?: 0L)
+            arr.put(obj)
+        }
+        return arr.toString()
     }
 
     fun addLog(foodName: String, calories: Int, protein: Int) {

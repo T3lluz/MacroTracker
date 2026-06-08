@@ -16,6 +16,7 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.room.Room
+import com.macrotracker.data.remote.WeatherInfo
 import com.macrotracker.data.remote.WeatherRepository
 import com.macrotracker.BuildConfig
 import com.macrotracker.data.local.GoalsEntity
@@ -207,15 +208,7 @@ object DashboardWidgetDataProvider {
             val prefs = context.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
 
-            val hourlyStr = weather.hourlyForecasts.take(72).joinToString("|") { h ->
-                val displayHour = h.time
-                val temp = h.temperature.toInt().toString()
-                val wind = "${h.windSpeed.toInt()} m/s"
-                val desc = h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
-                val dateStr = h.dateStr ?: ""
-                val precip = if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else ""
-                "$displayHour|${h.symbolCode}|$temp|0|$wind|$desc|$dateStr|$precip"
-            }
+            val hourlyStr = buildHourlyForecastJson(weather)
 
             prefs.edit().apply {
                 putString("temp", weather.temperature.toInt().toString())
@@ -400,28 +393,8 @@ object DashboardWidgetDataProvider {
             val sunrise = prefs.getString("sunrise", null)
             val sunset = prefs.getString("sunset", null)
 
-            // Hourly forecast: stored as pipe-separated segments
-            // Format: "3 PM|clearsky|18|0|12 m/s|Short desc|2024-06-12|0.5mm"
             val hourlyRaw = prefs.getString("hourly_forecast", null)
-            val parsedHourly: List<HourlyForecast> = if (!hourlyRaw.isNullOrBlank()) {
-                hourlyRaw.split("|").chunked(8).mapNotNull { seg ->
-                    if (seg.size < 3) null
-                    else {
-                        val sym = seg[1]
-                        val res = WeatherRepository.mapSymbolCode(sym).second
-                        HourlyForecast(
-                            hour = seg[0],
-                            iconRes = res,
-                            temp = seg[2],
-                            pop  = seg.getOrNull(3)?.toIntOrNull(),
-                            windSpeed = seg.getOrNull(4)?.takeIf { it.isNotBlank() },
-                            description = seg.getOrNull(5)?.takeIf { it.isNotBlank() },
-                            dayName = seg.getOrNull(6)?.takeIf { it.isNotBlank() },
-                            precipitation = seg.getOrNull(7)?.takeIf { it.isNotBlank() },
-                        )
-                    }
-                }
-            } else emptyList()
+            val parsedHourly = parseHourlyForecast(hourlyRaw)
             val hourlyForecast = parsedHourly.filterFutureHourlySlots()
             if (parsedHourly.isNotEmpty() && hourlyForecast.size != parsedHourly.size) {
                 requestWeatherRefreshForStaleCache(context)
@@ -453,6 +426,70 @@ object DashboardWidgetDataProvider {
         }
     }
 
+    private fun buildHourlyForecastJson(weather: WeatherInfo): String {
+        val arr = JSONArray()
+        weather.hourlyForecasts.take(72).forEach { h ->
+            val obj = JSONObject()
+                .put("time", h.time)
+                .put("symbol", h.symbolCode)
+                .put("temp", h.temperature.toInt().toString())
+                .put("pop", 0)
+                .put("wind", "${h.windSpeed.toInt()} m/s")
+                .put("description", h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() })
+                .put("date", h.dateStr ?: "")
+                .put("precipitation", if (h.precipitation != null && h.precipitation > 0) "${h.precipitation}mm" else "")
+                .put("epochMillis", h.epochMillis ?: 0L)
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
+
+    private fun parseHourlyForecast(raw: String?): List<HourlyForecast> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return if (raw.trimStart().startsWith("[")) {
+            parseHourlyForecastJson(raw)
+        } else {
+            parseLegacyHourlyForecast(raw)
+        }.sortedWith(compareBy<HourlyForecast, Long?>(nullsLast()) { it.epochMillis })
+    }
+
+    private fun parseHourlyForecastJson(raw: String): List<HourlyForecast> {
+        val arr = JSONArray(raw)
+        return (0 until arr.length()).mapNotNull { i ->
+            val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+            val sym = obj.optString("symbol", "clearsky")
+            HourlyForecast(
+                hour = obj.optString("time"),
+                iconRes = WeatherRepository.mapSymbolCode(sym).second,
+                temp = obj.optString("temp"),
+                pop = obj.optInt("pop", 0).takeIf { it > 0 },
+                windSpeed = obj.optString("wind").takeIf { it.isNotBlank() },
+                description = obj.optString("description").takeIf { it.isNotBlank() },
+                dayName = obj.optString("date").takeIf { it.isNotBlank() },
+                precipitation = obj.optString("precipitation").takeIf { it.isNotBlank() },
+                epochMillis = obj.optLong("epochMillis", 0L).takeIf { it > 0L },
+            )
+        }
+    }
+
+    private fun parseLegacyHourlyForecast(raw: String): List<HourlyForecast> =
+        raw.split("|").chunked(8).mapNotNull { seg ->
+            if (seg.size < 3) null
+            else {
+                val sym = seg[1]
+                HourlyForecast(
+                    hour = seg[0],
+                    iconRes = WeatherRepository.mapSymbolCode(sym).second,
+                    temp = seg[2],
+                    pop = seg.getOrNull(3)?.toIntOrNull(),
+                    windSpeed = seg.getOrNull(4)?.takeIf { it.isNotBlank() },
+                    description = seg.getOrNull(5)?.takeIf { it.isNotBlank() },
+                    dayName = seg.getOrNull(6)?.takeIf { it.isNotBlank() },
+                    precipitation = seg.getOrNull(7)?.takeIf { it.isNotBlank() },
+                )
+            }
+        }
+
     private fun requestWeatherRefreshForStaleCache(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastWeatherStaleRefreshRequestAt < STALE_WEATHER_REFRESH_REQUEST_THROTTLE_MS) return
@@ -464,6 +501,8 @@ object DashboardWidgetDataProvider {
         val now = LocalDateTime.now()
         val hourFormatter = DateTimeFormatter.ofPattern("h a", Locale.US)
         return filter { slot ->
+            slot.epochMillis?.let { return@filter Instant.ofEpochMilli(it).isAfter(Instant.now()) }
+
             val date = slot.dayName?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             val time = runCatching { LocalTime.parse(slot.hour.uppercase(Locale.US), hourFormatter) }.getOrNull()
 

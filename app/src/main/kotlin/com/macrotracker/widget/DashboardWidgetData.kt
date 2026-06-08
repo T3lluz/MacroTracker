@@ -16,6 +16,7 @@ data class HourlyForecast(
     val description: String? = null,
     val dayName: String? = null, // ISO date "yyyy-MM-dd"
     val precipitation: String? = null, // e.g. "1.2 mm"
+    val epochMillis: Long? = null,
 )
 
 /**
