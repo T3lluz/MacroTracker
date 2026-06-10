@@ -19,6 +19,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,6 +90,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -97,6 +100,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.macrotracker.data.youtube.YoutubeChannel
 import com.macrotracker.data.youtube.YoutubeVideo
@@ -110,6 +114,7 @@ import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.LastUpdatedText
+import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.ChannelSearchState
 import com.macrotracker.ui.viewmodel.YouTubeUiState
@@ -135,13 +140,17 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
     val context          = LocalContext.current
     val sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val youtubeState     by viewModel.youtubeState.collectAsState()
-    val trackedChannels  by viewModel.trackedChannels.collectAsState()
+    val youtubeState by viewModel.youtubeState.collectAsState()
+    val trackedChannels by viewModel.trackedChannels.collectAsState()
+    val successVideos = remember(youtubeState) {
+        (youtubeState as? YouTubeUiState.Success)?.videos.orEmpty()
+    }
+    val successUpdatedAt = remember(youtubeState) {
+        (youtubeState as? YouTubeUiState.Success)?.lastUpdatedAt
+    }
 
     var showSettings by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) { viewModel.loadLatestVideos() }
 
     MacroCard(
         borderColor = YtRed.copy(alpha = 0.18f),
@@ -169,30 +178,24 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                         fontSize = 11.sp,
                         color = TextSecondary,
                     )
-                    val successState = youtubeState as? YouTubeUiState.Success
-                    // Video count pill
-                    if (successState != null && successState.videos.isNotEmpty()) {
+                    if (successVideos.isNotEmpty()) {
                         Text("·", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.35f))
                         Text(
-                            "${successState.videos.size} video${if (successState.videos.size != 1) "s" else ""}",
+                            "${successVideos.size} video${if (successVideos.size != 1) "s" else ""}",
                             fontSize = 11.sp,
                             color = TextSecondary,
                         )
                     }
-                    if (successState?.lastUpdatedAt != null) {
+                    if (successUpdatedAt != null) {
                         Text("·", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.35f))
                         LastUpdatedText(
-                            lastUpdatedAt = successState.lastUpdatedAt,
+                            lastUpdatedAt = successUpdatedAt,
                             color = TextSecondary,
                         )
                     }
                 }
             }
-            AnimatedVisibility(
-                visible = expanded && youtubeState is YouTubeUiState.Success,
-                enter = fadeIn(tween(150)) + scaleIn(tween(150)),
-                exit = fadeOut(tween(100)) + scaleOut(tween(100)),
-            ) {
+            if (expanded && youtubeState is YouTubeUiState.Success) {
                 IconButton(
                     onClick = { haptics.tick(); viewModel.loadLatestVideos(forceRefresh = true) },
                     modifier = Modifier.size(36.dp),
@@ -200,29 +203,19 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                     Icon(Icons.Filled.Refresh, "Refresh", tint = TextSecondary, modifier = Modifier.size(18.dp))
                 }
             }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn(tween(150)) + scaleIn(tween(150)),
-                exit = fadeOut(tween(100)) + scaleOut(tween(100)),
-            ) {
+            if (expanded) {
                 IconButton(
                     onClick = { haptics.tick(); showSettings = true },
                     modifier = Modifier.size(36.dp),
                 ) {
                     Icon(Icons.Outlined.Settings, "Settings", tint = TextSecondary, modifier = Modifier.size(20.dp))
                 }
-            }
-            // "Open YouTube" shortcut — only shown when collapsed (mirrors refresh/settings slot)
-            AnimatedVisibility(
-                visible = !expanded,
-                enter = fadeIn(tween(150)) + scaleIn(tween(150)),
-                exit = fadeOut(tween(100)) + scaleOut(tween(100)),
-            ) {
+            } else {
                 IconButton(
                     onClick = {
                         haptics.tick()
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, "https://www.youtube.com".toUri())
+                            Intent(Intent.ACTION_VIEW, "https://www.youtube.com".toUri()),
                         )
                     },
                     modifier = Modifier.size(36.dp),
@@ -235,11 +228,21 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                     )
                 }
             }
-            val ytChevronRot by animateFloatAsState(
-                targetValue = if (expanded) 180f else 0f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                label = "yt_hdr_chevron",
-            )
+            val scrollIdle = !LocalTickersPaused.current
+            val ytChevronRot = if (scrollIdle) {
+                animateFloatAsState(
+                    targetValue = if (expanded) 180f else 0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                    label = "yt_hdr_chevron",
+                ).value
+            } else if (expanded) {
+                180f
+            } else {
+                0f
+            }
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -259,60 +262,16 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
             }
         }
 
-        // ── Collapsed view — compact feed ─────────────────────────────────
-        AnimatedVisibility(
-            visible = !expanded,
-            enter = expandVertically(tween(280)) + fadeIn(tween(200)),
-            exit = shrinkVertically(tween(240)) + fadeOut(tween(150)),
-        ) {
+        // ── Collapsed view — compact feed (no AnimatedVisibility wrapper) ──
+        if (!expanded) {
             Column {
                 Spacer(Modifier.height(12.dp))
-                when (val state = youtubeState) {
-                    is YouTubeUiState.NoChannels -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(YtRed.copy(alpha = 0.07f))
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Icon(Icons.Outlined.VideoLibrary, null, tint = YtRed, modifier = Modifier.size(20.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("No channels tracked", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                Text("Expand to add channels", fontSize = 11.sp, color = TextSecondary)
-                            }
-                        }
-                    }
-                    is YouTubeUiState.Loading -> {
-                        Box(Modifier.fillMaxWidth().height(70.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = YtRed, modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
-                        }
-                    }
-                    is YouTubeUiState.Success -> {
-                        CompactVideoFeed(
-                            videos = state.videos,
-                            trackedChannels = trackedChannels,
-                            haptics = haptics,
-                        )
-                    }
-                    is YouTubeUiState.Error -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Error.copy(alpha = 0.08f))
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Text("⚠", fontSize = 16.sp)
-                            Text(state.message, fontSize = 12.sp, color = Error, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    YouTubeUiState.Idle -> Unit
-                }
+                YoutubeCollapsedBody(
+                    youtubeState = youtubeState,
+                    videos = successVideos,
+                    trackedChannels = trackedChannels,
+                    haptics = haptics,
+                )
                 Spacer(Modifier.height(4.dp))
                 WidgetExpandBar(
                     expanded = false,
@@ -371,6 +330,61 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                 onDismiss = { scope.launch { sheetState.hide() }.invokeOnCompletion { showSettings = false } },
             )
         }
+    }
+}
+
+@Composable
+private fun YoutubeCollapsedBody(
+    youtubeState: YouTubeUiState,
+    videos: List<YoutubeVideo>,
+    trackedChannels: List<YoutubeChannel>,
+    haptics: HapticHelper,
+) {
+    when (youtubeState) {
+        is YouTubeUiState.NoChannels -> {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(YtRed.copy(alpha = 0.07f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Outlined.VideoLibrary, null, tint = YtRed, modifier = Modifier.size(20.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("No channels tracked", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text("Expand to add channels", fontSize = 11.sp, color = TextSecondary)
+                }
+            }
+        }
+        is YouTubeUiState.Loading -> {
+            Box(Modifier.fillMaxWidth().height(70.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = YtRed, modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+            }
+        }
+        is YouTubeUiState.Success -> {
+            CompactVideoFeed(
+                videos = videos,
+                trackedChannels = trackedChannels,
+                haptics = haptics,
+            )
+        }
+        is YouTubeUiState.Error -> {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Error.copy(alpha = 0.08f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("⚠", fontSize = 16.sp)
+                Text(youtubeState.message, fontSize = 12.sp, color = Error, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        YouTubeUiState.Idle -> Unit
     }
 }
 
@@ -443,20 +457,25 @@ private fun CompactVideoFeed(
 
         // ── Channel avatar filter strip (only when multiple channels tracked) ──
         if (trackedChannels.size > 1) {
-            LazyRow(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(bottom = 10.dp),
             ) {
-                items(trackedChannels, key = { it.channelId }) { channel ->
-                    CompactChannelAvatar(
-                        channel = channel,
-                        isSelected = selectedChannelId == channel.channelId,
-                        onClick = {
-                            haptics.tick()
-                            selectedChannelId =
-                                if (selectedChannelId == channel.channelId) null else channel.channelId
-                        },
-                    )
+                trackedChannels.forEach { channel ->
+                    key(channel.channelId) {
+                        CompactChannelAvatar(
+                            channel = channel,
+                            isSelected = selectedChannelId == channel.channelId,
+                            onClick = {
+                                haptics.tick()
+                                selectedChannelId =
+                                    if (selectedChannelId == channel.channelId) null else channel.channelId
+                            },
+                        )
+                    }
                 }
             }
             // Active filter label
@@ -579,7 +598,14 @@ private fun CompactHeroCard(
     isNew: Boolean,
     onClick: () -> Unit,
 ) {
-    val context = LocalContext.current
+    val density = LocalDensity.current
+    val thumbWidthPx = with(density) { 640.dp.roundToPx() }
+    val thumbHeightPx = with(density) { 360.dp.roundToPx() }
+    val thumbRequest = rememberYoutubeThumbnailRequest(
+        url = video.thumbnailUrl,
+        widthPx = thumbWidthPx,
+        heightPx = thumbHeightPx,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -588,7 +614,7 @@ private fun CompactHeroCard(
             .background(YtDark),
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+            model = thumbRequest,
             contentDescription = video.title,
             modifier = Modifier
                 .fillMaxWidth()
@@ -688,7 +714,14 @@ private fun CompactVideoTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val context = LocalContext.current
+    val density = LocalDensity.current
+    val thumbWidthPx = with(density) { 320.dp.roundToPx() }
+    val thumbHeightPx = with(density) { 180.dp.roundToPx() }
+    val thumbRequest = rememberYoutubeThumbnailRequest(
+        url = video.thumbnailUrl,
+        widthPx = thumbWidthPx,
+        heightPx = thumbHeightPx,
+    )
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
@@ -703,7 +736,7 @@ private fun CompactVideoTile(
                 .background(YtDark),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+                model = thumbRequest,
                 contentDescription = video.title,
                 modifier = Modifier.matchParentSize(),
                 contentScale = ContentScale.Crop,
@@ -775,12 +808,14 @@ private fun CompactChannelAvatar(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) YtRed else Border,
-        animationSpec = tween(200),
-        label = "cca_border_${channel.channelId}",
+    val density = LocalDensity.current
+    val avatarSizePx = with(density) { 68.dp.roundToPx() }
+    val avatarRequest = rememberYoutubeThumbnailRequest(
+        url = channel.thumbnailUrl,
+        widthPx = avatarSizePx,
+        heightPx = avatarSizePx,
     )
+    val borderColor = if (isSelected) YtRed else Border
     val borderWidth = if (isSelected) 2.5.dp else 1.5.dp
 
     Box(
@@ -790,7 +825,7 @@ private fun CompactChannelAvatar(
     ) {
         if (channel.thumbnailUrl.isNotBlank()) {
             AsyncImage(
-                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                model = avatarRequest,
                 contentDescription = channel.title,
                 modifier = Modifier
                     .size(34.dp)
@@ -834,6 +869,24 @@ private fun CompactChannelAvatar(
 
 private const val YT_INITIAL_PAGE = 4
 private const val YT_PAGE_SIZE    = 5
+
+@Composable
+private fun rememberYoutubeThumbnailRequest(
+    url: String,
+    widthPx: Int,
+    heightPx: Int,
+): ImageRequest {
+    val context = LocalContext.current
+    return remember(url, widthPx, heightPx) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .crossfade(false)
+            .size(widthPx, heightPx)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .build()
+    }
+}
 
 @Composable
 private fun VideoFeed(

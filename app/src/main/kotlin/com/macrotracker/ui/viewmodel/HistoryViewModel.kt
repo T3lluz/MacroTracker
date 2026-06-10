@@ -40,7 +40,8 @@ class HistoryViewModel @Inject constructor(
 
     fun loadData() {
         viewModelScope.launch {
-            _loading.value = true
+            val showLoading = _macroHistory.value.isEmpty()
+            if (showLoading) _loading.value = true
             try {
                 _macroHistory.value = repository.getDailySummariesRange(_rangeDays.value)
                 _selectedLogs.value = repository.getLogsForDate(_selectedDate.value)

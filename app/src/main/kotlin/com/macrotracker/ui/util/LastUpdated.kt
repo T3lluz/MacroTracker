@@ -24,20 +24,20 @@ import java.time.temporal.ChronoUnit
 
 @Composable
 fun rememberRelativeTime(instant: Instant): String {
+    val tickersPaused = LocalTickersPaused.current
+    if (tickersPaused) {
+        return remember(instant) { relativeTimeString(instant) }
+    }
+
     var text by remember(instant) { mutableStateOf(relativeTimeString(instant)) }
     LaunchedEffect(instant) {
         while (true) {
-            // Poll at an interval appropriate to the precision currently shown:
-            // - "just now" / seconds  → check every 30 s
-            // - minutes               → check every 60 s
-            // - hours                 → check every 5 min
-            // - days                  → check every hour
             val now = Instant.now()
             val seconds = ChronoUnit.SECONDS.between(instant, now).coerceAtLeast(0)
             val intervalMs = when {
-                seconds < 3600  -> 30_000L   // update within seconds/minutes range
-                seconds < 86400 -> 300_000L  // update within hours range (every 5 min)
-                else            -> 3_600_000L // update within days range (every hour)
+                seconds < 3600 -> 30_000L
+                seconds < 86400 -> 300_000L
+                else -> 3_600_000L
             }
             delay(intervalMs)
             text = relativeTimeString(instant)
@@ -50,20 +50,16 @@ fun relativeTimeString(instant: Instant): String {
     val now = Instant.now()
     val seconds = ChronoUnit.SECONDS.between(instant, now).coerceAtLeast(0)
     return when {
-        seconds < 60    -> "just now"
-        seconds < 3600  -> "${seconds / 60}m"
+        seconds < 60 -> "just now"
+        seconds < 3600 -> "${seconds / 60}m"
         seconds < 86400 -> "${seconds / 3600}h"
-        else            -> "${seconds / 86400}d"
+        else -> "${seconds / 86400}d"
     }
 }
 
 /**
  * Ultra-minimal last-updated indicator.
  * Renders a tiny clock icon + relative time (e.g. "· 2m") at very low opacity.
- * Designed to sit at the trailing end of a header row — visible on close inspection,
- * invisible at a glance. No word "Updated", no label — just the time.
- *
- * @param color  Icon + text color. Pass white-alpha for colored card backgrounds.
  */
 @Composable
 fun LastUpdatedText(
@@ -72,7 +68,14 @@ fun LastUpdatedText(
     color: Color = Color(0xFF99A8C2),
 ) {
     if (lastUpdatedAt == null) return
-    val relTime = rememberRelativeTime(lastUpdatedAt)
+
+    val tickersPaused = LocalTickersPaused.current
+    val relTime = if (tickersPaused) {
+        remember(lastUpdatedAt) { relativeTimeString(lastUpdatedAt) }
+    } else {
+        rememberRelativeTime(lastUpdatedAt)
+    }
+
     val dimColor = color.copy(alpha = color.alpha.coerceAtMost(1f) * 0.45f)
     Row(
         modifier = modifier,

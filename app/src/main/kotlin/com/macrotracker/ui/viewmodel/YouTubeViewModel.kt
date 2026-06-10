@@ -82,8 +82,11 @@ class YouTubeViewModel @Inject constructor(
             _youtubeState.value = YouTubeUiState.NoChannels
             return
         }
+        val current = _youtubeState.value
         viewModelScope.launch {
-            _youtubeState.value = YouTubeUiState.Loading
+            if (current !is YouTubeUiState.Success || forceRefresh) {
+                _youtubeState.value = YouTubeUiState.Loading
+            }
             youtubeRepository.getLatestVideosForTrackedChannels()
                 .onSuccess { videos ->
                     _youtubeState.value = if (videos.isEmpty()) YouTubeUiState.NoChannels

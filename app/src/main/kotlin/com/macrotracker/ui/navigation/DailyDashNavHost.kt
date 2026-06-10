@@ -4,6 +4,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -106,22 +107,35 @@ fun DailyDashNavHost(
 
         // ── Main screens ─────────────────────────────────────────────────
         composable(Screen.Home.route) {
+            val onNavigateToHealth = remember(navController) {
+                { navController.navigate(Screen.Health.route) }
+            }
+            val onNavigateToStats = remember(navController) {
+                { navController.navigate("stats") }
+            }
             HomeScreen(
-                onNavigateToHealth = { navController.navigate(Screen.Health.route) },
-                onNavigateToStats = { navController.navigate("stats") },
+                onNavigateToHealth = onNavigateToHealth,
+                onNavigateToStats = onNavigateToStats,
             )
         }
 
         composable(Screen.Health.route) {
-            HealthScreen(
-                onNavigateToCameraScan = { navController.navigate("camera_scan") }
-            )
+            val onNavigateToCameraScan = remember(navController) {
+                { navController.navigate("camera_scan") }
+            }
+            HealthScreen(onNavigateToCameraScan = onNavigateToCameraScan)
         }
 
         composable(Screen.AI.route) {
+            val onNavigateToCameraScan = remember(navController) {
+                { navController.navigate("camera_scan") }
+            }
+            val onNavigateToHome = remember(navController) {
+                { navController.navigate(Screen.Home.route) }
+            }
             AIScreen(
-                onNavigateToCameraScan = { navController.navigate("camera_scan") },
-                onNavigateToHome = { navController.navigate(Screen.Home.route) }
+                onNavigateToCameraScan = onNavigateToCameraScan,
+                onNavigateToHome = onNavigateToHome,
             )
         }
 
@@ -130,15 +144,21 @@ fun DailyDashNavHost(
         }
 
         composable(Screen.Settings.route) {
-            SettingsScreen(
-                onNavigateToHelp    = { navController.navigate("help") },
-                onNavigateToStats   = { navController.navigate("stats") },
-                onNavigateToWidgets = { navController.navigate("widgets") },
-                onReplayTutorial    = {
+            val onNavigateToHelp = remember(navController) { { navController.navigate("help") } }
+            val onNavigateToStats = remember(navController) { { navController.navigate("stats") } }
+            val onNavigateToWidgets = remember(navController) { { navController.navigate("widgets") } }
+            val onReplayTutorial = remember(navController) {
+                {
                     navController.navigate(OnboardingRoutes.WELCOME) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                     }
-                },
+                }
+            }
+            SettingsScreen(
+                onNavigateToHelp = onNavigateToHelp,
+                onNavigateToStats = onNavigateToStats,
+                onNavigateToWidgets = onNavigateToWidgets,
+                onReplayTutorial = onReplayTutorial,
             )
         }
 
@@ -148,9 +168,10 @@ fun DailyDashNavHost(
             enterTransition = { MacroMotion.subScreenEnter },
             exitTransition = { MacroMotion.subScreenExit },
             popEnterTransition = { MacroMotion.subScreenPopEnter },
-            popExitTransition = { MacroMotion.subScreenPopExit }
+            popExitTransition = { MacroMotion.subScreenPopExit },
         ) {
-            StatsScreen(onNavigateBack = { navController.popBackStack() })
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            StatsScreen(onNavigateBack = onNavigateBack)
         }
 
         composable(
@@ -158,9 +179,10 @@ fun DailyDashNavHost(
             enterTransition = { MacroMotion.subScreenEnter },
             exitTransition = { MacroMotion.subScreenExit },
             popEnterTransition = { MacroMotion.subScreenPopEnter },
-            popExitTransition = { MacroMotion.subScreenPopExit }
+            popExitTransition = { MacroMotion.subScreenPopExit },
         ) {
-            HelpScreen(onNavigateBack = { navController.popBackStack() })
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            HelpScreen(onNavigateBack = onNavigateBack)
         }
 
         composable(
@@ -168,9 +190,10 @@ fun DailyDashNavHost(
             enterTransition = { MacroMotion.subScreenEnter },
             exitTransition = { MacroMotion.subScreenExit },
             popEnterTransition = { MacroMotion.subScreenPopEnter },
-            popExitTransition = { MacroMotion.subScreenPopExit }
+            popExitTransition = { MacroMotion.subScreenPopExit },
         ) {
-            WidgetsScreen(onNavigateBack = { navController.popBackStack() })
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            WidgetsScreen(onNavigateBack = onNavigateBack)
         }
 
         composable(
@@ -178,15 +201,19 @@ fun DailyDashNavHost(
             enterTransition = { MacroMotion.subScreenEnter },
             exitTransition = { MacroMotion.subScreenExit },
             popEnterTransition = { MacroMotion.subScreenPopEnter },
-            popExitTransition = { MacroMotion.subScreenPopExit }
+            popExitTransition = { MacroMotion.subScreenPopExit },
         ) {
-            CameraScanScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateHome = {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            val onNavigateHome = remember(navController) {
+                {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
                     }
                 }
+            }
+            CameraScanScreen(
+                onNavigateBack = onNavigateBack,
+                onNavigateHome = onNavigateHome,
             )
         }
     }

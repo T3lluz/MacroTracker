@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Surface
+import com.macrotracker.ui.util.LocalTickersPaused
 import kotlinx.coroutines.delay
 
 @Composable
@@ -39,11 +40,16 @@ fun MacroCard(
     // Only allocate the Animatable when we actually need to animate.
     // Once hasAnimated=true we skip the graphicsLayer alpha entirely.
     val alpha = remember { Animatable(if (hasAnimated) 1f else 0f) }
+    val scrollIdle = !LocalTickersPaused.current
 
     LaunchedEffect(Unit) {
         if (!hasAnimated) {
-            if (delayMs > 0) delay(delayMs)
-            alpha.animateTo(1f, animationSpec = tween(200))
+            if (scrollIdle && delayMs > 0) delay(delayMs)
+            if (scrollIdle && delayMs > 0) {
+                alpha.animateTo(1f, animationSpec = tween(200))
+            } else {
+                alpha.snapTo(1f)
+            }
             hasAnimated = true
         }
     }

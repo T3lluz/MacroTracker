@@ -110,6 +110,15 @@ fun SettingsScreen(
     val masterWeatherEnabled by viewModel.masterWeatherEnabled.collectAsState()
     val masterCalendarEnabled by viewModel.masterCalendarEnabled.collectAsState()
 
+    val heartRateEnabled by viewModel.heartRateEnabled.collectAsState()
+    val restingHeartRateEnabled by viewModel.restingHeartRateEnabled.collectAsState()
+    val oxygenSaturationEnabled by viewModel.oxygenSaturationEnabled.collectAsState()
+    val respiratoryRateEnabled by viewModel.respiratoryRateEnabled.collectAsState()
+    val stepsEnabled by viewModel.stepsEnabled.collectAsState()
+    val distanceEnabled by viewModel.distanceEnabled.collectAsState()
+    val floorsClimbedEnabled by viewModel.floorsClimbedEnabled.collectAsState()
+    val activeCaloriesEnabled by viewModel.activeCaloriesEnabled.collectAsState()
+
     var draftKey by remember(savedKey) { mutableStateOf(savedKey) }
     var keyVisible by remember { mutableStateOf(false) }
     var keySaved by remember { mutableStateOf(false) }
@@ -207,7 +216,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.FavoriteBorder,
                     name = "Heart Rate",
-                    enabled = viewModel.heartRateEnabled.collectAsState().value,
+                    enabled = heartRateEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("heart_rate_enabled", it)
@@ -216,7 +225,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.Bedtime,
                     name = "Resting Heart Rate",
-                    enabled = viewModel.restingHeartRateEnabled.collectAsState().value,
+                    enabled = restingHeartRateEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("resting_heart_rate_enabled", it)
@@ -226,7 +235,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.Bloodtype,
                     name = "Oxygen Saturation",
-                    enabled = viewModel.oxygenSaturationEnabled.collectAsState().value,
+                    enabled = oxygenSaturationEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("oxygen_saturation_enabled", it)
@@ -235,7 +244,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.Air,
                     name = "Respiratory Rate",
-                    enabled = viewModel.respiratoryRateEnabled.collectAsState().value,
+                    enabled = respiratoryRateEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("respiratory_rate_enabled", it)
@@ -244,7 +253,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
                     name = "Steps",
-                    enabled = viewModel.stepsEnabled.collectAsState().value,
+                    enabled = stepsEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("steps_enabled", it)
@@ -253,7 +262,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.Route,
                     name = "Distance",
-                    enabled = viewModel.distanceEnabled.collectAsState().value,
+                    enabled = distanceEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("distance_enabled", it)
@@ -262,7 +271,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.Stairs,
                     name = "Floors Climbed",
-                    enabled = viewModel.floorsClimbedEnabled.collectAsState().value,
+                    enabled = floorsClimbedEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("floors_climbed_enabled", it)
@@ -271,7 +280,7 @@ fun SettingsScreen(
                 MetricToggleRow(
                     icon = Icons.Outlined.LocalFireDepartment,
                     name = "Active Calories",
-                    enabled = viewModel.activeCaloriesEnabled.collectAsState().value,
+                    enabled = activeCaloriesEnabled,
                     onCheckedChange = {
                         haptics.tick()
                         viewModel.setMetricEnabled("active_calories_enabled", it)

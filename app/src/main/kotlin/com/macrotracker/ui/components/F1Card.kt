@@ -52,6 +52,7 @@ import com.macrotracker.data.f1.*
 import com.macrotracker.R
 import com.macrotracker.ui.theme.*
 import com.macrotracker.ui.util.LastUpdatedText
+import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.F1UiState
 import kotlinx.coroutines.delay
@@ -253,7 +254,6 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     // Logic to fix image loading and visibility
-    val successState = state as? F1UiState.Success
     MacroCard(
         borderColor = F1Red.copy(alpha = 0.22f),
     ) {
@@ -280,9 +280,9 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                 }
                 // Right: action buttons + clickable chevron
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    val successState = state as? F1UiState.Success
+                    val headerSuccess = state as? F1UiState.Success
                     LastUpdatedText(
-                        lastUpdatedAt = successState?.lastUpdatedAt,
+                        lastUpdatedAt = headerSuccess?.lastUpdatedAt,
                         color = TextSecondary,
                     )
                     if (expanded) {
@@ -293,11 +293,21 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                             Icon(Icons.Default.Refresh, null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                         }
                     }
-                    val chevronRot by animateFloatAsState(
-                        targetValue = if (expanded) 180f else 0f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                        label = "f1_hdr_chevron",
-                    )
+                    val scrollIdle = !LocalTickersPaused.current
+                    val chevronRot = if (scrollIdle) {
+                        animateFloatAsState(
+                            targetValue = if (expanded) 180f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium,
+                            ),
+                            label = "f1_hdr_chevron",
+                        ).value
+                    } else if (expanded) {
+                        180f
+                    } else {
+                        0f
+                    }
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -342,6 +352,16 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                 is F1UiState.Success -> {
                     F1CollapsedWidget(state.f1Data)
                 }
+            }
+
+            if (!expanded) {
+                Spacer(Modifier.height(4.dp))
+                WidgetExpandBar(
+                    expanded = false,
+                    onToggle = { expanded = true; haptics.toggleOn() },
+                    accentColor = F1Red,
+                    expandLabel = "Full Hub",
+                )
             }
 
             // ── Expanded extra content — slides in below compact view ─────
@@ -431,17 +451,6 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                     )
                 }
             }
-
-            // ── Expand bar (collapsed state) ──────────────────────────────
-            if (!expanded) {
-                Spacer(Modifier.height(4.dp))
-                WidgetExpandBar(
-                    expanded = false,
-                    onToggle = { expanded = true; haptics.toggleOn() },
-                    accentColor = F1Red,
-                    expandLabel = "Full Hub",
-                )
-            }
         }
     }
 }
@@ -449,15 +458,13 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
 // ── Collapsed compact widget ──────────────────────────────────────────────────
 @Composable
 private fun F1CollapsedWidget(data: F1Standings) {
-    val next = data.schedule.filter { !isPast(it.raceDate) }.minByOrNull { daysUntil(it.raceDate) }
+    val next = remember(data.schedule) {
+        data.schedule.filter { !isPast(it.raceDate) }.minByOrNull { daysUntil(it.raceDate) }
+    }
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Spacer(Modifier.height(4.dp))
-
-        // ── Dynamic info strip (same as expanded top) ─────────────────────
         DynamicInfoStrip(data)
-
-        // ── Next race banner (same as expanded top) ───────────────────────
         if (next != null) {
             NextRaceBanner(next, daysUntil(next.raceDate), data.schedule)
         }
@@ -487,7 +494,18 @@ private fun DynamicInfoStrip(data: F1Standings) {
         val seasonTotal: Int = 0,
     )
 
-    val chips = buildList {
+    val chips = remember(
+        leader?.driverAcronym,
+        leader?.points,
+        p2?.points,
+        constructorLeader?.constructorName,
+        constructorLeader?.points,
+        totalRounds,
+        completedRounds,
+        lastWinner?.driverAcronym,
+        data.lastRaceName,
+    ) {
+        buildList {
         if (leader != null) {
             val tc = safeTeamColor(leader.teamColor)
             add(ChipData(Icons.Default.EmojiEvents, F1Gold, "WDC LEAD", leader.driverAcronym, "${leader.points.toInt()} PTS", tc))
@@ -508,6 +526,7 @@ private fun DynamicInfoStrip(data: F1Standings) {
             val raceShort  = data.lastRaceName?.replace(" Grand Prix", " GP") ?: lastWinner.constructorName.split(" ").first().take(9)
             add(ChipData(Icons.Default.SportsScore, F1Red, "LAST WIN", winnerName, raceShort, F1Red))
         }
+        }
     }
 
     if (chips.isEmpty()) return
@@ -519,24 +538,23 @@ private fun DynamicInfoStrip(data: F1Standings) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->
             Row(
-                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 row.forEach { chip ->
                     DynamicChip(
-                        modifier    = Modifier.weight(1f),
-                        icon        = chip.icon,
-                        iconColor   = chip.iconColor,
-                        label       = chip.label,
-                        value       = chip.value,
-                        sub         = chip.sub,
+                        modifier = Modifier.weight(1f),
+                        icon = chip.icon,
+                        iconColor = chip.iconColor,
+                        label = chip.label,
+                        value = chip.value,
+                        sub = chip.sub,
                         accentColor = chip.accentColor,
-                        isSeason    = chip.isSeason,
+                        isSeason = chip.isSeason,
                         seasonCompleted = chip.seasonCompleted,
-                        seasonTotal     = chip.seasonTotal,
+                        seasonTotal = chip.seasonTotal,
                     )
                 }
-                // Fill incomplete last row with invisible spacers so chips stay same width
                 repeat(cols - row.size) {
                     Spacer(Modifier.weight(1f))
                 }
@@ -558,41 +576,45 @@ private fun DynamicChip(
     seasonCompleted: Int = 0,
     seasonTotal: Int = 0,
 ) {
-    val animatedPct by animateFloatAsState(
-        targetValue = if (isSeason && seasonTotal > 0) seasonCompleted.toFloat() / seasonTotal else 0f,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
-        label = "chipSeasonPct",
-    )
+    val seasonFraction = remember(isSeason, seasonCompleted, seasonTotal) {
+        if (isSeason && seasonTotal > 0) seasonCompleted.toFloat() / seasonTotal else 0f
+    }
 
     Box(
         modifier = modifier
-            .fillMaxHeight()
             .clip(RoundedCornerShape(10.dp))
             .background(accentColor.copy(alpha = if (isSeason) 0.09f else 0.07f))
             .border(0.5.dp, accentColor.copy(alpha = 0.20f), RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                // Label row
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(icon, null, tint = iconColor.copy(alpha = 0.85f), modifier = Modifier.size(10.dp))
-                    Text(label, color = TextSecondary.copy(alpha = 0.7f), fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1)
-                }
-                Spacer(Modifier.height(2.dp))
-                // Main value
-                Text(value, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                // Sub text
-                Text(sub, color = accentColor.copy(alpha = 0.85f), fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(icon, null, tint = iconColor.copy(alpha = 0.85f), modifier = Modifier.size(10.dp))
+                Text(label, color = TextSecondary.copy(alpha = 0.7f), fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1)
             }
-            // Season progress bar pinned to bottom (only for season chip)
+            Spacer(Modifier.height(2.dp))
+            Text(value, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, color = accentColor.copy(alpha = 0.85f), fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (isSeason && seasonTotal > 0) {
                 Spacer(Modifier.height(4.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(accentColor.copy(alpha = 0.15f))) {
-                    Box(modifier = Modifier.fillMaxWidth(animatedPct).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Brush.horizontalGradient(listOf(accentColor, accentColor.copy(alpha = 0.6f)))))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(accentColor.copy(alpha = 0.15f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(seasonFraction)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(accentColor, accentColor.copy(alpha = 0.6f)),
+                                ),
+                            ),
+                    )
                 }
             }
         }
@@ -602,29 +624,33 @@ private fun DynamicChip(
 // ── Live Race Countdown ────────────────────────────────────────────────────────
 @Composable
 private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color) {
-    var secondsLeft by remember { mutableLongStateOf(secondsUntilRace(dateStr, timeStr)) }
-    LaunchedEffect(dateStr, timeStr) {
+    val tickersPaused = LocalTickersPaused.current
+    var secondsLeft by remember(dateStr, timeStr) { mutableLongStateOf(secondsUntilRace(dateStr, timeStr)) }
+
+    LaunchedEffect(dateStr, timeStr, tickersPaused) {
+        if (tickersPaused) return@LaunchedEffect
         while (secondsLeft > 0) {
             delay(1000L)
             secondsLeft = secondsUntilRace(dateStr, timeStr)
         }
     }
+
     if (secondsLeft <= 0 || secondsLeft > 7 * 24 * 3600) return
 
-    val days  = secondsLeft / 86400
+    val days = secondsLeft / 86400
     val hours = (secondsLeft % 86400) / 3600
-    val mins  = (secondsLeft % 3600) / 60
-    val secs  = secondsLeft % 60
+    val mins = (secondsLeft % 3600) / 60
+    val secs = secondsLeft % 60
 
-    // Toggle at 600ms interval — avoids the 60fps recompose from rememberInfiniteTransition
     var dotVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(tickersPaused) {
+        if (tickersPaused) return@LaunchedEffect
         while (true) {
             delay(600L)
             dotVisible = !dotVisible
         }
     }
-    val dotAlpha = if (dotVisible) 1f else 0.5f
+    val dotAlpha = if (tickersPaused || dotVisible) 1f else 0.5f
 
     Row(
         modifier = Modifier.fillMaxWidth()

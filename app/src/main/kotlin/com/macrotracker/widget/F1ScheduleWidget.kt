@@ -156,13 +156,13 @@ private fun ScheduleFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
                 Text("FULL CALENDAR", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.sub))
             }
             Spacer(GlanceModifier.height(sc.spaceXs))
-            val nextRace = d.schedule.find { it.isNext }
-            val lastPastRace = d.schedule.filter { it.isPast }.lastOrNull()
-            val toShow = d.schedule.filter { it != nextRace && it != lastPastRace }.sortedBy { it.round }
+            val nextRace = d.schedule.firstOrNull { it.isNext }
+            val upcomingRaces = d.schedule.filter { !it.isPast && it != nextRace }.sortedBy { it.round }
+            val toShow = upcomingRaces.ifEmpty { d.schedule.takeLast(5).sortedBy { it.round } }
             LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
                 items(toShow) { race ->
                     RaceRow(race, c, sc, showDate = true, showLocality = w >= 340.dp)
-                    Spacer(GlanceModifier.height(8.dp)) // Increased spacing
+                    Spacer(GlanceModifier.height(12.dp))
                 }
             }
         }
@@ -387,24 +387,21 @@ private fun HeroCardCompact(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WS
 private fun HeroCardFull(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScale) {
     val glassBg = androidx.compose.ui.graphics.Color(0x80000000) // Premium dark glass
     Box(
-        GlanceModifier.fillMaxWidth().height(120.dp).cornerRadius(sc.cornerSm).background(c.bg)
+        GlanceModifier.fillMaxWidth().height(98.dp).cornerRadius(sc.cornerSm).background(c.cardAlt)
     ) {
-        // Flag Banner Background
+        // Flag Banner Background: keep it left-biased so the full flag reads as a banner, then fade into the card.
         val flagToShow = race.flagBitmap ?: d.flagBitmap
         if (flagToShow != null) {
-            Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+            Box(GlanceModifier.width(250.dp).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                 Image(
                     provider = ImageProvider(flagToShow),
                     contentDescription = null,
-                    modifier = GlanceModifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    modifier = GlanceModifier.width(150.dp).fillMaxHeight(),
+                    contentScale = ContentScale.Fit
                 )
-                // Dark tint overlay for readability
-                Box(GlanceModifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x4D000000))) {}
-                
-                // Dark Fade effect (right to left)
+                Box(GlanceModifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x26000000))) {}
                 Image(
-                    provider = ImageProvider(com.macrotracker.R.drawable.f1_surface_fade),
+                    provider = ImageProvider(com.macrotracker.R.drawable.f1_card_fade),
                     contentDescription = null,
                     modifier = GlanceModifier.fillMaxSize(),
                     contentScale = ContentScale.FillBounds
@@ -416,58 +413,74 @@ private fun HeroCardFull(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScal
             GlanceModifier.fillMaxSize().padding(sc.padSm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Glassy Race Info + Countdown
-            Row(
-                GlanceModifier.fillMaxWidth().fillMaxHeight(),
-                verticalAlignment = Alignment.CenterVertically
+            Spacer(GlanceModifier.width(126.dp))
+            Box(
+                GlanceModifier.defaultWeight().fillMaxHeight().cornerRadius(sc.cornerSm)
+                    .background(androidx.glance.unit.ColorProvider(glassBg)).padding(horizontal = 9.dp, vertical = 6.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
-                // Info Tile: Race, Locality and Session times
-                Box(
-                    GlanceModifier.defaultWeight().fillMaxHeight().cornerRadius(sc.cornerSm)
-                        .background(androidx.glance.unit.ColorProvider(glassBg)).padding(horizontal = 10.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Column(GlanceModifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(GlanceModifier.cornerRadius(2.dp).background(c.red).padding(horizontal = 3.dp, vertical = 1.dp)) {
-                                Text("R${race.round}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 8.sp, color = c.text))
-                            }
-                            Spacer(GlanceModifier.width(sc.spaceSm))
-                            Text(cleanRaceName(race.raceName).take(24),
-                                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 11.sp, color = c.text), maxLines = 1)
+                Column(GlanceModifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(GlanceModifier.cornerRadius(3.dp).background(c.red).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                            Text("R${race.round}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 8.sp, color = c.text), maxLines = 1)
                         }
-                        
-                        Text(race.locality.uppercase(),
-                            style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 8.sp, color = c.sub), maxLines = 1)
-                        
-                        Spacer(GlanceModifier.height(2.dp))
-                        
-                        // All sessions for this weekend
-                        d.weekendSessions.forEach { s ->
-                            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                val tc = if (s.isNext) c.gold else if (s.isPast) c.sub else c.text
-                                val weight = if (s.isNext) FontWeight.Bold else FontWeight.Medium
-                                Text(abbrevSession(s.label), style = TextStyle(fontWeight = weight, fontSize = 8.sp, color = tc))
-                                Spacer(GlanceModifier.width(6.dp))
-                                Text(fmtLongDate(s.date).split(" ").take(2).joinToString(" "), style = TextStyle(fontSize = 8.sp, color = tc))
-                                Spacer(GlanceModifier.defaultWeight())
-                                Text(fmtLocalTime(s.date, s.time), style = TextStyle(fontWeight = weight, fontSize = 8.sp, color = tc))
-                            }
+                        Spacer(GlanceModifier.width(sc.spaceSm))
+                        Column(GlanceModifier.defaultWeight()) {
+                            Text(cleanRaceName(race.raceName).take(24),
+                                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 13.sp, color = c.text), maxLines = 1)
+                            Text(race.locality.uppercase(),
+                                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 7.sp, color = c.sub), maxLines = 1)
                         }
                     }
-                }
-
-                Spacer(GlanceModifier.width(sc.spaceSm))
-
-                // Countdown Tile - Increased width to prevent squishing
-                Box(
-                    GlanceModifier.width(82.dp).fillMaxHeight().cornerRadius(sc.cornerSm)
-                        .background(androidx.glance.unit.ColorProvider(glassBg)).padding(sc.padSm),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CountdownBlock(d, c, sc, compact = true)
+                    Spacer(GlanceModifier.height(5.dp))
+                    HeroSessionGrid(d.weekendSessions, c)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HeroSessionGrid(sessions: List<SessionRow>, c: F1Clr) {
+    val firstRow = sessions.take(3)
+    val secondRow = sessions.drop(3).take(3)
+    Column(GlanceModifier.fillMaxWidth()) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            firstRow.forEachIndexed { i, session ->
+                if (i > 0) Spacer(GlanceModifier.width(6.dp))
+                HeroSessionChip(session, c, GlanceModifier)
+            }
+        }
+        if (secondRow.isNotEmpty()) {
+            Spacer(GlanceModifier.height(4.dp))
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                secondRow.forEachIndexed { i, session ->
+                    if (i > 0) Spacer(GlanceModifier.width(6.dp))
+                    HeroSessionChip(session, c, GlanceModifier)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroSessionChip(session: SessionRow, c: F1Clr, modifier: GlanceModifier) {
+    val isNext = session.isNext
+    val bg = when {
+        isNext -> c.gold
+        session.isPast -> c.divider
+        else -> c.pill
+    }
+    val fg = if (isNext) c.bg else c.text
+    Box(
+        modifier.cornerRadius(4.dp).background(bg).padding(horizontal = 7.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(abbrevSession(session.label), style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 7.sp, color = fg), maxLines = 1)
+            Spacer(GlanceModifier.width(3.dp))
+            Text(fmtLocalTime(session.date, session.time).ifEmpty { fmtShortDate(session.date) },
+                style = TextStyle(fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium, fontSize = 8.sp, color = fg), maxLines = 1)
         }
     }
 }
@@ -475,28 +488,13 @@ private fun HeroCardFull(race: ScheduleRow, d: F1WidgetData, c: F1Clr, sc: WScal
 // ——— COUNTDOWN BLOCK ——————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun CountdownBlock(d: F1WidgetData, c: F1Clr, sc: WScale, compact: Boolean) {
-    val bigFont = if (compact) sc.fxl else sc.fxxl
-    val smFont  = if (compact) sc.fxs else sc.fsm
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        when {
-            d.daysUntil == 0L -> {
-                Text("TODAY", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = bigFont, color = c.text))
-                if (d.hoursUntil >= 0)
-                    Text("${d.hoursUntil}h ${d.minutesUntil}m",
-                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = smFont, color = c.text))
-                if (d.nextSessionLabel != null)
-                    Text(abbrevSession(d.nextSessionLabel), style = TextStyle(fontSize = sc.fxs, color = c.text))
-            }
-            d.daysUntil > 0 -> {
-                Text("${d.daysUntil}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = bigFont, color = c.text))
-                Text("days", style = TextStyle(fontSize = smFont, color = c.text))
-                if (d.nextSessionLabel != null) {
-                    Spacer(GlanceModifier.height(sc.spaceXs))
-                    Text(abbrevSession(d.nextSessionLabel), style = TextStyle(fontSize = sc.fxs, color = c.text))
-                }
-            }
-            else -> Text("R${d.round ?: "?"}", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = bigFont, color = c.text))
-        }
+    val main = when {
+        d.daysUntil > 0 -> d.daysUntil.toString()
+        d.hoursUntil >= 0 -> "${d.hoursUntil}:${d.minutesUntil.toString().padStart(2, '0')}"
+        else -> d.round?.toString() ?: "—"
+    }
+    Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(main, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 28.sp, color = c.text), maxLines = 1)
     }
 }
 
@@ -515,31 +513,26 @@ private fun RaceRow(
     showDate: Boolean = false, showLocality: Boolean = false,
     modifier: GlanceModifier = GlanceModifier,
 ) {
-    val bgColor   = when { race.isNext -> c.red; else -> c.bg }
     val textColor = if (race.isPast) c.sub else c.text
-    val cardBg    = if (race.isNext) c.card else c.cardAlt
-    val glassBg   = androidx.compose.ui.graphics.Color(0x80000000)
+    val rowBg = c.cardAlt
+    val dataBg = androidx.compose.ui.graphics.Color(0xD91E1E2E)
 
     Box(
-        GlanceModifier.fillMaxWidth().then(modifier).cornerRadius(sc.cornerSm)
-            .background(bgColor),
+        GlanceModifier.fillMaxWidth().then(modifier).height(88.dp).cornerRadius(sc.cornerSm)
+            .background(rowBg),
     ) {
-        // Flag Banner Background
+        // Left-side country banner. The data panel is offset to the right so text never sits on top of the flag.
         if (race.flagBitmap != null) {
-            Box(GlanceModifier.width(140.dp).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
+            Box(GlanceModifier.width(225.dp).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                 Image(
                     provider = ImageProvider(race.flagBitmap),
                     contentDescription = null,
                     modifier = GlanceModifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                // Fade effect: Transparent (left) -> Current bgColor (right)
-                val fadeRes = when {
-                    race.isNext -> com.macrotracker.R.drawable.f1_banner_fade
-                    else -> com.macrotracker.R.drawable.f1_surface_fade
-                }
+                Box(GlanceModifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x26000000))) {}
                 Image(
-                    provider = ImageProvider(fadeRes),
+                    provider = ImageProvider(com.macrotracker.R.drawable.f1_card_fade),
                     contentDescription = null,
                     modifier = GlanceModifier.fillMaxSize(),
                     contentScale = ContentScale.FillBounds
@@ -548,83 +541,119 @@ private fun RaceRow(
         }
 
         Row(
-            GlanceModifier.fillMaxWidth().height(76.dp).padding(6.dp),
+            GlanceModifier.fillMaxSize().padding(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Spacer to show background flag
-            Spacer(GlanceModifier.width(60.dp))
-
-            // Main Data Tile
+            Spacer(GlanceModifier.width(126.dp))
             Box(
                 GlanceModifier.defaultWeight().fillMaxHeight().cornerRadius(sc.cornerSm)
-                    .background(if (race.isNext) androidx.glance.unit.ColorProvider(glassBg) else cardBg)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .background(androidx.glance.unit.ColorProvider(dataBg))
+                    .padding(horizontal = 9.dp, vertical = 7.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Row(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                    // Left Column: Round and Name
-                    Column(GlanceModifier.defaultWeight()) {
+                    Column(GlanceModifier.defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                GlanceModifier.cornerRadius(2.dp)
-                                    .background(if (race.isNext) c.text else c.red)
-                                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                                GlanceModifier.cornerRadius(3.dp)
+                                    .background(if (race.isNext) c.gold else c.red)
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
                             ) {
                                 Text("R${race.round}", style = TextStyle(
                                     fontWeight = FontWeight.Bold, fontSize = 8.sp,
-                                    color = if (race.isNext) c.red else c.text
-                                ))
+                                    color = if (race.isNext) c.bg else c.text
+                                ), maxLines = 1)
                             }
                             Spacer(GlanceModifier.width(6.dp))
-                            Text(cleanRaceName(race.raceName).take(20),
+                            Text(cleanRaceName(race.raceName).take(18),
                                 style = TextStyle(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp, color = textColor,
+                                    fontSize = 12.sp, color = textColor,
                                     fontStyle = if (race.isPast) FontStyle.Italic else FontStyle.Normal,
                                 ), maxLines = 1)
                         }
-                        
-                        Spacer(GlanceModifier.height(4.dp))
-
-                        // Session times grid
+                        Spacer(GlanceModifier.height(3.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            val sessions = mutableListOf<Pair<String, String?>>()
-                            sessions.add("Q" to race.qualiTime)
-                            if (race.hasSprint) sessions.add("S" to race.sprintTime)
-                            sessions.add("R" to race.raceTime)
-                            
-                            sessions.forEachIndexed { i, (label, time) ->
-                                if (i > 0) Spacer(GlanceModifier.width(6.dp))
-                                val localT = fmtLocalTime(race.raceDate, time)
-                                if (localT.isNotEmpty()) {
-                                    Text("$label $localT", style = TextStyle(
-                                        fontSize = 8.sp, 
-                                        color = if (label == "R" && !race.isPast) (if (race.isNext) c.gold else c.red) else textColor,
-                                        fontWeight = if (label == "R") FontWeight.Bold else FontWeight.Normal
-                                    ))
+                            if (showLocality && race.locality.isNotEmpty()) {
+                                Text(race.locality.uppercase().take(13), style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 7.sp, color = c.sub), maxLines = 1)
+                            }
+                            if (race.isNext) {
+                                Spacer(GlanceModifier.width(5.dp))
+                                Box(GlanceModifier.cornerRadius(3.dp).background(c.red).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                                    Text("NEXT", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 7.sp, color = c.text), maxLines = 1)
                                 }
                             }
                         }
                     }
-
-                    // Right Column: Date
-                    Column(horizontalAlignment = Alignment.End) {
-                        val dateParts = fmtLongDate(race.raceDate).split(" ")
-                        Text(dateParts.take(2).joinToString(" "), 
-                            style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 10.sp, color = textColor))
-                        if (dateParts.size > 2) {
-                            Text(dateParts.last(), 
-                                style = TextStyle(fontSize = 8.sp, color = c.sub))
-                        }
-                    }
+                    Spacer(GlanceModifier.width(6.dp))
+                    CalendarSessionStack(race, c)
                 }
             }
         }
     }
 }
 
+@Composable
+private fun CalendarSessionStack(race: ScheduleRow, c: F1Clr) {
+    val rows = buildList {
+        if (race.qualiTime != null) add(Triple("Q", race.qualifyingDate ?: race.raceDate, race.qualiTime))
+        if (race.hasSprint && race.sprintTime != null) add(Triple("S", race.sprintDate ?: race.raceDate, race.sprintTime))
+        add(Triple("R", race.raceDate, race.raceTime))
+    }
+    Column(GlanceModifier.width(112.dp).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+        rows.take(3).forEachIndexed { i, row ->
+            if (i > 0) Spacer(GlanceModifier.height(if (rows.size > 2) 2.dp else 4.dp))
+            CalendarSessionLine(
+                label = row.first,
+                date = row.second,
+                time = row.third,
+                c = c,
+                highlight = row.first == "R" && !race.isPast,
+                compact = rows.size > 2,
+                modifier = GlanceModifier.defaultWeight(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarSessionLine(
+    label: String,
+    date: String?,
+    time: String?,
+    c: F1Clr,
+    highlight: Boolean,
+    compact: Boolean,
+    modifier: GlanceModifier = GlanceModifier,
+) {
+    val localT = fmtLocalTime(date, time).ifEmpty { "—" }
+    Box(
+        modifier.fillMaxWidth().cornerRadius(5.dp)
+            .background(if (highlight) c.red else c.pill)
+            .padding(horizontal = 5.dp, vertical = if (compact) 2.dp else 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 8.sp, color = if (highlight) c.text else c.sub), maxLines = 1)
+            Spacer(GlanceModifier.width(3.dp))
+            Text(
+                "${fmtShortDate(date)} $localT",
+                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 7.sp, color = if (highlight) c.gold else c.text),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
 // ——— HELPERS ——————————————————————————————————————————————————————————————————————————————————————————————
-private fun cleanRaceName(n: String) = n.removePrefix("Grand Prix of ").removePrefix("Formula 1 ").trim()
+private fun cleanRaceName(n: String): String {
+    val noPrefix = n.removePrefix("Formula 1 ").trim()
+    return if (noPrefix.startsWith("Grand Prix of ")) {
+        "${noPrefix.removePrefix("Grand Prix of ").trim()} GP"
+    } else {
+        noPrefix.replace("Grand Prix", "GP").trim()
+    }
+}
 
 private fun abbrevSession(label: String): String = when {
     label.startsWith("Sprint Quali", ignoreCase = true) -> "SQ"
@@ -645,7 +674,13 @@ private fun fmtLocalTime(dateStr: String?, timeStr: String?): String {
     } catch (_: Exception) { "" }
 }
 
+private fun fmtShortDate(dateStr: String?): String {
+    if (dateStr == null) return "—"
+    return try {
+        LocalDate.parse(dateStr).format(DateTimeFormatter.ofPattern("EEE d"))
+    } catch (_: Exception) { dateStr.take(5) }
+}
+
 private fun fmtLongDate(dateStr: String): String = try {
     LocalDate.parse(dateStr).format(DateTimeFormatter.ofPattern("EEE d MMM"))
 } catch (_: Exception) { dateStr }
-

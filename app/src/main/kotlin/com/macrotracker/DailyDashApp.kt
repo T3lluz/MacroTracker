@@ -12,6 +12,12 @@ import okhttp3.Request
 @HiltAndroidApp
 class DailyDashApp : Application(), ImageLoaderFactory {
 
+    companion object {
+        /** Survives Activity recreation within the same process (e.g. widget re-launch). */
+        @Volatile
+        var splashShownThisProcess: Boolean = false
+    }
+
     override fun onCreate() {
         super.onCreate()
         if (WidgetStateProvider.hasAnyWidget(this)) {

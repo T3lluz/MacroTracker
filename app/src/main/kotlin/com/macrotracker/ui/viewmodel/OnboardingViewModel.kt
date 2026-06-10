@@ -1,6 +1,7 @@
 package com.macrotracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.macrotracker.DailyDashApp
 import com.macrotracker.data.local.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,15 +17,15 @@ class OnboardingViewModel @Inject constructor(
     val onboardingCompleted: StateFlow<Boolean> = settings.onboardingCompleted
 
     /**
-     * True only until the splash has played once during this process lifetime.
-     * Resets to false when the process is killed — so the next cold start
-     * (app killed from recents, OOM, device restart) will show the splash again.
-     * Navigating within the app or backgrounding/foregrounding does NOT reset it.
+     * True once the splash has played during this process lifetime.
+     * Stored on [DailyDashApp] so a new Activity (e.g. widget tap) does not replay it.
+     * Resets when the process is killed — cold starts still show the splash.
      */
-    private val _splashShown = MutableStateFlow(false)
+    private val _splashShown = MutableStateFlow(DailyDashApp.splashShownThisProcess)
     val splashShown: StateFlow<Boolean> = _splashShown.asStateFlow()
 
     fun markSplashShown() {
+        DailyDashApp.splashShownThisProcess = true
         _splashShown.value = true
     }
 

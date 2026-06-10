@@ -2,25 +2,23 @@ package com.macrotracker.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -29,6 +27,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.macrotracker.ui.components.PillNavigationBar
@@ -36,8 +35,8 @@ import com.macrotracker.ui.navigation.DailyDashNavHost
 import com.macrotracker.ui.navigation.OnboardingRoutes
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.screens.onboarding.SplashOverlay
-import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
+import com.macrotracker.ui.viewmodel.SettingsViewModel
 import kotlin.math.roundToInt
 
 @Composable
@@ -45,14 +44,12 @@ fun MainScreen(
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val onboardingCompleted by onboardingViewModel.onboardingCompleted.collectAsState()
-    val splashShown         by onboardingViewModel.splashShown.collectAsState()
-    
-    // We also need to check if the AI screen should be visible
-    val homeViewModel: com.macrotracker.ui.viewmodel.HomeViewModel = hiltViewModel()
-    val hasAiApiKey = homeViewModel.hasAiApiKey
+    val splashShown by onboardingViewModel.splashShown.collectAsState()
 
-    // NavHost starts directly at the right destination — the splash is
-    // a separate overlay and never a nav destination.
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState()
+    val hasAiApiKey = geminiApiKey.isNotBlank()
+
     val startDestination = remember(onboardingCompleted) {
         if (onboardingCompleted) Screen.Home.route else OnboardingRoutes.WELCOME
     }
@@ -66,84 +63,122 @@ fun MainScreen(
         }
     }
 
-    // ── Hide on scroll logic ──────────────────────────────────────────
+    val onOnboardingComplete = remember(onboardingViewModel) {
+        { onboardingViewModel.completeOnboarding() }
+    }
+    val onSplashFinished = remember(onboardingViewModel) {
+        { onboardingViewModel.markSplashShown() }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        MainScreenScrollScaffold(
+            navController = navController,
+            items = items,
+            startDestination = startDestination,
+            onboardingCompleted = onboardingCompleted,
+            onOnboardingComplete = onOnboardingComplete,
+        )
+
+        if (!splashShown) {
+            SplashOverlay(onFinished = onSplashFinished)
+        }
+    }
+}
+
+@Composable
+private fun MainScreenScrollScaffold(
+    navController: NavHostController,
+    items: List<Screen>,
+    startDestination: String,
+    onboardingCompleted: Boolean,
+    onOnboardingComplete: () -> Unit,
+) {
     val density = LocalDensity.current
-    val navBarHeight = 140.dp // Increased significantly to ensure the selection pill is also hidden
+    val navBarHeight = 140.dp
     val navBarHeightPx = with(density) { navBarHeight.toPx() }
-    val navigationBarsPaddingPx = with(density) { WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx() }
+    val navigationBarsPaddingPx = with(density) {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx()
+    }
     val totalBottomOffsetPx = navBarHeightPx + navigationBarsPaddingPx
 
     var bottomBarOffsetHeightPx by remember { mutableFloatStateOf(0f) }
 
-    val nestedScrollConnection = remember {
+    val nestedScrollConnection = remember(totalBottomOffsetPx) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
-                val newOffset = bottomBarOffsetHeightPx + delta
-                bottomBarOffsetHeightPx = newOffset.coerceIn(-totalBottomOffsetPx, 0f)
+                bottomBarOffsetHeightPx = (bottomBarOffsetHeightPx + delta)
+                    .coerceIn(-totalBottomOffsetPx, 0f)
                 return Offset.Zero
             }
         }
     }
 
-    val animatedOffset by animateFloatAsState(
-        targetValue = bottomBarOffsetHeightPx,
-        animationSpec = tween(durationMillis = 200),
-        label = "nav_bar_offset"
-    )
+    val navHostModifier = remember { Modifier.statusBarsPadding() }
 
-    // Outer Box so the SplashOverlay can sit above the Scaffold at true
-    // window size — completely outside inset/padding influence.
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(nestedScrollConnection)
+            .nestedScroll(nestedScrollConnection),
     ) {
-
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentRoute = navBackStackEntry?.destination?.route
-                if (items.any { it.route == currentRoute }) {
-                    Box(
-                        modifier = Modifier
-                            .offset { IntOffset(x = 0, y = -animatedOffset.roundToInt()) }
-                            .navigationBarsPadding()
-                    ) {
-                        PillNavigationBar(
-                            items        = items,
-                            currentRoute = currentRoute,
-                            onItemClick  = { screen ->
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState    = true
-                                }
-                            }
-                        )
-                    }
-                }
-            }
+                ScrollAwareBottomBar(
+                    bottomBarOffsetHeightPx = bottomBarOffsetHeightPx,
+                    navController = navController,
+                    items = items,
+                )
+            },
         ) { _ ->
             DailyDashNavHost(
-                navController        = navController,
-                modifier             = Modifier.statusBarsPadding(),
-                startDestination     = startDestination,
-                onboardingCompleted  = onboardingCompleted,
-                onOnboardingComplete = { onboardingViewModel.completeOnboarding() },
+                navController = navController,
+                modifier = navHostModifier,
+                startDestination = startDestination,
+                onboardingCompleted = onboardingCompleted,
+                onOnboardingComplete = onOnboardingComplete,
             )
         }
+    }
+}
 
-        // Splash overlay — drawn above the Scaffold so it covers status-bar,
-        // nav-bar, and bottom nav without any inset fighting.
-        // Removed from composition the moment it calls onFinished().
-        if (!splashShown) {
-            SplashOverlay(
-                onFinished = { onboardingViewModel.markSplashShown() }
-            )
+@Composable
+private fun ScrollAwareBottomBar(
+    bottomBarOffsetHeightPx: Float,
+    navController: NavHostController,
+    items: List<Screen>,
+) {
+    val animatedOffset by animateFloatAsState(
+        targetValue = bottomBarOffsetHeightPx,
+        animationSpec = tween(durationMillis = 200),
+        label = "nav_bar_offset",
+    )
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    if (!items.any { it.route == currentRoute }) return
+
+    val onItemClick = remember(navController) {
+        { screen: Screen ->
+            navController.navigate(screen.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
         }
+    }
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(x = 0, y = -animatedOffset.roundToInt()) }
+            .navigationBarsPadding(),
+    ) {
+        PillNavigationBar(
+            items = items,
+            currentRoute = currentRoute,
+            onItemClick = onItemClick,
+        )
     }
 }

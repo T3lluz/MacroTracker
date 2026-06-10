@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,7 +61,9 @@ import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LastUpdatedText
+import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.data.remote.WeatherInfo
 import com.macrotracker.ui.viewmodel.WeatherUiState
 
 private enum class TimeOfDay { DAY, NIGHT, TWILIGHT }
@@ -307,8 +310,8 @@ fun WeatherCard(
             WeatherStateKey.SUCCESS -> {
                 val successState = currentState as? WeatherUiState.Success ?: return@AnimatedContent
                 val weather = successState.weather
-                val gradient = weatherGradient(weather.symbolCode)
-                val accent = weatherAccentColor(weather.symbolCode)
+                val gradient = remember(weather.symbolCode) { weatherGradient(weather.symbolCode) }
+                val accent = remember(weather.symbolCode) { weatherAccentColor(weather.symbolCode) }
 
                 Card(
                     modifier = Modifier
@@ -368,12 +371,21 @@ fun WeatherCard(
                                     IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
                                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
                                     }
-                                    // Clickable rotating chevron
-                                    val weatherChevronRot by animateFloatAsState(
-                                        targetValue = if (expanded) 180f else 0f,
-                                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                                        label = "weather_hdr_chevron",
-                                    )
+                                    val scrollIdle = !LocalTickersPaused.current
+                                    val weatherChevronRot = if (scrollIdle) {
+                                        animateFloatAsState(
+                                            targetValue = if (expanded) 180f else 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium,
+                                            ),
+                                            label = "weather_hdr_chevron",
+                                        ).value
+                                    } else if (expanded) {
+                                        180f
+                                    } else {
+                                        0f
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .size(36.dp)
@@ -450,176 +462,20 @@ fun WeatherCard(
                                 }
                             }
 
-                            // Expandable forecast
-                            AnimatedVisibility(
-                                visible = expanded,
-                                enter = MacroMotion.expandEnter,
-                                exit = MacroMotion.expandExit,
-                            ) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    // AI Summary — first thing in expanded, right under current weather
-                                    val showAi = (successState.aiSummaryLoading || successState.aiSummary != null)
-                                    if (showAi) {
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                                                .padding(10.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Outlined.AutoAwesome,
-                                                contentDescription = null,
-                                                tint = accent,
-                                                modifier = Modifier.size(14.dp),
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            if (successState.aiSummaryLoading) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(14.dp),
-                                                    color = accent,
-                                                    strokeWidth = 2.dp,
-                                                )
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text(
-                                                    "Generating summary…",
-                                                    fontSize = 12.sp,
-                                                    color = Color.White.copy(alpha = 0.6f),
-                                                )
-                                            } else if (successState.aiSummary != null) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = successState.aiSummary,
-                                                        fontSize = 13.sp,
-                                                        color = Color.White.copy(alpha = 0.85f),
-                                                        lineHeight = 19.sp,
-                                                    )
-                                                    if (successState.aiSummaryUpdatedAt != null) {
-                                                        Spacer(modifier = Modifier.height(4.dp))
-                                                        LastUpdatedText(
-                                                            lastUpdatedAt = successState.aiSummaryUpdatedAt,
-                                                            color = Color.White,
-                                                            modifier = Modifier.align(Alignment.End),
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Clothing recommendation
-                                    if (!successState.aiSummaryLoading && !successState.aiClothingRecommendation.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.Top,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-                                                .padding(10.dp),
-                                        ) {
-                                            Text("👔", fontSize = 14.sp)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column {
-                                                Text(
-                                                    text = "What to wear",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = accent,
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = successState.aiClothingRecommendation,
-                                                    fontSize = 13.sp,
-                                                    color = Color.White.copy(alpha = 0.85f),
-                                                    lineHeight = 19.sp,
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    if (weather.hourlyForecasts.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 1.dp)
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text("Hourly", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.padding(bottom = 8.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        ) {
-                                            weather.hourlyForecasts.forEach { hourly ->
-                                                Column(
-                                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                                    modifier = Modifier
-                                                        .width(56.dp)
-                                                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                                                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                                                ) {
-                                                    Text(hourly.time, fontSize = 11.sp, color = Color.White.copy(alpha = 0.65f))
-                                                    Spacer(Modifier.height(4.dp))
-                                                    Icon(
-                                                        painter = painterResource(hourly.iconRes),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(32.dp),
-                                                        tint = Color.Unspecified
-                                                    )
-                                                    Spacer(Modifier.height(4.dp))
-                                                    Text("${hourly.temperature.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if (weather.dailyForecasts.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 1.dp)
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text("Daily", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.padding(bottom = 8.dp))
-                                        weather.dailyForecasts.forEach { daily ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 4.dp)
-                                                    .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
-                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Text(daily.date, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.White, modifier = Modifier.width(44.dp))
-                                                Icon(
-                                                    painter = painterResource(daily.iconRes),
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(32.dp),
-                                                    tint = Color.Unspecified
-                                                )
-                                                Text(daily.description, fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-                                                Row {
-                                                    Text("${daily.minTemp.toInt()}°", fontSize = 14.sp, color = Color.White.copy(alpha = 0.5f))
-                                                    Text(" / ", fontSize = 14.sp, color = Color.White.copy(alpha = 0.3f))
-                                                    Text("${daily.maxTemp.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                                }
-                                            }
-                                        }
-                                    }
-
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    WidgetExpandBar(
-                                        expanded = true,
-                                        onToggle = { expanded = false; haptics.toggleOff() },
-                                        accentColor = Color.White,
-                                        collapseLabel = "Show less",
-                                    )
-                                }
-                            }
-
-                            if (!expanded) {
+                            if (expanded) {
+                                WeatherExpandedForecast(
+                                    successState = successState,
+                                    weather = weather,
+                                    accent = accent,
+                                    onCollapse = { expanded = false; haptics.toggleOff() },
+                                )
+                            } else {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 WidgetExpandBar(
                                     expanded = false,
                                     onToggle = { expanded = true; haptics.toggleOn(); onExpand() },
                                     accentColor = Color.White,
-                                    expandLabel = if (successState.aiSummary == null && !successState.aiSummaryLoading) "Forecast" else "Forecast & AI",
+                                    expandLabel = "Forecast",
                                 )
                             }
                         }
@@ -751,5 +607,197 @@ fun WeatherCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WeatherExpandedForecast(
+    successState: WeatherUiState.Success,
+    weather: WeatherInfo,
+    accent: Color,
+    onCollapse: () -> Unit,
+) {
+    val hourlyScroll = rememberScrollState()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        val showAi = successState.aiSummaryLoading || successState.aiSummary != null
+        if (showAi) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                    .padding(10.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                if (successState.aiSummaryLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        color = accent,
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Generating summary…",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.6f),
+                    )
+                } else if (successState.aiSummary != null) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = successState.aiSummary,
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.85f),
+                            lineHeight = 19.sp,
+                        )
+                        if (successState.aiSummaryUpdatedAt != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LastUpdatedText(
+                                lastUpdatedAt = successState.aiSummaryUpdatedAt,
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.End),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!successState.aiSummaryLoading && !successState.aiClothingRecommendation.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                    .padding(10.dp),
+            ) {
+                Text("👔", fontSize = 14.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "What to wear",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = accent,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = successState.aiClothingRecommendation,
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.85f),
+                        lineHeight = 19.sp,
+                    )
+                }
+            }
+        }
+
+        if (weather.hourlyForecasts.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                "Hourly",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(hourlyScroll),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                weather.hourlyForecasts.forEach { hourly ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(56.dp)
+                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                    ) {
+                        Text(hourly.time, fontSize = 11.sp, color = Color.White.copy(alpha = 0.65f))
+                        Spacer(Modifier.height(4.dp))
+                        Icon(
+                            painter = painterResource(hourly.iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = Color.Unspecified,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${hourly.temperature.toInt()}°",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (weather.dailyForecasts.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                "Daily",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            weather.dailyForecasts.forEach { daily ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        daily.date,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White,
+                        modifier = Modifier.width(44.dp),
+                    )
+                    Icon(
+                        painter = painterResource(daily.iconRes),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = Color.Unspecified,
+                    )
+                    Text(
+                        daily.description,
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                    )
+                    Row {
+                        Text("${daily.minTemp.toInt()}°", fontSize = 14.sp, color = Color.White.copy(alpha = 0.5f))
+                        Text(" / ", fontSize = 14.sp, color = Color.White.copy(alpha = 0.3f))
+                        Text("${daily.maxTemp.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+        WidgetExpandBar(
+            expanded = true,
+            onToggle = onCollapse,
+            accentColor = Color.White,
+            collapseLabel = "Show less",
+        )
     }
 }

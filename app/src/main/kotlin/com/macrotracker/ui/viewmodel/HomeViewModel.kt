@@ -26,6 +26,10 @@ import com.macrotracker.widget.WidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.drop
@@ -128,6 +132,16 @@ class HomeViewModel @Inject constructor(
     val hasAiApiKey: Boolean get() = weatherAiRepository.hasApiKey
 
     private var f1DataJob: Job? = null
+    private var widgetUpdateJob: Job? = null
+    private var refreshJob: Job? = null
+
+    private fun scheduleWidgetUpdate(immediate: Boolean = false) {
+        widgetUpdateJob?.cancel()
+        widgetUpdateJob = viewModelScope.launch {
+            if (!immediate) delay(500)
+            WidgetUpdater.updateAllWidgets(appContext)
+        }
+    }
 
     val homeWidgetOrder: StateFlow<String> = settingsRepository.homeWidgetOrder
 
@@ -190,22 +204,24 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadData() {
-        viewModelScope.launch {
-            val newSummary = repository.getDailySummary(today)
-            val newLogs = repository.getLogsForDate(today)
+        viewModelScope.launch { loadDataInternal() }
+    }
 
-            // Only advance the "last updated" timestamp when the data actually changed
-            val prevSummary = _summary.value
-            val dataChanged = prevSummary == null ||
-                prevSummary.totalCalories != newSummary.totalCalories ||
-                prevSummary.totalProtein != newSummary.totalProtein ||
-                _logs.value.size != newLogs.size
+    private suspend fun loadDataInternal() {
+        val newSummary = repository.getDailySummary(today)
+        val newLogs = repository.getLogsForDate(today)
 
-            _summary.value = newSummary
-            _logs.value = newLogs
-            if (dataChanged) {
-                _logsLastUpdatedAt.value = Instant.now()
-            }
+        // Only advance the "last updated" timestamp when the data actually changed
+        val prevSummary = _summary.value
+        val dataChanged = prevSummary == null ||
+            prevSummary.totalCalories != newSummary.totalCalories ||
+            prevSummary.totalProtein != newSummary.totalProtein ||
+            _logs.value.size != newLogs.size
+
+        _summary.value = newSummary
+        _logs.value = newLogs
+        if (dataChanged) {
+            _logsLastUpdatedAt.value = Instant.now()
         }
     }
 
@@ -217,140 +233,157 @@ class HomeViewModel @Inject constructor(
         hasCalendarPermission: Boolean,
         force: Boolean = false,
     ) {
-        if (_isRefreshing.value) return
-        // Skip automatic ON_RESUME refreshes that fire within 30 s of the last one.
-        // This prevents heavy work from running during every tab-switch transition.
         val now = System.currentTimeMillis()
         if (!force && lastRefreshMs > 0 && now - lastRefreshMs < 30_000L) return
+        if (refreshJob?.isActive == true && !force) return
 
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _isRefreshing.value = true
-            loadData()
-            loadWeather(hasLocationPermission, forceRefresh = force)
-            loadHealthConnect(silent = true)
-            loadCalendar(hasCalendarPermission)
-            loadF1Data(forceRefresh = force)
-            lastRefreshMs = System.currentTimeMillis()
-            _isRefreshing.value = false
+            try {
+                coroutineScope {
+                    awaitAll(
+                        async { loadDataInternal() },
+                        async { loadWeatherInternal(hasLocationPermission, forceRefresh = force) },
+                        async { loadHealthConnectInternal(silent = true) },
+                        async { loadCalendarInternal(hasCalendarPermission) },
+                        async { loadF1DataInternal(forceRefresh = force) },
+                    )
+                }
+                lastRefreshMs = System.currentTimeMillis()
+                WidgetUpdater.updateAllWidgets(appContext)
+            } catch (e: Exception) {
+                Log.e(TAG, "refreshAll failed: ${e.message}", e)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
     fun loadF1Data(forceRefresh: Boolean = false) {
         if (!forceRefresh && f1DataJob?.isActive == true) return
         f1DataJob?.cancel()
+        f1DataJob = viewModelScope.launch { loadF1DataInternal(forceRefresh) }
+    }
 
-        f1DataJob = viewModelScope.launch {
-            val cached = f1Repository.getCachedF1Data()
-            val cachedAt = f1Repository.lastFetchTimeMs.takeIf { it > 0 }?.let(Instant::ofEpochMilli)
-            if (cached != null) {
-                _f1State.value = F1UiState.Success(cached, lastUpdatedAt = cachedAt)
-            } else {
-                _f1State.value = F1UiState.Loading
-            }
-
-            f1Repository.getOverallF1Data(forceRefresh)
-                .onSuccess { f1Data ->
-                    val fetchedAt = f1Repository.lastFetchTimeMs
-                        .takeIf { it > 0 }?.let(Instant::ofEpochMilli)
-                    _f1State.value = F1UiState.Success(f1Data, lastUpdatedAt = fetchedAt)
-                    WidgetUpdater.updateAllWidgets(appContext)
-                }
-                .onFailure { error ->
-                    if (cached == null) {
-                        _f1State.value = F1UiState.Error(error.message ?: "Unknown error")
-                    }
-                }
+    private suspend fun loadF1DataInternal(forceRefresh: Boolean) {
+        val cached = f1Repository.getCachedF1Data()
+        val cachedAt = f1Repository.lastFetchTimeMs.takeIf { it > 0 }?.let(Instant::ofEpochMilli)
+        if (cached != null) {
+            _f1State.value = F1UiState.Success(cached, lastUpdatedAt = cachedAt)
+        } else {
+            _f1State.value = F1UiState.Loading
         }
+
+        f1Repository.getOverallF1Data(forceRefresh)
+            .onSuccess { f1Data ->
+                val fetchedAt = f1Repository.lastFetchTimeMs
+                    .takeIf { it > 0 }?.let(Instant::ofEpochMilli)
+                _f1State.value = F1UiState.Success(f1Data, lastUpdatedAt = fetchedAt)
+                scheduleWidgetUpdate()
+            }
+            .onFailure { error ->
+                if (cached == null) {
+                    _f1State.value = F1UiState.Error(error.message ?: "Unknown error")
+                }
+            }
     }
 
     fun loadHealthConnect(silent: Boolean = false) {
-        viewModelScope.launch {
-            if (!settingsRepository.masterHealthConnectEnabled.value || !healthConnectRepository.isAvailable() || !healthConnectRepository.hasAllPermissions()) {
-                _healthState.value = HomeHealthState.Unavailable
-                return@launch
-            }
+        viewModelScope.launch { loadHealthConnectInternal(silent) }
+    }
 
-            val current = _healthState.value
-            if (!silent || current !is HomeHealthState.Success) {
-                _healthState.value = HomeHealthState.Loading
+    private suspend fun loadHealthConnectInternal(silent: Boolean = false) {
+        if (!settingsRepository.masterHealthConnectEnabled.value || !healthConnectRepository.isAvailable() || !healthConnectRepository.hasAllPermissions()) {
+            _healthState.value = HomeHealthState.Unavailable
+            return
+        }
+
+        val current = _healthState.value
+        if (!silent || current !is HomeHealthState.Success) {
+            _healthState.value = HomeHealthState.Loading
+        } else {
+            _healthState.value = current.copy(isRefreshing = true)
+        }
+
+        try {
+            val stats = healthConnectRepository.readTodayStats()
+            if (stats.steps == 0L && current is HomeHealthState.Success && current.stats.steps > 0) {
+                Log.w(TAG, "Health Connect returned 0 steps, keeping previous value to avoid flicker")
+                _healthState.value = current.copy(isRefreshing = false)
             } else {
-                _healthState.value = current.copy(isRefreshing = true)
+                _healthState.value = HomeHealthState.Success(stats, lastUpdatedAt = Instant.now())
             }
-
-            try {
-                val stats = healthConnectRepository.readTodayStats()
-                if (stats.steps == 0L && current is HomeHealthState.Success && current.stats.steps > 0) {
-                     Log.w(TAG, "Health Connect returned 0 steps, keeping previous value to avoid flicker")
-                     _healthState.value = current.copy(isRefreshing = false) // preserve lastUpdatedAt
-                } else {
-                    _healthState.value = HomeHealthState.Success(stats, lastUpdatedAt = Instant.now())
-                }
-                WidgetUpdater.updateAllWidgets(appContext)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to read health data for home: ${e.message}", e)
-                if (current !is HomeHealthState.Success) {
-                    _healthState.value = HomeHealthState.Unavailable
-                } else {
-                    _healthState.value = current.copy(isRefreshing = false)
-                }
+            scheduleWidgetUpdate()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read health data for home: ${e.message}", e)
+            if (current !is HomeHealthState.Success) {
+                _healthState.value = HomeHealthState.Unavailable
+            } else {
+                _healthState.value = current.copy(isRefreshing = false)
             }
         }
     }
 
     fun loadCalendar(hasPermission: Boolean) {
+        viewModelScope.launch { loadCalendarInternal(hasPermission) }
+    }
+
+    private suspend fun loadCalendarInternal(hasPermission: Boolean) {
         if (!settingsRepository.calendarEnabled.value) {
             _calendarState.value = CalendarUiState.Unavailable
             return
         }
         if (!hasPermission) {
-             _calendarState.value = CalendarUiState.PermissionRequired
+            _calendarState.value = CalendarUiState.PermissionRequired
             return
         }
-        viewModelScope.launch {
-            try {
-                val available = calendarRepository.getAvailableCalendars()
-                val selected = getSelectedCalendarIds().let {
-                    if (it.isEmpty() && available.isNotEmpty()) {
-                        val all = available.map { cal -> cal.id }.toSet()
-                        saveSelectedCalendarIds(all)
-                        all
-                    } else it
-                }
-
-                val allEvents = calendarRepository.readEvents(extraDays = 14, calendarIds = selected)
-                val now = LocalDateTime.now()
-                val endOfToday = LocalDate.now().plusDays(1).atStartOfDay()
-
-                val todayEvents = allEvents.filter {
-                    (it.startTime.isBefore(endOfToday) && it.endTime.isAfter(now)) ||
-                    it.startTime.toLocalDate() == LocalDate.now()
-                }
-
-                val upcoming = allEvents.filter {
-                    it.startTime.isAfter(now) && it.startTime.toLocalDate() != LocalDate.now()
-                }
-
-                _calendarState.value = CalendarUiState.Success(
-                    events = todayEvents,
-                    upcomingEvents = upcoming.take(10),
-                    availableCalendars = available,
-                    selectedCalendarIds = selected,
-                    lastUpdatedAt = Instant.now(),
-                )
-
-                WidgetUpdater.updateAllWidgets(appContext)
-            } catch (e: Exception) {
-                Log.e(TAG, "Calendar error: ${e.message}", e)
-                _calendarState.value = CalendarUiState.Unavailable
+        try {
+            val available = calendarRepository.getAvailableCalendars()
+            val selected = getSelectedCalendarIds().let {
+                if (it.isEmpty() && available.isNotEmpty()) {
+                    val all = available.map { cal -> cal.id }.toSet()
+                    saveSelectedCalendarIds(all)
+                    all
+                } else it
             }
+
+            val allEvents = calendarRepository.readEvents(extraDays = 14, calendarIds = selected)
+            val now = LocalDateTime.now()
+            val endOfToday = LocalDate.now().plusDays(1).atStartOfDay()
+
+            val todayEvents = allEvents.filter {
+                (it.startTime.isBefore(endOfToday) && it.endTime.isAfter(now)) ||
+                    it.startTime.toLocalDate() == LocalDate.now()
+            }
+
+            val upcoming = allEvents.filter {
+                it.startTime.isAfter(now) && it.startTime.toLocalDate() != LocalDate.now()
+            }
+
+            _calendarState.value = CalendarUiState.Success(
+                events = todayEvents,
+                upcomingEvents = upcoming.take(10),
+                availableCalendars = available,
+                selectedCalendarIds = selected,
+                lastUpdatedAt = Instant.now(),
+            )
+            scheduleWidgetUpdate()
+        } catch (e: Exception) {
+            Log.e(TAG, "Calendar error: ${e.message}", e)
+            _calendarState.value = CalendarUiState.Unavailable
         }
     }
 
     fun loadWeather(hasPermission: Boolean, forceRefresh: Boolean = false) {
+        viewModelScope.launch { loadWeatherInternal(hasPermission, forceRefresh) }
+    }
+
+    private suspend fun loadWeatherInternal(hasPermission: Boolean, forceRefresh: Boolean = false) {
         if (!settingsRepository.weatherEnabled.value) {
             _weatherState.value = WeatherUiState.PermissionRequired
             appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE).edit { clear() }
-            viewModelScope.launch { WidgetUpdater.updateAllWidgets(appContext) }
+            scheduleWidgetUpdate()
             return
         }
         if (!hasPermission) {
@@ -358,47 +391,55 @@ class HomeViewModel @Inject constructor(
             return
         }
 
-        // Detect whether the user granted precise (fine) or approximate (coarse) location
         val hasPreciseLocation = ContextCompat.checkSelfPermission(
-            appContext, Manifest.permission.ACCESS_FINE_LOCATION
+            appContext, Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
 
-        viewModelScope.launch {
-            try {
+        try {
+            val currentWeather = _weatherState.value
+            if (currentWeather !is WeatherUiState.Success || forceRefresh) {
                 _weatherState.value = WeatherUiState.Loading
-                if (forceRefresh) {
-                    weatherRepository.clearCache()
-                    locationProvider.clearCache()
+            }
+            if (forceRefresh) {
+                weatherRepository.clearCache()
+                locationProvider.clearCache()
+            }
+            val location = locationProvider.getLocation(forceRefresh = forceRefresh)
+            if (location == null) {
+                if (_weatherState.value !is WeatherUiState.Success) {
+                    _weatherState.value = WeatherUiState.Error("Could not get location")
                 }
-                val location = locationProvider.getLocation(forceRefresh = forceRefresh)
-                if (location == null) {
-                    if (_weatherState.value !is WeatherUiState.Success) {
-                        _weatherState.value = WeatherUiState.Error("Could not get location")
-                    }
-                    return@launch
-                }
-                val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
-                val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
+                return
+            }
+            val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
+            val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
 
-                val current = _weatherState.value
-                val fetchedAt = Instant.now()
-                if (current is WeatherUiState.Success) {
-                    _weatherState.value = current.copy(weather = weather, isPrecise = hasPreciseLocation, lastUpdatedAt = fetchedAt)
-                    if (current.aiSummary == null) {
-                        loadWeatherAiSummary()
-                    }
-                } else {
-                    _weatherState.value = WeatherUiState.Success(weather, isPrecise = hasPreciseLocation, lastUpdatedAt = fetchedAt)
+            val current = _weatherState.value
+            val fetchedAt = Instant.now()
+            if (current is WeatherUiState.Success) {
+                _weatherState.value = current.copy(
+                    weather = weather,
+                    isPrecise = hasPreciseLocation,
+                    lastUpdatedAt = fetchedAt,
+                )
+                if (current.aiSummary == null) {
                     loadWeatherAiSummary()
                 }
+            } else {
+                _weatherState.value = WeatherUiState.Success(
+                    weather,
+                    isPrecise = hasPreciseLocation,
+                    lastUpdatedAt = fetchedAt,
+                )
+                loadWeatherAiSummary()
+            }
 
-                cacheWeatherForWidget(weather, location.latitude, location.longitude)
-                WidgetUpdater.updateAllWidgets(appContext)
-            } catch (e: Exception) {
-                Log.e(TAG, "Weather error: ${e.message}", e)
-                if (_weatherState.value !is WeatherUiState.Success) {
-                    _weatherState.value = WeatherUiState.Error(e.message ?: "Unknown error")
-                }
+            cacheWeatherForWidget(weather, location.latitude, location.longitude)
+            scheduleWidgetUpdate()
+        } catch (e: Exception) {
+            Log.e(TAG, "Weather error: ${e.message}", e)
+            if (_weatherState.value !is WeatherUiState.Success) {
+                _weatherState.value = WeatherUiState.Error(e.message ?: "Unknown error")
             }
         }
     }
@@ -512,7 +553,7 @@ class HomeViewModel @Inject constructor(
             )
             repository.saveLog(log)
             loadData()
-            WidgetUpdater.updateAllWidgets(appContext)
+            scheduleWidgetUpdate(immediate = true)
         }
     }
 }
