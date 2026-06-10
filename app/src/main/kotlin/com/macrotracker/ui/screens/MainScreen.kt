@@ -1,5 +1,7 @@
 package com.macrotracker.ui.screens
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -14,7 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -22,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -94,27 +97,37 @@ private fun MainScreenScrollScaffold(
     onOnboardingComplete: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val navBarHeight = 140.dp
+    val navBarHeight = 102.dp
     val navBarHeightPx = with(density) { navBarHeight.toPx() }
     val navigationBarsPaddingPx = with(density) {
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx()
     }
     val totalBottomOffsetPx = navBarHeightPx + navigationBarsPaddingPx
 
-    var bottomBarOffsetHeightPx by remember { mutableFloatStateOf(0f) }
+    var navBarHidden by remember { mutableStateOf(false) }
 
-    val nestedScrollConnection = remember(totalBottomOffsetPx) {
+    val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val delta = available.y
-                bottomBarOffsetHeightPx = (bottomBarOffsetHeightPx + delta)
-                    .coerceIn(-totalBottomOffsetPx, 0f)
+                when {
+                    available.y < -1f -> navBarHidden = true
+                    available.y > 1f -> navBarHidden = false
+                }
                 return Offset.Zero
             }
         }
     }
 
     val navHostModifier = remember { Modifier.statusBarsPadding() }
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val isMainTabRoute = items.any { it.route == currentRoute }
+    val context = LocalContext.current
+
+    BackHandler(enabled = isMainTabRoute) {
+        (context as? Activity)?.finish()
+    }
 
     Box(
         modifier = Modifier
@@ -125,7 +138,8 @@ private fun MainScreenScrollScaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 ScrollAwareBottomBar(
-                    bottomBarOffsetHeightPx = bottomBarOffsetHeightPx,
+                    navBarHidden = navBarHidden,
+                    hideDistancePx = totalBottomOffsetPx,
                     navController = navController,
                     items = items,
                 )
@@ -144,13 +158,15 @@ private fun MainScreenScrollScaffold(
 
 @Composable
 private fun ScrollAwareBottomBar(
-    bottomBarOffsetHeightPx: Float,
+    navBarHidden: Boolean,
+    hideDistancePx: Float,
     navController: NavHostController,
     items: List<Screen>,
 ) {
+    val targetOffsetPx = if (navBarHidden) -hideDistancePx else 0f
     val animatedOffset by animateFloatAsState(
-        targetValue = bottomBarOffsetHeightPx,
-        animationSpec = tween(durationMillis = 200),
+        targetValue = targetOffsetPx,
+        animationSpec = tween(durationMillis = 220),
         label = "nav_bar_offset",
     )
 

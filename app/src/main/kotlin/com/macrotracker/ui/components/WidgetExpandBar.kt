@@ -1,14 +1,7 @@
 package com.macrotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,8 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LocalTickersPaused
+import com.macrotracker.ui.util.rememberHaptics
 
 /**
  * Unified expand/collapse bar used at the bottom of every widget.
@@ -53,16 +49,15 @@ fun WidgetExpandBar(
     accentColor: Color = TextSecondary,
     expandLabel: String = "More",
     collapseLabel: String = "Less",
+    topPadding: Dp = 10.dp,
 ) {
+    val haptics = rememberHaptics()
     val scrollIdle = !LocalTickersPaused.current
 
     val chevronRotation = if (scrollIdle) {
         animateFloatAsState(
             targetValue = if (expanded) 180f else 0f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMedium,
-            ),
+            animationSpec = MacroMotion.bouncySpring(),
             label = "chevron_rot",
         ).value
     } else if (expanded) {
@@ -84,7 +79,7 @@ fun WidgetExpandBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            .padding(top = topPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -104,7 +99,10 @@ fun WidgetExpandBar(
                 .clickable(
                     interactionSource = interactionSource,
                     indication = ripple(color = accentColor, bounded = true, radius = 80.dp),
-                    onClick = onToggle,
+                    onClick = {
+                        if (expanded) haptics.toggleOff() else haptics.toggleOn()
+                        onToggle()
+                    },
                 )
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
@@ -116,7 +114,7 @@ fun WidgetExpandBar(
                 if (scrollIdle) {
                     AnimatedContent(
                         targetState = expanded,
-                        transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(100)) },
+                        transitionSpec = { MacroMotion.widgetContentTransition },
                         label = "bar_label",
                     ) { isExpanded ->
                         Text(

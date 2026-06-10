@@ -24,9 +24,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -53,6 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +62,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -91,7 +94,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.data.health.DailyHealthStats
 import com.macrotracker.ui.components.ButtonVariant
-import com.macrotracker.ui.components.DraggableWidgetColumn
 import com.macrotracker.ui.components.HealthConnectCard
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
@@ -101,8 +103,10 @@ import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.WidgetConfig
 import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.calculatePercentageChange
+import com.macrotracker.ui.components.draggableWidgetItems
 import com.macrotracker.ui.components.encodeWidgetConfig
 import com.macrotracker.ui.components.parseWidgetConfig
+import com.macrotracker.ui.components.rememberDraggableWidgetListState
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
@@ -115,6 +119,7 @@ import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
+import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.DashboardViewModel
 import com.macrotracker.ui.viewmodel.HealthConnectUiState
@@ -228,14 +233,29 @@ fun HealthScreen(
 
     val todayFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d")) }
 
-    Column(
+    val scope = rememberCoroutineScope()
+    val visibleConfigs by remember(parsedConfigs) {
+        derivedStateOf { parsedConfigs.filter { it.isVisible } }
+    }
+    val dragState = rememberDraggableWidgetListState(
+        items = visibleConfigs,
+        onReorder = { reordered ->
+            val hidden = parsedConfigs.filter { !it.isVisible }
+            healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(reordered + hidden))
+        },
+    )
+    val listState = rememberLazyListState()
+    val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
+
+    CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
+    LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-            .padding(bottom = 120.dp),
+            .background(Background),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
     ) {
+        item(key = "header") {
         Spacer(modifier = Modifier.height(48.dp))
 
         // Header
@@ -248,7 +268,7 @@ fun HealthScreen(
                 Text("Health", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
                 Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
             }
-            IconButton(onClick = { isEditMode = !isEditMode }) {
+            IconButton(onClick = { haptics.tick(); isEditMode = !isEditMode }) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
             }
         }
@@ -266,8 +286,10 @@ fun HealthScreen(
             }
             else -> {}
         }
+        }
 
         if (isEditMode) {
+            item(key = "editor") {
             WidgetEditor(
                 configs = parsedConfigs,
                 onConfigsChanged = { newConfigs ->
@@ -275,17 +297,14 @@ fun HealthScreen(
                 },
                 onClose = { isEditMode = false }
             )
-        } else {
-            val visibleConfigs by remember(parsedConfigs) {
-                derivedStateOf { parsedConfigs.filter { it.isVisible } }
             }
-            DraggableWidgetColumn(
-                items = visibleConfigs,
-                onReorder = { reordered ->
-                    val hidden = parsedConfigs.filter { !it.isVisible }
-                    healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(reordered + hidden))
-                },
-                itemContent = { _, config ->
+        } else {
+            draggableWidgetItems(
+                state = dragState,
+                itemKey = { it.id },
+                haptics = haptics,
+                scope = scope,
+            ) { _, config ->
                     when (config.id) {
                     "BODY_STATS" -> {
                         val isAnyStatEnabled = heartRateState.isEnabled || restingHeartRateState.isEnabled ||
@@ -647,17 +666,22 @@ fun HealthScreen(
                                         .fillMaxWidth(),
                                 )
                             } else {
-                                logs.reversed().forEachIndexed { index, log ->
-                                    MacroLogItem(log = log, onDelete = { healthViewModel.deleteLog(it) }, index = index)
+                                val reversedLogs = remember(logs) { logs.asReversed() }
+                                reversedLogs.forEachIndexed { index, log ->
+                                    MacroLogItem(
+                                        log = log,
+                                        onDelete = { healthViewModel.deleteLog(it) },
+                                        index = index,
+                                    )
                                 }
                             }
                         }
                         Spacer(modifier = Modifier.height(20.dp))
                     }
                 }
-            },
-        )
+            }
         }
+    }
     }
 }
 

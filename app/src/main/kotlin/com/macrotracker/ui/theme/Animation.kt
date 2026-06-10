@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.togetherWith
 
 /**
  * DailyDash — single source of truth for every animation spec in the app.
@@ -58,6 +60,10 @@ object MacroMotion {
     val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS))
 
     val contentExit: ExitTransition = fadeOut(tween(FADE_OUT_MS))
+
+    /** Crossfade used by home-screen widget state switches (loading → success, etc.). */
+    val widgetContentTransition: ContentTransform
+        get() = contentEnter togetherWith contentExit
 
     // ── Expand / collapse transitions (AnimatedVisibility) ───────────
     val expandEnter: EnterTransition =

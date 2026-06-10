@@ -1,11 +1,5 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +22,6 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Schedule
@@ -47,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontStyle
@@ -58,7 +50,6 @@ import androidx.compose.ui.unit.sp
 import com.macrotracker.data.calendar.CalendarEvent
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
-import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LastUpdatedText
@@ -77,14 +68,13 @@ fun CalendarCard(
     var showDetails by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
 
-    AnimatedContent(
+    WidgetStateSwitch(
         targetState = when (state) {
             is CalendarUiState.Loading -> 0
             is CalendarUiState.Success -> 1
             is CalendarUiState.PermissionRequired -> 2
             is CalendarUiState.Unavailable -> 3
         },
-        transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
         label = "calendarContent",
         modifier = modifier,
     ) { stateKey ->
@@ -93,7 +83,8 @@ fun CalendarCard(
             0 -> { } // Loading — nothing
 
             1 -> {
-                val successState = currentState as? CalendarUiState.Success ?: return@AnimatedContent
+                val successState = currentState as? CalendarUiState.Success
+                if (successState != null) {
                 val events = successState.events
                 val upcomingEvents = successState.upcomingEvents
                 val allVisibleEvents = (events + upcomingEvents).distinctBy { it.id }
@@ -169,30 +160,15 @@ fun CalendarCard(
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
-                                    // Clickable rotating chevron
-                                    val calChevronRot by animateFloatAsState(
-                                        targetValue = if (expanded) 180f else 0f,
-                                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                                        label = "cal_hdr_chevron",
+                                    WidgetExpandChevron(
+                                        expanded = expanded,
+                                        onClick = {
+                                            val wasExpanded = expanded
+                                            expanded = !expanded
+                                            if (!wasExpanded) haptics.toggleOn() else haptics.toggleOff()
+                                        },
+                                        accentColor = CalendarAccent,
                                     )
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                val wasExpanded = expanded
-                                                expanded = !expanded
-                                                if (!wasExpanded) haptics.toggleOn() else haptics.toggleOff()
-                                            },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.ExpandMore,
-                                            contentDescription = if (expanded) "Collapse" else "Expand",
-                                            tint = if (expanded) CalendarAccent.copy(alpha = 0.75f) else TextSecondary.copy(alpha = 0.55f),
-                                            modifier = Modifier.size(22.dp).rotate(calChevronRot),
-                                        )
-                                    }
                                 }
                             }
 
@@ -206,11 +182,7 @@ fun CalendarCard(
                             )
 
                             // Expandable list
-                            AnimatedVisibility(
-                                visible = expanded && allVisibleEvents.size > 1,
-                                enter = MacroMotion.expandEnter,
-                                exit = MacroMotion.expandExit,
-                            ) {
+                            WidgetExpandSection(visible = expanded && allVisibleEvents.size > 1) {
                                 Column {
                                     Spacer(modifier = Modifier.height(12.dp))
                                     HorizontalDivider(color = TextSecondary.copy(alpha = 0.1f))
@@ -231,10 +203,9 @@ fun CalendarCard(
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    WidgetExpandBar(
+                                    WidgetExpandFooter(
                                         expanded = true,
-                                        onToggle = { expanded = false; haptics.toggleOff() },
+                                        onToggle = { expanded = false },
                                         accentColor = CalendarAccent,
                                         collapseLabel = "Show less",
                                     )
@@ -243,12 +214,9 @@ fun CalendarCard(
 
                             if (!expanded && allVisibleEvents.size > 1) {
                                 Spacer(modifier = Modifier.height(6.dp))
-                                WidgetExpandBar(
+                                WidgetExpandFooter(
                                     expanded = false,
-                                    onToggle = {
-                                        expanded = true
-                                        haptics.toggleOn()
-                                    },
+                                    onToggle = { expanded = true },
                                     accentColor = CalendarAccent,
                                     expandLabel = "${allVisibleEvents.size - 1} more event${if (allVisibleEvents.size - 1 != 1) "s" else ""}",
                                 )
@@ -262,6 +230,7 @@ fun CalendarCard(
                             onDismiss = { showDetails = false }
                         )
                     }
+                }
                 }
             }
 

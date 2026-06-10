@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,10 +15,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -29,9 +31,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +57,7 @@ import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.HistoryViewModel
 import java.time.LocalDate
@@ -85,19 +91,24 @@ fun HistoryScreen(
     val maxValue = (metricValues.maxOrNull() ?: 1).coerceAtLeast(1)
 
     val selectedMacro = macroHistory.find { it.date == selectedDate }
+    val listState = rememberLazyListState()
+    val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
 
-    Column(
+    CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
+    LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-            .padding(bottom = 120.dp),
+            .background(Background),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
-        Text("History", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
-        Spacer(modifier = Modifier.height(12.dp))
+        item(key = "header") {
+            Spacer(modifier = Modifier.height(48.dp))
+            Text("History", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
+        item(key = "trends") {
         // Macro Trends Card
         MacroCard(delayMs = 70) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
@@ -182,7 +193,9 @@ fun HistoryScreen(
                 }
             }
         }
+        }
 
+        item(key = "selected_date") {
         // Selected date detail card
         MacroCard(delayMs = 100) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
@@ -205,29 +218,33 @@ fun HistoryScreen(
             if (selectedLogs.isEmpty()) {
                 Text("No food logs for this day.", color = TextSecondary, fontStyle = FontStyle.Italic, fontSize = 13.sp)
             } else {
-                selectedLogs.forEach { log ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = Background),
-                        border = BorderStroke(1.dp, Border),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    selectedLogs.forEach { log ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = Background),
+                            border = BorderStroke(1.dp, Border),
                         ) {
-                            Column {
-                                Text(log.foodName, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                Text("${log.calories} kcal • ${log.protein}g", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column {
+                                    Text(log.foodName, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                    Text("${log.calories} kcal • ${log.protein}g", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        }
 
         if (loading) {
+            item(key = "loading") {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
                 horizontalArrangement = Arrangement.Center,
@@ -237,7 +254,9 @@ fun HistoryScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Loading history…", fontSize = 13.sp, color = TextSecondary)
             }
+            }
         }
+    }
     }
 }
 

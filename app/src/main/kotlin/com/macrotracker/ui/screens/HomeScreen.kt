@@ -216,7 +216,7 @@ fun HomeScreen(
                         Text(greeting, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
                         Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
                     }
-                    IconButton(onClick = { isEditMode = !isEditMode }) {
+                    IconButton(onClick = { haptics.tick(); isEditMode = !isEditMode }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
                     }
                 }

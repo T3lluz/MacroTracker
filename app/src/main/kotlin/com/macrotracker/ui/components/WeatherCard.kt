@@ -1,17 +1,12 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,12 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Refresh
@@ -47,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -56,12 +48,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.theme.Border
-import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LastUpdatedText
-import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.data.remote.WeatherInfo
 import com.macrotracker.ui.viewmodel.WeatherUiState
@@ -278,9 +268,8 @@ fun WeatherCard(
 
     // Snapshot the current state so that inner composables always read the
     // latest value without triggering AnimatedContent re-targeting.
-    AnimatedContent(
+    WidgetStateSwitch(
         targetState = state.toKey(),
-        transitionSpec = { MacroMotion.contentEnter togetherWith MacroMotion.contentExit },
         label = "weatherContent",
         modifier = modifier,
     ) { stateKey ->
@@ -308,7 +297,8 @@ fun WeatherCard(
             }
 
             WeatherStateKey.SUCCESS -> {
-                val successState = currentState as? WeatherUiState.Success ?: return@AnimatedContent
+                val successState = currentState as? WeatherUiState.Success
+                if (successState != null) {
                 val weather = successState.weather
                 val gradient = remember(weather.symbolCode) { weatherGradient(weather.symbolCode) }
                 val accent = remember(weather.symbolCode) { weatherAccentColor(weather.symbolCode) }
@@ -371,40 +361,20 @@ fun WeatherCard(
                                     IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
                                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
                                     }
-                                    val scrollIdle = !LocalTickersPaused.current
-                                    val weatherChevronRot = if (scrollIdle) {
-                                        animateFloatAsState(
-                                            targetValue = if (expanded) 180f else 0f,
-                                            animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessMedium,
-                                            ),
-                                            label = "weather_hdr_chevron",
-                                        ).value
-                                    } else if (expanded) {
-                                        180f
-                                    } else {
-                                        0f
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                val wasExpanded = expanded
-                                                expanded = !expanded
-                                                if (!wasExpanded) { haptics.toggleOn(); onExpand() }
-                                                else haptics.toggleOff()
-                                            },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.ExpandMore,
-                                            contentDescription = if (expanded) "Collapse" else "Expand",
-                                            tint = Color.White.copy(alpha = if (expanded) 0.75f else 0.50f),
-                                            modifier = Modifier.size(22.dp).rotate(weatherChevronRot),
-                                        )
-                                    }
+                                    WidgetExpandChevron(
+                                        expanded = expanded,
+                                        onClick = {
+                                            val wasExpanded = expanded
+                                            expanded = !expanded
+                                            if (!wasExpanded) {
+                                                haptics.toggleOn()
+                                                onExpand()
+                                            } else {
+                                                haptics.toggleOff()
+                                            }
+                                        },
+                                        accentColor = Color.White,
+                                    )
                                 }
                             }
 
@@ -462,24 +432,25 @@ fun WeatherCard(
                                 }
                             }
 
-                            if (expanded) {
+                            WidgetExpandSection(visible = expanded) {
                                 WeatherExpandedForecast(
                                     successState = successState,
                                     weather = weather,
                                     accent = accent,
                                     onCollapse = { expanded = false; haptics.toggleOff() },
                                 )
-                            } else {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                WidgetExpandBar(
+                            }
+                            if (!expanded) {
+                                WidgetExpandFooter(
                                     expanded = false,
-                                    onToggle = { expanded = true; haptics.toggleOn(); onExpand() },
+                                    onToggle = { expanded = true; onExpand() },
                                     accentColor = Color.White,
                                     expandLabel = "Forecast",
                                 )
                             }
                         }
                     }
+                }
                 }
             }
 
@@ -754,39 +725,43 @@ private fun WeatherExpandedForecast(
                 color = Color.White.copy(alpha = 0.9f),
                 modifier = Modifier.padding(bottom = 8.dp),
             )
-            weather.dailyForecasts.forEach { daily ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        daily.date,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
-                        modifier = Modifier.width(44.dp),
-                    )
-                    Icon(
-                        painter = painterResource(daily.iconRes),
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = Color.Unspecified,
-                    )
-                    Text(
-                        daily.description,
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                    )
-                    Row {
-                        Text("${daily.minTemp.toInt()}°", fontSize = 14.sp, color = Color.White.copy(alpha = 0.5f))
-                        Text(" / ", fontSize = 14.sp, color = Color.White.copy(alpha = 0.3f))
-                        Text("${daily.maxTemp.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                weather.dailyForecasts.forEach { daily ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            daily.date,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White,
+                            modifier = Modifier.width(44.dp),
+                        )
+                        Icon(
+                            painter = painterResource(daily.iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = Color.Unspecified,
+                        )
+                        Text(
+                            daily.description,
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        )
+                        Row {
+                            Text("${daily.minTemp.toInt()}°", fontSize = 14.sp, color = Color.White.copy(alpha = 0.5f))
+                            Text(" / ", fontSize = 14.sp, color = Color.White.copy(alpha = 0.3f))
+                            Text("${daily.maxTemp.toInt()}°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }

@@ -397,7 +397,7 @@ class HomeViewModel @Inject constructor(
 
         try {
             val currentWeather = _weatherState.value
-            if (currentWeather !is WeatherUiState.Success || forceRefresh) {
+            if (currentWeather !is WeatherUiState.Success) {
                 _weatherState.value = WeatherUiState.Loading
             }
             if (forceRefresh) {

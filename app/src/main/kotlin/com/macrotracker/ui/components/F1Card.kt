@@ -293,38 +293,14 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                             Icon(Icons.Default.Refresh, null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                         }
                     }
-                    val scrollIdle = !LocalTickersPaused.current
-                    val chevronRot = if (scrollIdle) {
-                        animateFloatAsState(
-                            targetValue = if (expanded) 180f else 0f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMedium,
-                            ),
-                            label = "f1_hdr_chevron",
-                        ).value
-                    } else if (expanded) {
-                        180f
-                    } else {
-                        0f
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable {
-                                expanded = !expanded
-                                if (expanded) haptics.toggleOn() else haptics.toggleOff()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ExpandMore,
-                            contentDescription = if (expanded) "Collapse" else "Expand",
-                            tint = if (expanded) F1Red.copy(alpha = 0.75f) else TextSecondary.copy(alpha = 0.55f),
-                            modifier = Modifier.size(22.dp).rotate(chevronRot),
-                        )
-                    }
+                    WidgetExpandChevron(
+                        expanded = expanded,
+                        onClick = {
+                            expanded = !expanded
+                            if (expanded) haptics.toggleOn() else haptics.toggleOff()
+                        },
+                        accentColor = F1Red,
+                    )
                 }
             }
 
@@ -355,21 +331,15 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
             }
 
             if (!expanded) {
-                Spacer(Modifier.height(4.dp))
-                WidgetExpandBar(
+                WidgetExpandFooter(
                     expanded = false,
-                    onToggle = { expanded = true; haptics.toggleOn() },
+                    onToggle = { expanded = true },
                     accentColor = F1Red,
                     expandLabel = "Full Hub",
                 )
             }
 
-            // ── Expanded extra content — slides in below compact view ─────
-            AnimatedVisibility(
-                visible = expanded,
-                enter = MacroMotion.expandEnter,
-                exit = MacroMotion.expandExit,
-            ) {
+            WidgetExpandSection(visible = expanded) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Spacer(Modifier.height(12.dp))
 
@@ -415,13 +385,9 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                         is F1UiState.Error   -> -2
                         is F1UiState.Success -> selectedTab.ordinal
                     }
-                    AnimatedContent(
+                    WidgetStateSwitch(
                         targetState = f1StateKey,
                         label = "f1Body",
-                        transitionSpec = {
-                            (fadeIn(tween(200)) + slideInHorizontally(tween(220)) { it / 10 })
-                                .togetherWith(fadeOut(tween(150)) + slideOutHorizontally(tween(150)) { -it / 10 })
-                        }
                     ) { key ->
                         // Read live `state` for content — `key` determines which branch
                         // is entered so transitions fire correctly on type/tab changes.
@@ -442,10 +408,9 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                         }
                     }
 
-                    Spacer(Modifier.height(4.dp))
-                    WidgetExpandBar(
+                    WidgetExpandFooter(
                         expanded = true,
-                        onToggle = { expanded = false; haptics.toggleOff() },
+                        onToggle = { expanded = false },
                         accentColor = F1Red,
                         collapseLabel = "Show less",
                     )
@@ -916,35 +881,31 @@ fun F1NewsFeed(news: List<F1NewsArticle>) {
     val haptics = rememberHaptics()
     if (news.isEmpty()) { EmptyF1State("No transmissions from the paddock."); return }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        news.forEachIndexed { i, article ->
-            var visible by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { delay(i * 50L); visible = true }
-            AnimatedVisibility(visible, enter = fadeIn(tween(200)) + slideInVertically(tween(220)) { 20 }) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(Surface.copy(alpha = 0.5f))
-                        .clickable {
-                            haptics.tick()
-                            try { context.startActivity(Intent(Intent.ACTION_VIEW, article.url.toUri())) } catch (_: Exception) {}
-                        }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Box(modifier = Modifier.width(3.dp).height(44.dp).clip(RoundedCornerShape(2.dp)).background(F1Red))
-                    Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Box(modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(F1Red.copy(alpha = 0.15f)).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                            Text(article.category.take(12), color = F1Red, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
-                        }
-                        Spacer(Modifier.height(3.dp))
-                        Text(article.title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp)
-                        if (article.description.isNotBlank()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(article.description, color = TextSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
-                        }
+        news.forEach { article ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(Surface.copy(alpha = 0.5f))
+                    .clickable {
+                        haptics.tick()
+                        try { context.startActivity(Intent(Intent.ACTION_VIEW, article.url.toUri())) } catch (_: Exception) {}
                     }
-                    Icon(Icons.Default.ChevronRight, null, tint = TextSecondary.copy(alpha = 0.35f), modifier = Modifier.size(16.dp).align(Alignment.CenterVertically))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Box(modifier = Modifier.width(3.dp).height(44.dp).clip(RoundedCornerShape(2.dp)).background(F1Red))
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(F1Red.copy(alpha = 0.15f)).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                        Text(article.category.take(12), color = F1Red, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text(article.title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp)
+                    if (article.description.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(article.description, color = TextSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
+                    }
                 }
+                Icon(Icons.Default.ChevronRight, null, tint = TextSecondary.copy(alpha = 0.35f), modifier = Modifier.size(16.dp).align(Alignment.CenterVertically))
             }
         }
     }
@@ -958,8 +919,8 @@ fun DriverStandingsList(standings: List<SeasonDriverStanding>) {
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
     val leader = standings.firstOrNull()
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        standings.take(20).forEachIndexed { idx, driver ->
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        standings.take(20).forEach { driver ->
             val tc = safeTeamColor(driver.teamColor)
             val medal = medalColor(driver.position)
             val isExp = expanded == driver.driverAcronym
@@ -967,19 +928,15 @@ fun DriverStandingsList(standings: List<SeasonDriverStanding>) {
             val gapToLeader = if (leader != null && !isLeader) (leader.points - driver.points).toInt() else null
             val scl by animateFloatAsState(if (isExp) 1.01f else 1f, spring(stiffness = Spring.StiffnessMedium), label = "scl")
 
-            var visible by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { delay(idx * 30L); visible = true }
-
-            AnimatedVisibility(visible, enter = fadeIn(tween(180)) + slideInHorizontally(tween(200)) { -20 }) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().scale(scl)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isLeader) Brush.horizontalGradient(listOf(tc.copy(alpha = 0.14f), Surface.copy(alpha = 0.5f)))
-                            else Brush.horizontalGradient(listOf(Surface.copy(0.42f), Surface.copy(0.42f)))
-                        )
-                        .clickable { haptics.tick(); expanded = if (isExp) null else driver.driverAcronym }
-                ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().scale(scl)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (isLeader) Brush.horizontalGradient(listOf(tc.copy(alpha = 0.14f), Surface.copy(alpha = 0.5f)))
+                        else Brush.horizontalGradient(listOf(Surface.copy(0.42f), Surface.copy(0.42f)))
+                    )
+                    .clickable { haptics.tick(); expanded = if (isExp) null else driver.driverAcronym }
+            ) {
                     Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(medal ?: tc.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                             Text(driver.position.toString(), color = if (medal != null) Color.White else tc, fontWeight = FontWeight.Black, fontSize = 12.sp)
@@ -1044,7 +1001,6 @@ fun DriverStandingsList(standings: List<SeasonDriverStanding>) {
                         }
                     }
                 }
-            }
         }
     }
 }
@@ -1062,18 +1018,15 @@ private fun StatChip(label: String, value: String, color: Color) {
 fun ConstructorStandingsList(teams: List<SeasonConstructorStanding>) {
     if (teams.isEmpty()) { EmptyF1State("No constructor standings available."); return }
     val maxPts = teams.maxOfOrNull { it.points } ?: 1.0
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         teams.forEachIndexed { i, team ->
             val tc = safeTeamColor(team.teamColor)
             val ratio = (team.points / maxPts).toFloat().coerceIn(0f, 1f)
             val bar by animateFloatAsState(ratio, tween(700 + i * 60, easing = FastOutSlowInEasing), label = "bar$i")
-            var visible by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { delay(i * 50L); visible = true }
-            AnimatedVisibility(visible, enter = fadeIn(tween(200)) + slideInHorizontally(tween(220)) { -20 }) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Surface.copy(alpha = 0.5f)).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Surface.copy(alpha = 0.5f)).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                     Box(modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(medalColor(team.position) ?: tc.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                         Text("${team.position}", color = if (medalColor(team.position) != null) Color.White else tc, fontWeight = FontWeight.Black, fontSize = 13.sp)
                     }
@@ -1101,7 +1054,6 @@ fun ConstructorStandingsList(teams: List<SeasonConstructorStanding>) {
                         Text("PTS", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                     }
                 }
-            }
         }
     }
 }
@@ -1785,11 +1737,15 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
             PodiumDisplay(podium[0], podium[1], podium[2])
             Spacer(Modifier.height(4.dp))
         }
-        results.drop(if (podium.size >= 3) 3 else 0).take(17).forEachIndexed { i, r ->
-            var visible by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { delay(i * 25L); visible = true }
-            AnimatedVisibility(visible, enter = fadeIn(tween(160)) + slideInHorizontally(tween(180)) { 20 }) {
-                RaceResultRow(r)
+        val remainingResults = remember(results) {
+            results.drop(if (podium.size >= 3) 3 else 0).take(17)
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            remainingResults.forEach { result ->
+                RaceResultRow(result)
             }
         }
     }
