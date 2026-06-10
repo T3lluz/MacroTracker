@@ -38,16 +38,23 @@ class LocationProvider @Inject constructor(
     private var cachedLocation: LatLon? = null
     private var locationCacheTimestamp: Long = 0L
 
+    /** Clears the in-memory location cache so the next [getLocation] requests a fresh fix. */
+    fun clearCache() {
+        cachedLocation = null
+        locationCacheTimestamp = 0L
+    }
+
     /**
      * Returns the device's precise current location, or null if unavailable.
      * Results are cached for [LOCATION_CACHE_TTL_MS] to avoid redundant GPS fixes.
+     * Pass [forceRefresh] to bypass the cache (e.g. user-triggered widget refresh).
      * Falls back to BALANCED_POWER_ACCURACY if GPS cannot produce a fix (e.g. indoors).
      * The caller MUST have already acquired ACCESS_FINE_LOCATION permission.
      */
     @SuppressLint("MissingPermission")
-    suspend fun getLocation(): LatLon? {
+    suspend fun getLocation(forceRefresh: Boolean = false): LatLon? {
         val now = System.currentTimeMillis()
-        if (cachedLocation != null && now - locationCacheTimestamp < LOCATION_CACHE_TTL_MS) {
+        if (!forceRefresh && cachedLocation != null && now - locationCacheTimestamp < LOCATION_CACHE_TTL_MS) {
             Log.d(TAG, "Returning cached location")
             return cachedLocation
         }

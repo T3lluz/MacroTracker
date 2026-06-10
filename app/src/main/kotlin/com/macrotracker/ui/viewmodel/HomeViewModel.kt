@@ -366,7 +366,11 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _weatherState.value = WeatherUiState.Loading
-                val location = locationProvider.getLocation()
+                if (forceRefresh) {
+                    weatherRepository.clearCache()
+                    locationProvider.clearCache()
+                }
+                val location = locationProvider.getLocation(forceRefresh = forceRefresh)
                 if (location == null) {
                     if (_weatherState.value !is WeatherUiState.Success) {
                         _weatherState.value = WeatherUiState.Error("Could not get location")
@@ -374,7 +378,6 @@ class HomeViewModel @Inject constructor(
                     return@launch
                 }
                 val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
-                if (forceRefresh) weatherRepository.clearCache()
                 val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
 
                 val current = _weatherState.value
@@ -389,7 +392,7 @@ class HomeViewModel @Inject constructor(
                     loadWeatherAiSummary()
                 }
 
-                cacheWeatherForWidget(weather)
+                cacheWeatherForWidget(weather, location.latitude, location.longitude)
                 WidgetUpdater.updateAllWidgets(appContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Weather error: ${e.message}", e)
@@ -452,7 +455,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun cacheWeatherForWidget(weather: WeatherInfo) {
+    private fun cacheWeatherForWidget(weather: WeatherInfo, latitude: Double, longitude: Double) {
         try {
             val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
             val todayForecast = weather.dailyForecasts.firstOrNull()
@@ -460,6 +463,8 @@ class HomeViewModel @Inject constructor(
             val hourlyStr = buildHourlyForecastJson(weather)
 
             prefs.edit {
+                putString("latitude", String.format(Locale.US, "%.6f", latitude))
+                putString("longitude", String.format(Locale.US, "%.6f", longitude))
                 putString("temp", weather.temperature.toInt().toString())
                 putString("symbol_code", weather.symbolCode)
                 putString("description", weather.description)

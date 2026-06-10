@@ -95,9 +95,11 @@ object DashboardWidgetDataProvider {
         cached = null
         cachedAt = 0L
         try {
-            context.widgetEntryPoint().weatherRepository().clearCache()
+            val entryPoint = context.widgetEntryPoint()
+            entryPoint.weatherRepository().clearCache()
+            entryPoint.locationProvider().clearCache()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear weather repository cache: ${e.message}")
+            Log.e(TAG, "Failed to clear weather/location caches: ${e.message}")
         }
     }
 
@@ -199,9 +201,12 @@ object DashboardWidgetDataProvider {
 
             val locationProvider = hiltEntryPoint.locationProvider()
             val weatherRepository = hiltEntryPoint.weatherRepository()
-            if (force) weatherRepository.clearCache()
+            if (force) {
+                weatherRepository.clearCache()
+                locationProvider.clearCache()
+            }
 
-            val location = locationProvider.getLocation() ?: return
+            val location = locationProvider.getLocation(forceRefresh = force) ?: return
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
             val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
 
@@ -211,6 +216,8 @@ object DashboardWidgetDataProvider {
             val hourlyStr = buildHourlyForecastJson(weather)
 
             prefs.edit().apply {
+                putString("latitude", String.format(Locale.US, "%.6f", location.latitude))
+                putString("longitude", String.format(Locale.US, "%.6f", location.longitude))
                 putString("temp", weather.temperature.toInt().toString())
                 putString("symbol_code", weather.symbolCode)
                 putString("description", weather.description)
