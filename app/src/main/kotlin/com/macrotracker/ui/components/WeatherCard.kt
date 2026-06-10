@@ -279,7 +279,7 @@ fun WeatherCard(
         val currentState = state
         when (stateKey) {
             WeatherStateKey.LOADING -> {
-                MacroCard(delayMs = 50) {
+                MacroCard {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.Center,
@@ -455,7 +455,7 @@ fun WeatherCard(
             }
 
             WeatherStateKey.PERMISSION -> {
-                MacroCard(delayMs = 50) {
+                MacroCard {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -505,7 +505,7 @@ fun WeatherCard(
             }
 
             WeatherStateKey.APPROXIMATE -> {
-                MacroCard(delayMs = 50) {
+                MacroCard {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -556,7 +556,7 @@ fun WeatherCard(
 
             WeatherStateKey.ERROR -> {
                 val errorState = currentState as? WeatherUiState.Error
-                MacroCard(delayMs = 50) {
+                MacroCard {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,

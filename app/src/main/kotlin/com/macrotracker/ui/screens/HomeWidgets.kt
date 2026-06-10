@@ -65,6 +65,7 @@ import com.macrotracker.ui.viewmodel.HomeViewModel
 @Composable
 fun HomeWidgetItem(
     config: WidgetConfig,
+    isVisible: Boolean,
     viewModel: HomeViewModel,
     onNavigateToHealth: () -> Unit,
     onNavigateToStats: () -> Unit,
@@ -79,7 +80,7 @@ fun HomeWidgetItem(
     onQuickProteinChange: (String) -> Unit,
 ) {
     when (config.id) {
-        "F1" -> HomeF1Widget(viewModel)
+        "F1" -> HomeF1Widget(viewModel, isVisible = isVisible)
         "YOUTUBE" -> YoutubeCard()
         "WEATHER" -> HomeWeatherWidget(
             viewModel = viewModel,
@@ -89,8 +90,9 @@ fun HomeWidgetItem(
         "CALENDAR" -> HomeCalendarWidget(
             viewModel = viewModel,
             onRequestPermission = onRequestCalendarPermission,
+            isVisible = isVisible,
         )
-        "BODY_STATS" -> HomeBodyStatsWidget(viewModel)
+        "BODY_STATS" -> HomeBodyStatsWidget(viewModel, isVisible = isVisible)
         "PROGRESS" -> HomeProgressWidget(
             viewModel = viewModel,
             onNavigateToStats = onNavigateToStats,
@@ -109,12 +111,13 @@ fun HomeWidgetItem(
 }
 
 @Composable
-private fun HomeF1Widget(viewModel: HomeViewModel) {
+private fun HomeF1Widget(viewModel: HomeViewModel, isVisible: Boolean) {
     val f1State by viewModel.f1State.collectAsState()
     val onRefresh = remember(viewModel) { { viewModel.loadF1Data(forceRefresh = true) } }
     F1Card(
         state = f1State,
         onRefresh = onRefresh,
+        isVisible = isVisible,
     )
 }
 
@@ -141,21 +144,34 @@ private fun HomeWeatherWidget(
 private fun HomeCalendarWidget(
     viewModel: HomeViewModel,
     onRequestPermission: () -> Unit,
+    isVisible: Boolean,
 ) {
     val calendarState by viewModel.calendarState.collectAsState()
     CalendarCard(
         state = calendarState,
         onRequestPermission = onRequestPermission,
+        isVisible = isVisible,
     )
 }
 
 @Composable
-private fun HomeBodyStatsWidget(viewModel: HomeViewModel) {
+private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
+    if (!isVisible) {
+        MacroCard {
+            Text(
+                "Body Stats",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+            )
+        }
+        return
+    }
     val healthState by viewModel.healthState.collectAsState()
     when (val hs = healthState) {
         is HomeHealthState.Success -> {
             val stats = hs.stats
-            MacroCard(delayMs = 50) {
+            MacroCard {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -226,7 +242,7 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel) {
             }
         }
         is HomeHealthState.Loading -> {
-            MacroCard(delayMs = 75) {
+            MacroCard {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -251,7 +267,7 @@ private fun HomeProgressWidget(
     val logsLastUpdatedAt by viewModel.logsLastUpdatedAt.collectAsState()
     val s = summary ?: return
 
-    MacroCard(delayMs = 100) {
+    MacroCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -395,7 +411,7 @@ private fun HomeQuickAddWidget(
     val context = LocalContext.current
     val haptics = rememberHaptics()
 
-    MacroCard(delayMs = 200) {
+    MacroCard {
         Text(
             "Quick Add",
             fontSize = 18.sp,

@@ -232,6 +232,7 @@ class HomeViewModel @Inject constructor(
         hasLocationPermission: Boolean,
         hasCalendarPermission: Boolean,
         force: Boolean = false,
+        widgetIds: Set<String> = emptySet(),
     ) {
         val now = System.currentTimeMillis()
         if (!force && lastRefreshMs > 0 && now - lastRefreshMs < 30_000L) return
@@ -242,21 +243,46 @@ class HomeViewModel @Inject constructor(
             _isRefreshing.value = true
             try {
                 coroutineScope {
-                    awaitAll(
+                    val jobs = mutableListOf(
                         async { loadDataInternal() },
-                        async { loadWeatherInternal(hasLocationPermission, forceRefresh = force) },
-                        async { loadHealthConnectInternal(silent = true) },
-                        async { loadCalendarInternal(hasCalendarPermission) },
-                        async { loadF1DataInternal(forceRefresh = force) },
                     )
+                    if ("WEATHER" in widgetIds) {
+                        jobs += async { loadWeatherInternal(hasLocationPermission, forceRefresh = force) }
+                    }
+                    if ("BODY_STATS" in widgetIds) {
+                        jobs += async { loadHealthConnectInternal(silent = true) }
+                    }
+                    if ("CALENDAR" in widgetIds) {
+                        jobs += async { loadCalendarInternal(hasCalendarPermission) }
+                    }
+                    if ("F1" in widgetIds) {
+                        jobs += async { loadF1DataInternal(forceRefresh = force) }
+                    }
+                    awaitAll(*jobs.toTypedArray())
                 }
                 lastRefreshMs = System.currentTimeMillis()
-                WidgetUpdater.updateAllWidgets(appContext)
+                if (force) {
+                    WidgetUpdater.updateAllWidgets(appContext)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "refreshAll failed: ${e.message}", e)
             } finally {
                 _isRefreshing.value = false
             }
+        }
+    }
+
+    fun loadWidgetIfNeeded(
+        widgetId: String,
+        hasLocationPermission: Boolean,
+        hasCalendarPermission: Boolean,
+    ) {
+        when (widgetId) {
+            "F1" -> loadF1Data()
+            "WEATHER" -> loadWeather(hasLocationPermission)
+            "CALENDAR" -> loadCalendar(hasCalendarPermission)
+            "BODY_STATS" -> loadHealthConnect(silent = true)
+            "PROGRESS", "QUICK_ADD" -> loadData()
         }
     }
 
@@ -422,16 +448,12 @@ class HomeViewModel @Inject constructor(
                     isPrecise = hasPreciseLocation,
                     lastUpdatedAt = fetchedAt,
                 )
-                if (current.aiSummary == null) {
-                    loadWeatherAiSummary()
-                }
             } else {
                 _weatherState.value = WeatherUiState.Success(
                     weather,
                     isPrecise = hasPreciseLocation,
                     lastUpdatedAt = fetchedAt,
                 )
-                loadWeatherAiSummary()
             }
 
             cacheWeatherForWidget(weather, location.latitude, location.longitude)

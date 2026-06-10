@@ -248,12 +248,15 @@ private fun DriverPlaceholder(driverAcronym: String, driverNumber: String?, team
 
 // ── Root card ─────────────────────────────────────────────────────────────────
 @Composable
-fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
+fun F1Card(
+    state: F1UiState,
+    onRefresh: () -> Unit,
+    isVisible: Boolean = true,
+) {
     val haptics = rememberHaptics()
     var selectedTab by rememberSaveable { mutableStateOf(F1Tab.NEWS) }
     var expanded by rememberSaveable { mutableStateOf(false) }
 
-    // Logic to fix image loading and visibility
     MacroCard(
         borderColor = F1Red.copy(alpha = 0.22f),
     ) {
@@ -304,7 +307,8 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                 }
             }
 
-            // ── Compact content — always visible ─────────────────────────
+            if (isVisible) {
+            // ── Compact content — visible widgets only ───────────────────
             when (state) {
                 is F1UiState.Loading -> {
                     Spacer(Modifier.height(12.dp))
@@ -339,7 +343,7 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                 )
             }
 
-            WidgetExpandSection(visible = expanded) {
+            WidgetExpandSection(visible = expanded && isVisible) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Spacer(Modifier.height(12.dp))
 
@@ -415,6 +419,7 @@ fun F1Card(state: F1UiState, onRefresh: () -> Unit) {
                         collapseLabel = "Show less",
                     )
                 }
+            }
             }
         }
     }

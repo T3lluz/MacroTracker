@@ -32,6 +32,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -56,8 +57,12 @@ import com.macrotracker.ui.components.draggableWidgetItems
 import com.macrotracker.ui.components.encodeWidgetConfig
 import com.macrotracker.ui.components.parseWidgetConfig
 import com.macrotracker.ui.components.rememberDraggableWidgetListState
+import com.macrotracker.ui.util.HOME_RESUME_DEFER_MS
 import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.ui.util.rememberVisibleHomeWidgetIds
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
@@ -128,19 +133,14 @@ fun HomeScreen(
         }
     }
 
-    fun onRefresh(force: Boolean = false) {
-        viewModel.refreshAll(
-            hasLocationPermission = hasLocationPermission(),
-            hasCalendarPermission = hasCalendarPermission(),
-            force = force,
-        )
-    }
-
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                onRefresh()
+                scope.launch {
+                    delay(HOME_RESUME_DEFER_MS)
+                    viewModel.loadData()
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -161,13 +161,19 @@ fun HomeScreen(
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = { onRefresh(force = true) },
+        onRefresh = {
+            viewModel.refreshAll(
+                hasLocationPermission = hasLocationPermission(),
+                hasCalendarPermission = hasCalendarPermission(),
+                force = true,
+                widgetIds = parsedConfigs.filter { it.isVisible }.map { it.id }.toSet(),
+            )
+        },
         modifier = Modifier.fillMaxSize().background(Background),
     ) {
         val visibleConfigs by remember(parsedConfigs) {
             derivedStateOf { parsedConfigs.filter { it.isVisible } }
         }
-
         val dragState = rememberDraggableWidgetListState(
             items = visibleConfigs,
             onReorder = { reordered ->
@@ -178,6 +184,17 @@ fun HomeScreen(
 
         val listState = rememberLazyListState()
         val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
+        val visibleWidgetIds = rememberVisibleHomeWidgetIds(listState)
+
+        LaunchedEffect(visibleWidgetIds) {
+            if (visibleWidgetIds.isNotEmpty()) {
+                viewModel.refreshAll(
+                    hasLocationPermission = hasLocationPermission(),
+                    hasCalendarPermission = hasCalendarPermission(),
+                    widgetIds = visibleWidgetIds,
+                )
+            }
+        }
 
         val onRequestLocationPermission = remember(locationPermissionLauncher) {
             {
@@ -242,6 +259,7 @@ fun HomeScreen(
                 ) { _, config ->
                     HomeWidgetItem(
                         config = config,
+                        isVisible = config.id in visibleWidgetIds,
                         viewModel = viewModel,
                         onNavigateToHealth = onNavigateToHealth,
                         onNavigateToStats = onNavigateToStats,

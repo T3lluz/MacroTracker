@@ -63,10 +63,25 @@ fun CalendarCard(
     state: CalendarUiState,
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier,
+    isVisible: Boolean = true,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
+
+    if (!isVisible) {
+        MacroCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.CalendarMonth, null, tint = CalendarAccent, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Calendar", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+        }
+        return
+    }
 
     WidgetStateSwitch(
         targetState = when (state) {
@@ -90,7 +105,7 @@ fun CalendarCard(
                 val allVisibleEvents = (events + upcomingEvents).distinctBy { it.id }
                 
                 if (allVisibleEvents.isEmpty()) {
-                    MacroCard(delayMs = 125) {
+                    MacroCard {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -119,9 +134,7 @@ fun CalendarCard(
                         }
                     }
                 } else {
-                    MacroCard(
-                        delayMs = 125,
-                    ) {
+                    MacroCard {
                         Column {
                             // Header
                             Row(
@@ -235,7 +248,7 @@ fun CalendarCard(
             }
 
             2 -> {
-                MacroCard(delayMs = 125) {
+                MacroCard {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
