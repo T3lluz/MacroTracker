@@ -36,6 +36,8 @@ class SettingsViewModel @Inject constructor(
     val aiProvider: StateFlow<AiProvider> = settings.aiProvider
     val geminiApiKey: StateFlow<String> = settings.geminiApiKey
     val openAiApiKey: StateFlow<String> = settings.openAiApiKey
+    val openRouterApiKey: StateFlow<String> = settings.openRouterApiKey
+    val openRouterModelId: StateFlow<String> = settings.openRouterModelId
 
     private val _healthConnectConnected = MutableStateFlow(false)
     val healthConnectConnected: StateFlow<Boolean> = _healthConnectConnected
@@ -132,6 +134,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setAiProvider(provider: AiProvider) {
         settings.setAiProvider(provider)
+    }
+
+    fun setOpenRouterModelId(modelId: String) {
+        settings.setOpenRouterModelId(modelId)
     }
 
     fun saveApiKey(key: String) {

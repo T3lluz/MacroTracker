@@ -50,6 +50,7 @@ class WeatherAiRepository @Inject constructor(
             return when (selected) {
                 AiProvider.GEMINI -> BuildConfig.GEMINI_API_KEY.trim()
                 AiProvider.OPENAI -> BuildConfig.OPENAI_API_KEY.trim()
+                AiProvider.OPENROUTER -> BuildConfig.OPENROUTER_API_KEY.trim()
             }
         }
 
@@ -113,6 +114,7 @@ class WeatherAiRepository @Inject constructor(
                     temperature = 0.7,
                     maxOutputTokens = 512,
                     jsonMode = false,
+                    openRouterModelId = settings.getOpenRouterModelId(),
                 ),
             )
             cleanSummaryText(text).takeIf { it.isNotBlank() }

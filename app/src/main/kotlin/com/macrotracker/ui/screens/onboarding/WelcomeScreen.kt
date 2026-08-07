@@ -77,7 +77,7 @@ private val features = listOf(
     Feature(
         Icons.Outlined.AutoAwesome,
         "AI-Powered Throughout",
-        "Gemini or OpenAI estimates meal macros from plain-English descriptions. Pick a provider and add your API key in Settings.",
+        "Gemini, OpenAI, or OpenRouter estimates meal macros from plain-English descriptions. Pick a provider and add your API key in Settings.",
     ),
 )
 

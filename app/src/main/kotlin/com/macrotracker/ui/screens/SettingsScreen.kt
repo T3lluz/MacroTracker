@@ -86,6 +86,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.data.remote.AiApiClient
 import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.OpenRouterModels
 import com.macrotracker.data.update.AppReleaseNotes
 import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.ButtonVariant
@@ -119,6 +120,8 @@ fun SettingsScreen(
     val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
     val savedKey by viewModel.geminiApiKey.collectAsState()
     val savedOpenAiKey by viewModel.openAiApiKey.collectAsState()
+    val savedOpenRouterKey by viewModel.openRouterApiKey.collectAsState()
+    val openRouterModelId by viewModel.openRouterModelId.collectAsState()
     val aiProvider by viewModel.aiProvider.collectAsState()
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
     val weatherConnected by viewModel.weatherConnected.collectAsState()
@@ -142,6 +145,7 @@ fun SettingsScreen(
     val activeSavedKey = when (aiProvider) {
         AiProvider.GEMINI -> savedKey
         AiProvider.OPENAI -> savedOpenAiKey
+        AiProvider.OPENROUTER -> savedOpenRouterKey
     }
     var draftKey by remember(aiProvider, activeSavedKey) { mutableStateOf(activeSavedKey) }
     var keyVisible by remember { mutableStateOf(false) }
@@ -164,6 +168,7 @@ fun SettingsScreen(
         draftKey.isNotBlank() && !keyFormatOk -> when (aiProvider) {
             AiProvider.GEMINI -> "Doesn't look like a Gemini key (should start with AIza…)"
             AiProvider.OPENAI -> "Doesn't look like an OpenAI key (should start with sk-…)"
+            AiProvider.OPENROUTER -> "Doesn't look like an OpenRouter key (should start with sk-or-…)"
         }
         else -> null
     }
@@ -437,7 +442,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Choose Gemini or OpenAI for food estimates, label scanning, and weather tips.",
+                text = "Choose Gemini, OpenAI, or OpenRouter for food estimates, label scanning, and weather tips.",
                 fontSize = 13.sp,
                 color = TextSecondary,
                 lineHeight = 18.sp,
@@ -565,45 +570,64 @@ fun SettingsScreen(
             }
         }
 
-        // ── AI Model Info Card ───────────────────────────────────────────
+        // ── AI Model Info / OpenRouter selector ───────────────────────────
         MacroCard(delayMs = 150) {
             Text(
-                text = "AI Model",
+                text = if (aiProvider == AiProvider.OPENROUTER) "OpenRouter Model" else "AI Model",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Background, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
+
+            if (aiProvider == AiProvider.OPENROUTER) {
+                Text(
+                    text = "Pick a cheap vision-capable model. Prices are OpenRouter list rates (USD per 1M tokens) and may change. DailyDash calls are short, so even paid models stay fractions of a cent.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OpenRouterModelSelector(
+                    selectedId = openRouterModelId,
+                    onSelect = { modelId ->
+                        haptics.tick()
+                        viewModel.setOpenRouterModelId(modelId)
+                    },
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Background, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text(
+                            text = AiApiClient.modelLabel(aiProvider),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = when (aiProvider) {
+                                AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
+                                AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
+                                AiProvider.OPENROUTER -> ""
+                            },
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+                    }
                     Text(
-                        text = AiApiClient.modelLabel(aiProvider),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TextPrimary,
-                    )
-                    Text(
-                        text = when (aiProvider) {
-                            AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
-                            AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
-                        },
+                        text = if (hasKey) "Active" else "No Key",
                         fontSize = 12.sp,
-                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (hasKey) Success else Error,
                     )
                 }
-                Text(
-                    text = if (hasKey) "Active" else "No Key",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (hasKey) Success else Error,
-                )
             }
         }
 
@@ -971,14 +995,97 @@ private fun AiProviderToggle(
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (isSelected) Primary else Color.Transparent)
                     .clickable { onSelect(provider) }
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = 10.dp, horizontal = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = provider.displayName,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isSelected) Color.White else TextSecondary,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenRouterModelSelector(
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OpenRouterModels.options.forEach { model ->
+            val selected = model.id == selectedId
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(
+                        width = 1.dp,
+                        color = if (selected) Primary else Border.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp),
+                    )
+                    .background(if (selected) Primary.copy(alpha = 0.08f) else Background)
+                    .clickable { onSelect(model.id) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = model.displayName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                        )
+                        if (model.recommended) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Best value",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Primary,
+                                modifier = Modifier
+                                    .background(Primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    if (selected) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = Primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = model.priceLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
+                )
+                Text(
+                    text = buildString {
+                        append(model.approxRequestCostLabel)
+                        if (model.supportsVision) append(" · Vision")
+                    },
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = model.blurb,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp,
                 )
             }
         }
