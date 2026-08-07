@@ -2,6 +2,7 @@ package com.macrotracker.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -42,12 +43,14 @@ import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Stairs
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
@@ -74,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.calendar.CalendarInfo
+import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
@@ -86,6 +90,7 @@ import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 
@@ -99,6 +104,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
 ) {
+    val activity = LocalContext.current as ComponentActivity
+    val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
     val savedKey by viewModel.geminiApiKey.collectAsState()
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
     val weatherConnected by viewModel.weatherConnected.collectAsState()
@@ -123,6 +130,8 @@ fun SettingsScreen(
     var keyVisible by remember { mutableStateOf(false) }
     var keySaved by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
+
+    val updateState by appUpdateViewModel.state.collectAsState()
 
     val isDirty = draftKey.trim() != savedKey
     val hasKey = savedKey.isNotBlank()
@@ -599,6 +608,149 @@ fun SettingsScreen(
             variant = ButtonVariant.SECONDARY,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // ── App Update (bottom of Settings) ──────────────────────────
+        Spacer(modifier = Modifier.height(16.dp))
+        MacroCard(delayMs = 250) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 10.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.SystemUpdate,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "App Update",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                    )
+                    Text(
+                        text = "Installed ${appUpdateViewModel.currentVersionName} (build ${appUpdateViewModel.currentVersionCode})",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+            }
+
+            when (val s = updateState) {
+                is AppUpdateUiState.Idle -> {
+                    Text(
+                        text = "Checks GitHub Releases for newer tester builds.",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
+                is AppUpdateUiState.Checking -> {
+                    Text(
+                        text = "Checking for updates…",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
+                is AppUpdateUiState.UpToDate -> {
+                    Text(
+                        text = "You're on the latest build.",
+                        fontSize = 12.sp,
+                        color = Success,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
+                is AppUpdateUiState.Available -> {
+                    Text(
+                        text = "Update available: ${s.info.versionName} (build ${s.info.versionCode})",
+                        fontSize = 12.sp,
+                        color = Primary,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
+                is AppUpdateUiState.Downloading -> {
+                    Text(
+                        text = "Downloading ${s.info.versionName}… ${(s.progress * 100).toInt()}%",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    LinearProgressIndicator(
+                        progress = { s.progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        color = Primary,
+                    )
+                }
+                is AppUpdateUiState.ReadyToInstall -> {
+                    Text(
+                        text = "Ready to install ${s.info.versionName}",
+                        fontSize = 12.sp,
+                        color = Success,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
+                is AppUpdateUiState.Error -> {
+                    Text(
+                        text = s.message,
+                        fontSize = 12.sp,
+                        color = Error,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
+            }
+
+            when (val s = updateState) {
+                is AppUpdateUiState.Available -> {
+                    MacroButton(
+                        text = "Update to ${s.info.versionName}",
+                        onClick = {
+                            haptics.confirm()
+                            if (appUpdateViewModel.canInstallPackages()) {
+                                appUpdateViewModel.startDownload(s.info)
+                            } else {
+                                context.startActivity(appUpdateViewModel.installPermissionSettingsIntent())
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                is AppUpdateUiState.ReadyToInstall -> {
+                    MacroButton(
+                        text = "Install update",
+                        onClick = {
+                            haptics.confirm()
+                            appUpdateViewModel.installDownloaded()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                is AppUpdateUiState.Downloading -> {
+                    MacroButton(
+                        text = "Downloading…",
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                else -> {
+                    MacroButton(
+                        text = if (updateState is AppUpdateUiState.Checking) "Checking…" else "Check for updates",
+                        onClick = {
+                            haptics.click()
+                            appUpdateViewModel.checkFromSettings()
+                        },
+                        enabled = updateState !is AppUpdateUiState.Checking,
+                        modifier = Modifier.fillMaxWidth(),
+                        variant = ButtonVariant.SECONDARY,
+                    )
+                }
+            }
+        }
     }
 }
 
