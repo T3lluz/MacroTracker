@@ -33,7 +33,9 @@ class F1ApiServiceImpl @Inject constructor(
         private const val JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
         private const val F1_CDN = "https://media.formula1.com"
         // No Cloudinary `d_` default — missing assets must 404 so Coil can try the next candidate.
-        private const val F1_2026_ASSET = "$F1_CDN/image/upload/c_lfill,w_200/q_auto/v1740000001/common/f1/2026"
+        // Face-gravity square crop: source assets are full-body (~200×575); center fill shows torsos.
+        private const val F1_2026_ASSET =
+            "$F1_CDN/image/upload/c_fill,g_face,w_200,h_200/q_auto/v1740000001/common/f1/2026"
         private const val F1_2026_LOGO = "$F1_CDN/image/upload/c_lfill,w_132/q_auto/v1740000001/common/f1/2026"
     }
 
@@ -120,7 +122,7 @@ class F1ApiServiceImpl @Inject constructor(
         else -> constructorId.replace("_", "")
     }
 
-    /** High-quality 2026 F1 CDN headshot (right-facing crop used on formula1.com). */
+    /** Square face-cropped 2026 F1 CDN headshot (full-body source, face gravity). */
     private fun build2026HeadshotUrl(constructorId: String, imageId: String): String {
         val slug = teamSlug(constructorId)
         return "$F1_2026_ASSET/$slug/$imageId/2026${slug}${imageId}right.webp"
