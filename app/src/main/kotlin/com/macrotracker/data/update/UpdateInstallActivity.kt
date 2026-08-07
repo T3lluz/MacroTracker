@@ -1,23 +1,37 @@
 package com.macrotracker.data.update
 
-import android.content.BroadcastReceiver
-import android.content.Context
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 
 /**
- * Receives PackageInstaller commit results for in-app self-updates.
+ * Trampoline for [PackageInstaller] commit results.
  *
- * When the system still requires confirmation (rare for same-package updates with
- * [android.Manifest.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION]), we launch the
- * confirmation intent. Prefer silent commit so Play Protect's "Scan app" UI is skipped.
+ * Starting the system confirmation UI from a manifest [android.content.BroadcastReceiver]
+ * is unreliable on several OEMs (background-activity restrictions). An Activity PendingIntent
+ * stays eligible to launch [PackageInstaller.STATUS_PENDING_USER_ACTION] confirmations.
+ *
+ * Successful silent self-updates never show UI — this Activity finishes immediately.
  */
-class UpdateInstallReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != ACTION_INSTALL_COMPLETE) return
+class UpdateInstallActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleInstallStatus(intent)
+        finish()
+    }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleInstallStatus(intent)
+        finish()
+    }
+
+    private fun handleInstallStatus(intent: Intent?) {
+        if (intent == null) return
         val status = intent.getIntExtra(
             PackageInstaller.EXTRA_STATUS,
             PackageInstaller.STATUS_FAILURE,
@@ -30,10 +44,11 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 val confirmIntent = intent.confirmationIntent()
                 if (confirmIntent != null) {
                     confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    runCatching { context.startActivity(confirmIntent) }
+                    runCatching { startActivity(confirmIntent) }
                         .onFailure { Log.e(TAG, "Failed to open install confirmation", it) }
                 } else {
                     Log.e(TAG, "PENDING_USER_ACTION without confirmation intent")
+                    toast("Update needs confirmation, but the system installer UI was missing.")
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
@@ -41,8 +56,14 @@ class UpdateInstallReceiver : BroadcastReceiver() {
             }
             else -> {
                 Log.e(TAG, "Update install failed status=$status message=$message")
+                val detail = message.ifBlank { "status $status" }
+                toast("Update install failed: $detail")
             }
         }
+    }
+
+    private fun toast(text: String) {
+        Toast.makeText(applicationContext, text, Toast.LENGTH_LONG).show()
     }
 
     private fun Intent.confirmationIntent(): Intent? {
