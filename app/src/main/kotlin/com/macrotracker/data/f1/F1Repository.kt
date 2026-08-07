@@ -37,6 +37,9 @@ class F1RepositoryImpl @Inject constructor(
         private const val KEY_YEAR = "year"
         private const val KEY_FULL_SNAPSHOT = "f1_snapshot_json"
         private const val KEY_LEGACY_DRIVERS = "drivers_json"
+        /** Bump when headshot/logo URL scheme changes so stale disk cache is discarded. */
+        private const val CACHE_VERSION = 3
+        private const val KEY_CACHE_VERSION = "cache_version"
     }
 
     private var cachedStandings: F1Standings? = null
@@ -80,6 +83,14 @@ class F1RepositoryImpl @Inject constructor(
                         emptyList()
                     }
                 }
+                val constructorsDeferred = async {
+                    try {
+                        api.getSeasonConstructorStandings()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error fetching constructor standings: ${e.message}")
+                        emptyList()
+                    }
+                }
                 val newsDeferred = async {
                     try {
                         api.getF1News()
@@ -114,23 +125,29 @@ class F1RepositoryImpl @Inject constructor(
                 }
 
                 val drivers = driversDeferred.await()
-                val constructors = if (drivers.isNotEmpty()) {
-                    drivers.groupBy { it.constructorName }
-                        .map { (team, teamDrivers) ->
-                            SeasonConstructorStanding(
-                                position = 0,
-                                points = teamDrivers.sumOf { it.points },
-                                wins = teamDrivers.sumOf { it.wins },
-                                constructorName = team,
-                                teamColor = teamDrivers.first().teamColor,
-                                teamLogoUrl = teamDrivers.first().teamLogoUrl,
-                            )
-                        }
-                        .sortedByDescending { it.points }
-                        .mapIndexed { index, constructor ->
-                            constructor.copy(position = index + 1)
-                        }
-                } else emptyList()
+                val officialConstructors = constructorsDeferred.await()
+                val constructors = when {
+                    officialConstructors.isNotEmpty() -> officialConstructors
+                    drivers.isNotEmpty() -> {
+                        // Fallback: derive WCC from driver points if official feed is down
+                        drivers.groupBy { it.constructorName }
+                            .map { (team, teamDrivers) ->
+                                SeasonConstructorStanding(
+                                    position = 0,
+                                    points = teamDrivers.sumOf { it.points },
+                                    wins = teamDrivers.sumOf { it.wins },
+                                    constructorName = team,
+                                    teamColor = teamDrivers.first().teamColor,
+                                    teamLogoUrl = teamDrivers.first().teamLogoUrl,
+                                )
+                            }
+                            .sortedByDescending { it.points }
+                            .mapIndexed { index, constructor ->
+                                constructor.copy(position = index + 1)
+                            }
+                    }
+                    else -> emptyList()
+                }
 
                 val news = newsDeferred.await()
                 val lastRacePair = lastRaceDeferred.await()
@@ -139,6 +156,13 @@ class F1RepositoryImpl @Inject constructor(
                 val lastQuali = lastQualiDeferred.await()
                 val schedule = scheduleDeferred.await()
 
+                val nextRace = schedule
+                    .filter { runCatching { java.time.LocalDate.parse(it.raceDate).isAfter(java.time.LocalDate.now().minusDays(1)) }.getOrDefault(false) }
+                    .minByOrNull { it.raceDate }
+                val lastCompleted = schedule
+                    .filter { runCatching { java.time.LocalDate.parse(it.raceDate).isBefore(java.time.LocalDate.now()) }.getOrDefault(false) }
+                    .maxByOrNull { it.raceDate }
+
                 val result = F1Standings(
                     driverStandings = drivers,
                     constructorStandings = constructors,
@@ -146,8 +170,9 @@ class F1RepositoryImpl @Inject constructor(
                     lastRaceResults = lastRace.ifEmpty { null },
                     lastQualiResults = lastQuali.ifEmpty { null },
                     schedule = schedule,
-                    lastSessionName = "Championship Standings",
-                    lastLocation = "Live Data Hub",
+                    lastSessionName = lastRaceName ?: lastCompleted?.raceName,
+                    lastLocation = lastCompleted?.locality,
+                    nextRace = nextRace?.raceName,
                     lastRaceName = lastRaceName,
                 )
 
@@ -182,6 +207,7 @@ class F1RepositoryImpl @Inject constructor(
             prefs.edit {
                 putLong(KEY_FETCH_TIME, fetchTime)
                 putInt(KEY_YEAR, year)
+                putInt(KEY_CACHE_VERSION, CACHE_VERSION)
                 putString(KEY_FULL_SNAPSHOT, snapshotJson)
             }
         } catch (e: Exception) {
@@ -191,6 +217,12 @@ class F1RepositoryImpl @Inject constructor(
 
     private fun restoreDiskCache() {
         try {
+            val storedVersion = prefs.getInt(KEY_CACHE_VERSION, 0)
+            if (storedVersion != CACHE_VERSION) {
+                Log.d(TAG, "F1 cache version mismatch ($storedVersion → $CACHE_VERSION); clearing")
+                prefs.edit { clear() }
+                return
+            }
             val fetchTime = prefs.getLong(KEY_FETCH_TIME, 0L)
             val year = prefs.getInt(KEY_YEAR, 0)
             if (year != 0 && year != Year.now().value) return

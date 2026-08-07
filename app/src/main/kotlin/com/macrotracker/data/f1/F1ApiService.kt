@@ -9,11 +9,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.text.Normalizer
 import javax.inject.Inject
 import javax.inject.Singleton
 
 interface F1ApiService {
     suspend fun getSeasonDriverStandings(): List<SeasonDriverStanding>
+    suspend fun getSeasonConstructorStandings(): List<SeasonConstructorStanding>
     suspend fun getF1News(): List<F1NewsArticle>
     suspend fun getLastRaceResults(): Pair<List<RaceResult>, String?>
     suspend fun getLastQualiResults(): List<QualiResult>
@@ -29,46 +31,210 @@ class F1ApiServiceImpl @Inject constructor(
         private const val TAG = "F1ApiService"
         // Jolpica is the community-maintained successor to the Ergast API (same JSON schema)
         private const val JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+        private const val F1_CDN = "https://media.formula1.com"
+        // No Cloudinary `d_` default — missing assets must 404 so Coil can try the next candidate.
+        private const val F1_2026_ASSET = "$F1_CDN/image/upload/c_lfill,w_200/q_auto/v1740000001/common/f1/2026"
+        private const val F1_2026_LOGO = "$F1_CDN/image/upload/c_lfill,w_132/q_auto/v1740000001/common/f1/2026"
     }
+
+    /** OpenF1 enrichment: acronym → (headshotUrl, teamColour, imageId) */
+    private data class DriverMedia(
+        val headshotUrl: String?,
+        val teamColour: String?,
+        val imageId: String?,
+    )
+
+    private var openF1MediaByAcronym: Map<String, DriverMedia> = emptyMap()
+    private var openF1Loaded = false
 
     // Cache of driverAcronym -> headshotUrl, populated by getSeasonDriverStandings
     private val headshotCache = mutableMapOf<String, String>()
     // Cache of driverAcronym -> teamColor
     private val teamColorCache = mutableMapOf<String, String>()
 
+    private fun stripDiacritics(input: String): String {
+        val normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
+        return normalized.replace(Regex("\\p{Mn}+"), "")
+    }
+
     /**
-     * Build the F1 CDN headshot URL for a driver.
-     * Formula: https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/{FolderLetter}/{imageIdUpper}_{FirstName}_{LastName}/{imageId}.png.transform/1col/image.png
-     * imageId = first3(firstName) + first3(lastName) + "01" (all lowercase)
+     * Known F1 CDN image IDs where the first3+last3 formula differs from the live asset
+     * (multi-part given names, nicknames, etc.).
      */
-    private fun buildHeadshotUrl(givenName: String, familyName: String): String {
-        // Known overrides for drivers where the standard formula fails or who are new
-        val familyNameLower = familyName.lowercase()
-        when {
-            familyNameLower.contains("antonelli") ->
-                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/K/KIMANT01_Kimi_Antonelli/kimant01.png.transform/1col/image.png"
-            familyNameLower.contains("lindblad") ->
-                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png"
-            familyNameLower.contains("bortoleto") ->
-                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GABBOR01_Gabriel_Bortoleto/gabbor01.png.transform/1col/image.png"
-            familyNameLower.contains("bearman") ->
-                return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/O/OLIBEA01_Oliver_Bearman/olibea01.png.transform/1col/image.png"
+    private fun knownImageId(familyName: String, givenName: String): String? {
+        val key = stripDiacritics(familyName).lowercase()
+        return when {
+            key.contains("antonelli") -> "andant01"
+            key.contains("hulkenberg") -> "nichul01"
+            key.contains("perez") -> "serper01"
+            key.contains("verstappen") -> "maxver01"
+            key.contains("leclerc") -> "chalec01"
+            key.contains("hamilton") -> "lewham01"
+            key.contains("russell") -> "georus01"
+            key.contains("norris") -> "lannor01"
+            key.contains("piastri") -> "oscpia01"
+            key.contains("alonso") -> "feralo01"
+            key.contains("stroll") -> "lanstr01"
+            key.contains("albon") -> "alealb01"
+            key.contains("sainz") -> "carsai01"
+            key.contains("gasly") -> "piegas01"
+            key.contains("ocon") -> "estoco01"
+            key.contains("bearman") -> "olibea01"
+            key.contains("lawson") -> "lialaw01"
+            key.contains("hadjar") -> "isahad01"
+            key.contains("bortoleto") -> "gabbor01"
+            key.contains("lindblad") -> "arvlin01"
+            key.contains("colapinto") -> "fracol01"
+            key.contains("bottas") -> "valbot01"
+            else -> null
+        } ?: run {
+            // Multi-part given names (e.g. "Andrea Kimi") — prefer last token as racing name
+            val parts = stripDiacritics(givenName).trim().split(Regex("\\s+"))
+            if (parts.size > 1) {
+                val nick = parts.last()
+                val family = stripDiacritics(familyName).replace(" ", "")
+                (nick.take(3) + family.take(3)).lowercase() + "01"
+            } else null
         }
+    }
 
-        val firstName = givenName.split(" ").first()
-        val imageId = (firstName.take(3) + familyName.replace(" ", "").take(3)).lowercase() + "01"
+    private fun formulaImageId(givenName: String, familyName: String): String {
+        val given = stripDiacritics(givenName).trim()
+        val family = stripDiacritics(familyName).replace(" ", "")
+        val first = given.split(Regex("\\s+")).firstOrNull().orEmpty()
+        return (first.take(3) + family.take(3)).lowercase() + "01"
+    }
+
+    private fun teamSlug(constructorId: String): String = when (constructorId) {
+        "red_bull" -> "redbullracing"
+        "mercedes" -> "mercedes"
+        "ferrari" -> "ferrari"
+        "mclaren" -> "mclaren"
+        "aston_martin" -> "astonmartin"
+        "alpine" -> "alpine"
+        "williams" -> "williams"
+        "rb", "racing_bulls" -> "racingbulls"
+        "sauber", "kick_sauber", "audi" -> "audi"
+        "haas" -> "haasf1team"
+        "cadillac" -> "cadillac"
+        else -> constructorId.replace("_", "")
+    }
+
+    /** High-quality 2026 F1 CDN headshot (right-facing crop used on formula1.com). */
+    private fun build2026HeadshotUrl(constructorId: String, imageId: String): String {
+        val slug = teamSlug(constructorId)
+        return "$F1_2026_ASSET/$slug/$imageId/2026${slug}${imageId}right.webp"
+    }
+
+    /** Legacy DAM headshot path used by OpenF1 (still works for most drivers). */
+    private fun buildLegacyHeadshotUrl(givenName: String, familyName: String, imageId: String): String {
+        val given = stripDiacritics(givenName).trim()
+        val family = stripDiacritics(familyName).trim()
+        // Prefer racing nickname for multi-part given names (matches OpenF1 / F1 CDN)
+        val displayGiven = if (given.contains(" ")) given.split(Regex("\\s+")).last() else given
         val imageIdUpper = imageId.uppercase()
-        val folderLetter = firstName.first().uppercaseChar()
+        val folderLetter = displayGiven.firstOrNull()?.uppercaseChar() ?: imageIdUpper.first()
+        val givenPath = displayGiven.replace(" ", "_")
+        val familyPath = family.replace(" ", "_")
+        return "$F1_CDN/d_driver_fallback_image.png/content/dam/fom-website/drivers/$folderLetter/${imageIdUpper}_${givenPath}_${familyPath}/${imageId}.png.transform/1col/image.png"
+    }
 
-        // Use full names with underscores for the directory name to handle multi-part names
-        val givenNamePath = givenName.replace(" ", "_")
-        val familyNamePath = familyName.replace(" ", "_")
+    private fun resolveImageId(givenName: String, familyName: String, acronym: String): String {
+        return openF1MediaByAcronym[acronym]?.imageId
+            ?: knownImageId(familyName, givenName)
+            ?: formulaImageId(givenName, familyName)
+    }
 
-        return "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/$folderLetter/${imageIdUpper}_${givenNamePath}_${familyNamePath}/${imageId}.png.transform/1col/image.png"
+    /** Pipe-separated candidate URLs so Coil can fall through without another network hop. */
+    private fun resolveHeadshotCandidates(
+        givenName: String,
+        familyName: String,
+        acronym: String,
+        constructorId: String,
+    ): List<String> {
+        val openF1 = openF1MediaByAcronym[acronym]
+        val imageId = resolveImageId(givenName, familyName, acronym)
+        return buildList {
+            add(build2026HeadshotUrl(constructorId, imageId))
+            openF1?.headshotUrl?.let { add(it) }
+            add(buildLegacyHeadshotUrl(givenName, familyName, imageId))
+            if (givenName.contains(" ")) {
+                val altId = formulaImageId(givenName, familyName)
+                if (altId != imageId) {
+                    add(buildLegacyHeadshotUrl(givenName, familyName, altId))
+                }
+            }
+        }.distinct()
+    }
+
+    private suspend fun ensureOpenF1Media() {
+        if (openF1Loaded) return
+        openF1Loaded = true
+        try {
+            Log.d(TAG, "Fetching OpenF1 driver media for headshot enrichment...")
+            val response = client.get("https://api.openf1.org/v1/drivers") {
+                parameter("session_key", "latest")
+            }.body<String>()
+            val json = Json { ignoreUnknownKeys = true }
+            val arr = json.parseToJsonElement(response).jsonArray
+            val map = mutableMapOf<String, DriverMedia>()
+            for (el in arr) {
+                val obj = el.jsonObject
+                val acronym = obj["name_acronym"]?.jsonPrimitive?.content ?: continue
+                val headshot = obj["headshot_url"]?.jsonPrimitive?.content
+                val colour = obj["team_colour"]?.jsonPrimitive?.content
+                // OpenF1 URLs look like: .../LANNOR01_Lando_Norris/lannor01.png.transform/1col/image.png
+                val imageId = headshot
+                    ?.let { Regex("""/([a-z]{6}01)\.png""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.getOrNull(1)?.lowercase() }
+                    ?: headshot
+                        ?.substringAfter("/drivers/")
+                        ?.substringAfter('/')
+                        ?.substringBefore('_')
+                        ?.lowercase()
+                        ?.takeIf { it.matches(Regex("[a-z]{6}01")) }
+                map[acronym] = DriverMedia(headshot, colour, imageId)
+            }
+            openF1MediaByAcronym = map
+            Log.d(TAG, "OpenF1 media loaded for ${map.size} drivers")
+        } catch (e: Exception) {
+            Log.w(TAG, "OpenF1 media enrichment failed: ${e.message}")
+            openF1MediaByAcronym = emptyMap()
+        }
+    }
+
+    private fun nationalityFlag(nationality: String?): String? {
+        if (nationality.isNullOrBlank()) return null
+        return when (nationality.lowercase().trim()) {
+            "italian" -> "🇮🇹"
+            "british", "uk", "english" -> "🇬🇧"
+            "dutch" -> "🇳🇱"
+            "french" -> "🇫🇷"
+            "spanish" -> "🇪🇸"
+            "german" -> "🇩🇪"
+            "finnish" -> "🇫🇮"
+            "mexican" -> "🇲🇽"
+            "australian" -> "🇦🇺"
+            "canadian" -> "🇨🇦"
+            "brazilian" -> "🇧🇷"
+            "japanese" -> "🇯🇵"
+            "chinese" -> "🇨🇳"
+            "danish" -> "🇩🇰"
+            "thai" -> "🇹🇭"
+            "monegasque", "monégasque" -> "🇲🇨"
+            "new zealander" -> "🇳🇿"
+            "argentine", "argentinian" -> "🇦🇷"
+            "american" -> "🇺🇸"
+            "swiss" -> "🇨🇭"
+            "austrian" -> "🇦🇹"
+            "polish" -> "🇵🇱"
+            "russian" -> "🇷🇺"
+            "belgian" -> "🇧🇪"
+            else -> null
+        }
     }
 
     override suspend fun getSeasonDriverStandings(): List<SeasonDriverStanding> {
-        // "current" always points to the live season on Jolpica
+        ensureOpenF1Media()
         val standings = fetchStandingsForYear("current")
         if (standings.isNotEmpty()) return standings
 
@@ -94,14 +260,17 @@ class F1ApiServiceImpl @Inject constructor(
                 val constructors = entry["Constructors"]?.jsonArray
                 val constructor = constructors?.firstOrNull()?.jsonObject
                 val constructorId = constructor?.get("constructorId")?.jsonPrimitive?.content ?: ""
-                
+
                 val givenName = driver?.get("givenName")?.jsonPrimitive?.content ?: ""
                 val familyName = driver?.get("familyName")?.jsonPrimitive?.content ?: ""
                 val acronym = driver?.get("code")?.jsonPrimitive?.content ?: familyName.take(3).uppercase()
+                val nationality = driver?.get("nationality")?.jsonPrimitive?.content
 
-                // Build the working F1 CDN headshot URL
-                val headshotUrl = buildHeadshotUrl(givenName, familyName)
-                val teamColorHex = getTeamColor(constructorId)
+                val openF1 = openF1MediaByAcronym[acronym]
+                val teamColorHex = openF1?.teamColour?.takeIf { it.isNotBlank() } ?: getTeamColor(constructorId)
+                val headshotWithFallbacks = resolveHeadshotCandidates(givenName, familyName, acronym, constructorId)
+                    .joinToString("|")
+
                 val standing = SeasonDriverStanding(
                     position = entry["position"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
                     points = entry["points"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0,
@@ -110,12 +279,12 @@ class F1ApiServiceImpl @Inject constructor(
                     driverAcronym = acronym,
                     constructorName = constructor?.get("name")?.jsonPrimitive?.content ?: "Unknown",
                     teamColor = teamColorHex,
-                    headshotUrl = headshotUrl,
+                    headshotUrl = headshotWithFallbacks,
                     teamLogoUrl = getTeamLogo(constructorId),
-                    driverNumber = driver?.get("permanentNumber")?.jsonPrimitive?.content
+                    driverNumber = driver?.get("permanentNumber")?.jsonPrimitive?.content,
+                    nationality = nationalityFlag(nationality) ?: nationality,
                 )
-                // Cache for later enrichment of race/quali results
-                headshotCache[acronym] = headshotUrl
+                headshotCache[acronym] = headshotWithFallbacks
                 teamColorCache[acronym] = teamColorHex
                 standing
             }
@@ -125,7 +294,38 @@ class F1ApiServiceImpl @Inject constructor(
         }
     }
 
+    override suspend fun getSeasonConstructorStandings(): List<SeasonConstructorStanding> {
+        return try {
+            Log.d(TAG, "Fetching constructor standings from Jolpica...")
+            val response = client.get("$JOLPICA_BASE/current/constructorStandings.json").body<String>()
+            val json = Json { ignoreUnknownKeys = true }
+            val root = json.parseToJsonElement(response).jsonObject
+            val lists = root["MRData"]?.jsonObject
+                ?.get("StandingsTable")?.jsonObject
+                ?.get("StandingsLists")?.jsonArray
+            val first = lists?.firstOrNull()?.jsonObject ?: return emptyList()
+            val standings = first["ConstructorStandings"]?.jsonArray ?: return emptyList()
+
+            standings.map { it.jsonObject }.map { entry ->
+                val constructor = entry["Constructor"]?.jsonObject
+                val constructorId = constructor?.get("constructorId")?.jsonPrimitive?.content ?: ""
+                SeasonConstructorStanding(
+                    position = entry["position"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    points = entry["points"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0,
+                    wins = entry["wins"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    constructorName = constructor?.get("name")?.jsonPrimitive?.content ?: "Unknown",
+                    teamColor = getTeamColor(constructorId),
+                    teamLogoUrl = getTeamLogo(constructorId),
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching constructor standings: ${e.message}")
+            emptyList()
+        }
+    }
+
     override suspend fun getLastRaceResults(): Pair<List<RaceResult>, String?> {
+        ensureOpenF1Media()
         return try {
             Log.d(TAG, "Fetching last race results from Jolpica...")
             val response = client.get("$JOLPICA_BASE/current/last/results.json").body<String>()
@@ -149,9 +349,11 @@ class F1ApiServiceImpl @Inject constructor(
                 val posGained = if (grid != null && grid > 0 && pos > 0) grid - pos else null
                 val acronym = driver?.get("code")?.jsonPrimitive?.content
                 val constructorId = constructor?.get("constructorId")?.jsonPrimitive?.content ?: ""
-                // Use cached headshot or build one on-the-fly
-                val headshotUrl = (acronym?.let { headshotCache[it] }) ?: buildHeadshotUrl(givenName, familyName)
-                val teamColorHex = (acronym?.let { teamColorCache[it] }) ?: getTeamColor(constructorId)
+                val headshotUrl = acronym?.let { headshotCache[it] }
+                    ?: resolveHeadshotCandidates(givenName, familyName, acronym.orEmpty(), constructorId).joinToString("|")
+                val teamColorHex = (acronym?.let { teamColorCache[it] })
+                    ?: openF1MediaByAcronym[acronym.orEmpty()]?.teamColour
+                    ?: getTeamColor(constructorId)
                 RaceResult(
                     position = pos,
                     driverName = "$givenName $familyName",
@@ -175,6 +377,7 @@ class F1ApiServiceImpl @Inject constructor(
     }
 
     override suspend fun getLastQualiResults(): List<QualiResult> {
+        ensureOpenF1Media()
         return try {
             Log.d(TAG, "Fetching last qualifying results from Jolpica...")
             val response = client.get("$JOLPICA_BASE/current/last/qualifying.json").body<String>()
@@ -202,13 +405,16 @@ class F1ApiServiceImpl @Inject constructor(
                     computeTimeGap(p1Time, bestTime)
                 } else null
                 val acronymQ = driver?.get("code")?.jsonPrimitive?.content
-                val headshotUrlQ = (acronymQ?.let { headshotCache[it] }) ?: buildHeadshotUrl(givenName, familyName)
+                val headshotUrlQ = acronymQ?.let { headshotCache[it] }
+                    ?: resolveHeadshotCandidates(givenName, familyName, acronymQ.orEmpty(), constructorId).joinToString("|")
                 QualiResult(
                     position = pos,
                     driverName = "$givenName $familyName",
                     driverAcronym = acronymQ,
                     constructorName = constructor?.get("name")?.jsonPrimitive?.content ?: "Unknown",
-                    teamColor = getTeamColor(constructorId),
+                    teamColor = (acronymQ?.let { teamColorCache[it] })
+                        ?: openF1MediaByAcronym[acronymQ.orEmpty()]?.teamColour
+                        ?: getTeamColor(constructorId),
                     q1Time = q1,
                     q2Time = q2,
                     q3Time = q3,
@@ -239,7 +445,7 @@ class F1ApiServiceImpl @Inject constructor(
 
     override suspend fun getSchedule(): List<RaceScheduleEntry> {
         return try {
-            Log.d(TAG, "Fetching 2026 race schedule from Jolpica...")
+            Log.d(TAG, "Fetching race schedule from Jolpica...")
             val response = client.get("$JOLPICA_BASE/current.json").body<String>()
             val json = Json { ignoreUnknownKeys = true }
             val root = json.parseToJsonElement(response).jsonObject
@@ -345,7 +551,7 @@ class F1ApiServiceImpl @Inject constructor(
 
     private fun getFlagUrl(country: String): String {
         val iso = countryToIso(country)
-        if (iso.isEmpty()) return "https://media.formula1.com/content/dam/fom-website/manual/f1-logo.png"
+        if (iso.isEmpty()) return "$F1_CDN/content/dam/fom-website/manual/f1-logo.png"
         return "https://flagcdn.com/w320/$iso.png"
     }
 
@@ -379,7 +585,6 @@ class F1ApiServiceImpl @Inject constructor(
     override suspend fun getF1News(): List<F1NewsArticle> {
         return try {
             Log.d(TAG, "Fetching F1 news from RSS feed...")
-            // Use rss2json free API with the official F1 RSS feed
             val response = client.get("https://api.rss2json.com/v1/api.json") {
                 parameter("rss_url", "https://www.motorsport.com/rss/f1/news/")
                 parameter("count", "10")
@@ -391,17 +596,8 @@ class F1ApiServiceImpl @Inject constructor(
             val items = root["items"]?.jsonArray
 
             if (status == "ok" && items != null && items.isNotEmpty()) {
-                items.map { it.jsonObject }.take(5).map { item ->
-                    F1NewsArticle(
-                        title = item["title"]?.jsonPrimitive?.content ?: "F1 News",
-                        description = stripHtml(item["description"]?.jsonPrimitive?.content ?: ""),
-                        url = item["link"]?.jsonPrimitive?.content ?: "https://www.formula1.com",
-                        publishedAt = item["pubDate"]?.jsonPrimitive?.content ?: "",
-                        category = item["categories"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content?.uppercase() ?: "F1"
-                    )
-                }
+                items.map { it.jsonObject }.take(5).map { item -> mapNewsItem(item) }
             } else {
-                // Fallback: try autosport F1 feed
                 fetchNewsFromFeed("https://www.autosport.com/rss/f1/news/")
             }
         } catch (e: Exception) {
@@ -423,19 +619,25 @@ class F1ApiServiceImpl @Inject constructor(
         val json = Json { ignoreUnknownKeys = true }
         val root = json.parseToJsonElement(response).jsonObject
         val items = root["items"]?.jsonArray ?: return emptyList()
-        return items.map { it.jsonObject }.take(5).map { item ->
-            F1NewsArticle(
-                title = item["title"]?.jsonPrimitive?.content ?: "F1 News",
-                description = stripHtml(item["description"]?.jsonPrimitive?.content ?: ""),
-                url = item["link"]?.jsonPrimitive?.content ?: "https://www.formula1.com",
-                publishedAt = item["pubDate"]?.jsonPrimitive?.content ?: "",
-                category = "F1"
-            )
-        }
+        return items.map { it.jsonObject }.take(5).map { item -> mapNewsItem(item) }
+    }
+
+    private fun mapNewsItem(item: kotlinx.serialization.json.JsonObject): F1NewsArticle {
+        val thumbnail = item["thumbnail"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        val enclosure = item["enclosure"]?.jsonObject?.get("link")?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        val imageFromHtml = item["description"]?.jsonPrimitive?.content
+            ?.let { Regex("""src=["']([^"']+)["']""").find(it)?.groupValues?.getOrNull(1) }
+        return F1NewsArticle(
+            title = item["title"]?.jsonPrimitive?.content ?: "F1 News",
+            description = stripHtml(item["description"]?.jsonPrimitive?.content ?: ""),
+            imageUrl = thumbnail ?: enclosure ?: imageFromHtml,
+            url = item["link"]?.jsonPrimitive?.content ?: "https://www.formula1.com",
+            publishedAt = item["pubDate"]?.jsonPrimitive?.content ?: "",
+            category = item["categories"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content?.uppercase() ?: "F1"
+        )
     }
 
     private fun getTeamColor(constructorId: String): String {
-        // 2026 colours sourced directly from OpenF1 team_colour field
         return when (constructorId) {
             "red_bull"                       -> "4781D7"
             "mercedes"                       -> "00D7B6"
@@ -453,22 +655,9 @@ class F1ApiServiceImpl @Inject constructor(
     }
 
     private fun getTeamLogo(constructorId: String): String {
-        // Use the official F1 website CDN paths for 2025/2026 (same asset names as used in the F1 app)
-        return when (constructorId) {
-            "red_bull"                       -> "https://media.formula1.com/content/dam/fom-website/teams/2025/red-bull-racing-logo.png"
-            "mercedes"                       -> "https://media.formula1.com/content/dam/fom-website/teams/2025/mercedes-logo.png"
-            "ferrari"                        -> "https://media.formula1.com/content/dam/fom-website/teams/2025/ferrari-logo.png"
-            "mclaren"                        -> "https://media.formula1.com/content/dam/fom-website/teams/2025/mclaren-logo.png"
-            "aston_martin"                   -> "https://media.formula1.com/content/dam/fom-website/teams/2025/aston-martin-logo.png"
-            "alpine"                         -> "https://media.formula1.com/content/dam/fom-website/teams/2025/alpine-logo.png"
-            "williams"                       -> "https://media.formula1.com/content/dam/fom-website/teams/2025/williams-logo.png"
-            "rb", "racing_bulls"             -> "https://media.formula1.com/content/dam/fom-website/teams/2025/rb-logo.png"
-            "sauber", "kick_sauber"          -> "https://media.formula1.com/content/dam/fom-website/teams/2025/kick-sauber-logo.png"
-            "audi"                           -> "https://media.formula1.com/content/dam/fom-website/teams/2026/audi-logo.png"
-            "haas"                           -> "https://media.formula1.com/content/dam/fom-website/teams/2025/haas-f1-team-logo.png"
-            "cadillac"                       -> "https://media.formula1.com/content/dam/fom-website/teams/2026/cadillac-logo.png"
-            else                             -> "https://media.formula1.com/content/dam/fom-website/manual/f1-logo.png"
-        }
+        // Official 2026 F1 CDN white logos (work on dark surfaces)
+        val slug = teamSlug(constructorId)
+        return "$F1_2026_LOGO/$slug/2026${slug}logowhite.webp"
     }
 
     private fun stripHtml(html: String): String {
