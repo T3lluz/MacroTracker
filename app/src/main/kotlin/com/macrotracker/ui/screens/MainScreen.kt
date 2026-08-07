@@ -169,12 +169,39 @@ private fun MainScreenScrollScaffold(
 
     var navBarHidden by remember { mutableStateOf(false) }
 
+    // Only react to scroll the child actually consumed. Using onPreScroll/available
+    // made top-edge pulls toggle the nav bar and feel like rubber-banding.
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            private var accumulated = 0f
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                val dy = consumed.y
+                if (dy == 0f) {
+                    // Overscroll / unconsumed edge pull — ignore so we don't bounce the bar.
+                    if (available.y != 0f) accumulated = 0f
+                    return Offset.Zero
+                }
+
+                // Reverse direction resets the accumulator so tiny jitters don't flip state.
+                if ((accumulated > 0f && dy < 0f) || (accumulated < 0f && dy > 0f)) {
+                    accumulated = 0f
+                }
+                accumulated += dy
+
                 when {
-                    available.y < -1f -> navBarHidden = true
-                    available.y > 1f -> navBarHidden = false
+                    accumulated <= -12f -> {
+                        navBarHidden = true
+                        accumulated = 0f
+                    }
+                    accumulated >= 12f -> {
+                        navBarHidden = false
+                        accumulated = 0f
+                    }
                 }
                 return Offset.Zero
             }
