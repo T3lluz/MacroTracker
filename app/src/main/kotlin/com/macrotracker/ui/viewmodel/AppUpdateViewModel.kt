@@ -167,9 +167,8 @@ class AppUpdateViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update check failed", e)
-                if (!quiet || _state.value is AppUpdateUiState.Checking ||
-                    _state.value is AppUpdateUiState.Idle
-                ) {
+                // Only surface errors for explicit user-initiated checks.
+                if (!quiet) {
                     _state.value = AppUpdateUiState.Error(
                         e.message?.takeIf { it.isNotBlank() } ?: "Could not check for updates",
                     )
