@@ -13,3 +13,6 @@
 
 # Keep F1 data classes for Ktor serialization
 -keep class com.macrotracker.data.f1.** { *; }
+
+# Optional logging binder pulled in transitively; not shipped on Android.
+-dontwarn org.slf4j.impl.StaticLoggerBinder
