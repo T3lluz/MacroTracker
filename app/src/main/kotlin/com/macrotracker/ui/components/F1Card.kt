@@ -131,7 +131,12 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
     val context = LocalContext.current
     if (url.isNullOrBlank()) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            Text(teamName.take(2).uppercase(), color = TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Black)
+            Text(
+                teamName.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString(""),
+                color = TextSecondary,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Black,
+            )
         }
         return
     }
@@ -142,6 +147,10 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
             .crossfade(false)
+            .setHeader(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+            )
             .build()
     }
     SubcomposeAsyncImage(model = request, contentDescription = teamName, modifier = modifier, contentScale = contentScale) {
@@ -150,7 +159,12 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
                 CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = TextSecondary.copy(alpha = 0.4f))
             }
             is AsyncImagePainter.State.Error -> Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                Text(teamName.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString(""), color = TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                Text(
+                    teamName.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString(""),
+                    color = TextSecondary,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black,
+                )
             }
             else -> SubcomposeAsyncImageContent()
         }
@@ -159,39 +173,29 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
 
 // ── DriverHeadshot composable ─────────────────────────────────────────────────
 @Composable
-private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: String, driverNumber: String?, teamColor: Color, modifier: Modifier = Modifier) {
+private fun DriverHeadshot(
+    url: String?,
+    driverName: String,
+    driverAcronym: String,
+    driverNumber: String?,
+    teamColor: Color,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
-    
-    // Build a list of potential headshot URLs to try as fallbacks
-    val headshotUrls = remember(url, driverName) {
-        val list = mutableListOf<String>()
-        val nameLower = driverName.lowercase()
-        
-        // Manual overrides for drivers where the standard formula often fails
-        if (nameLower.contains("antonelli")) {
-            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/K/KIMANT01_Kimi_Antonelli/kimant01.png.transform/1col/image.png")
-            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ANDANT01_Andrea_Kimi_Antonelli/andant01.png.transform/1col/image.png")
-        } else if (nameLower.contains("lindblad")) {
-            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png")
-            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/ARVLIN01_Arvid_Lindblad/arvlin01.png.transform/1col/image.png")
-        } else if (nameLower.contains("bortoleto")) {
-            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GABBOR01_Gabriel_Bortoleto/gabbor01.png.transform/1col/image.png")
-        } else if (nameLower.contains("bearman")) {
-            list.add("https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/O/OLIBEA01_Oliver_Bearman/olibea01.png.transform/1col/image.png")
-        }
-        
-        // Add the provided URL from the API as a primary or fallback
-        if (!url.isNullOrBlank()) {
-            list.add(url)
-        }
-        
-        list.distinct()
+
+    // API may stash multiple candidates as "url1|url2|…" for Coil fallback.
+    val headshotUrls = remember(url) {
+        url.orEmpty()
+            .split('|')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
     }
 
-    var urlIndex by remember(headshotUrls) { mutableStateOf(0) }
+    var urlIndex by remember(headshotUrls) { mutableIntStateOf(0) }
     val activeUrl = headshotUrls.getOrNull(urlIndex)
 
-    Box(modifier = modifier.clip(RoundedCornerShape(10.dp)).background(teamColor.copy(alpha = 0.08f))) {
+    Box(modifier = modifier.clip(RoundedCornerShape(10.dp)).background(teamColor.copy(alpha = 0.10f))) {
         if (activeUrl == null) {
             DriverPlaceholder(driverAcronym, driverNumber, teamColor)
         } else {
@@ -201,7 +205,10 @@ private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: Stri
                     .crossfade(false)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .diskCachePolicy(CachePolicy.ENABLED)
-                    .setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .setHeader(
+                        "User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    )
                     .size(256)
                     .build()
             }
@@ -209,24 +216,28 @@ private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: Stri
                 model = request,
                 contentDescription = driverName,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
             ) {
                 when (painter.state) {
                     is AsyncImagePainter.State.Loading -> Box(
                         modifier = Modifier.fillMaxSize().background(teamColor.copy(alpha = 0.06f)),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = teamColor.copy(alpha = 0.4f))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 1.5.dp,
+                            color = teamColor.copy(alpha = 0.4f),
+                        )
                     }
                     is AsyncImagePainter.State.Error -> {
-                        // If one URL fails, try the next one in the list
                         if (urlIndex < headshotUrls.size - 1) {
-                            LaunchedEffect(activeUrl) {
-                                urlIndex++
-                            }
-                            // Show loading while switching
+                            LaunchedEffect(activeUrl) { urlIndex++ }
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = teamColor.copy(alpha = 0.2f))
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(10.dp),
+                                    strokeWidth = 1.dp,
+                                    color = teamColor.copy(alpha = 0.2f),
+                                )
                             }
                         } else {
                             DriverPlaceholder(driverAcronym, driverNumber, teamColor)
@@ -236,8 +247,14 @@ private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: Stri
                 }
             }
         }
-        // Team color bottom stripe
-        Box(modifier = Modifier.fillMaxWidth().height(2.dp).align(Alignment.BottomCenter).background(teamColor.copy(alpha = 0.85f)))
+        // Team color accent stripe
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .align(Alignment.BottomCenter)
+                .background(teamColor.copy(alpha = 0.85f)),
+        )
     }
 }
 
@@ -273,17 +290,41 @@ fun F1Card(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Left: F1 branding (non-clickable)
+                // Left: F1 branding
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_f1_logo),
-                        contentDescription = "Formula 1",
-                        modifier = Modifier.height(28.dp),
-                        contentScale = ContentScale.FillHeight,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(F1Red.copy(alpha = 0.12f))
+                            .border(0.5.dp, F1Red.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_f1_logo),
+                            contentDescription = "Formula 1",
+                            modifier = Modifier.height(18.dp),
+                            contentScale = ContentScale.FillHeight,
+                        )
+                    }
                     Column {
-                        Text("HUB", fontSize = 17.sp, fontWeight = FontWeight.Black, color = TextPrimary, letterSpacing = (-0.5).sp)
-                        Text("2026 SEASON", fontSize = 8.sp, fontWeight = FontWeight.Black, color = F1Red.copy(alpha = 0.85f), letterSpacing = 1.5.sp)
+                        Text(
+                            "F1 HUB",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = TextPrimary,
+                            letterSpacing = (-0.3).sp,
+                        )
+                        val seasonYear = (state as? F1UiState.Success)?.f1Data?.schedule?.firstOrNull()?.raceDate
+                            ?.take(4)
+                            ?: java.time.Year.now().value.toString()
+                        Text(
+                            "$seasonYear SEASON",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            color = F1Red.copy(alpha = 0.85f),
+                            letterSpacing = 1.5.sp,
+                        )
                     }
                 }
                 // Right: action buttons + clickable chevron
@@ -363,22 +404,34 @@ fun F1Card(
                         }
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         tabs.forEach { tab ->
                             val active = selectedTab == tab
-                            val bg by animateColorAsState(if (active) F1Red else Surface.copy(alpha = 0.5f), tween(180), label = "bg")
-                            val fg by animateColorAsState(if (active) Color.White else TextSecondary.copy(alpha = 0.7f), tween(180), label = "fg")
+                            val bg by animateColorAsState(
+                                if (active) F1Red else Surface.copy(alpha = 0.55f),
+                                tween(180),
+                                label = "bg",
+                            )
+                            val fg by animateColorAsState(
+                                if (active) Color.White else TextSecondary.copy(alpha = 0.75f),
+                                tween(180),
+                                label = "fg",
+                            )
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(bg)
+                                    .then(
+                                        if (!active) Modifier.border(0.5.dp, Border.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                        else Modifier
+                                    )
                                     .clickable { haptics.tick(); selectedTab = tab }
-                                    .padding(horizontal = 11.dp, vertical = 7.dp),
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(tab.icon, null, tint = fg, modifier = Modifier.size(11.dp))
-                                    Text(tab.label, color = fg, fontWeight = FontWeight.Bold, fontSize = 9.sp, letterSpacing = 0.4.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Icon(tab.icon, null, tint = fg, modifier = Modifier.size(12.dp))
+                                    Text(tab.label, color = fg, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.4.sp)
                                 }
                             }
                         }
@@ -900,23 +953,102 @@ fun F1NewsFeed(news: List<F1NewsArticle>) {
                         haptics.tick()
                         try { context.startActivity(Intent(Intent.ACTION_VIEW, article.url.toUri())) } catch (_: Exception) {}
                     }
-                    .padding(12.dp),
-                verticalAlignment = Alignment.Top
+                    .padding(10.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Box(modifier = Modifier.width(3.dp).height(44.dp).clip(RoundedCornerShape(2.dp)).background(F1Red))
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Box(modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(F1Red.copy(alpha = 0.15f)).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                        Text(article.category.take(12), color = F1Red, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                // Thumbnail or accent rail
+                if (!article.imageUrl.isNullOrBlank()) {
+                    val request = remember(article.imageUrl) {
+                        ImageRequest.Builder(context)
+                            .data(article.imageUrl)
+                            .size(160)
+                            .crossfade(false)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .build()
                     }
-                    Spacer(Modifier.height(3.dp))
-                    Text(article.title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp)
+                    SubcomposeAsyncImage(
+                        model = request,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(width = 72.dp, height = 56.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CardBg),
+                        contentScale = ContentScale.Crop,
+                    ) {
+                        when (painter.state) {
+                            is AsyncImagePainter.State.Error,
+                            is AsyncImagePainter.State.Loading -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(F1Red.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.NewReleases,
+                                        null,
+                                        tint = F1Red.copy(alpha = 0.55f),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                            else -> SubcomposeAsyncImageContent()
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(F1Red),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(F1Red.copy(alpha = 0.15f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            article.category.take(12),
+                            color = F1Red,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.5.sp,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        article.title,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 17.sp,
+                    )
                     if (article.description.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))
-                        Text(article.description, color = TextSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
+                        Text(
+                            article.description,
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 15.sp,
+                        )
                     }
                 }
-                Icon(Icons.Default.ChevronRight, null, tint = TextSecondary.copy(alpha = 0.35f), modifier = Modifier.size(16.dp).align(Alignment.CenterVertically))
+                Icon(
+                    Icons.Default.ChevronRight,
+                    null,
+                    tint = TextSecondary.copy(alpha = 0.35f),
+                    modifier = Modifier.size(16.dp).align(Alignment.CenterVertically),
+                )
             }
         }
     }
@@ -959,10 +1091,12 @@ fun DriverStandingsList(standings: List<SeasonDriverStanding>) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 driver.driverNumber?.let { Text("#$it", color = tc, fontWeight = FontWeight.Black, fontSize = 10.sp) }
                                 Text(driver.driverAcronym, color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 15.sp, letterSpacing = 1.sp)
-                                driver.nationality?.let { Text(it, fontSize = 12.sp) }
+                                driver.nationality?.let { nat ->
+                                    Text(nat, fontSize = if (nat.length <= 4) 13.sp else 9.sp, color = TextSecondary)
+                                }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TeamLogo(url = driver.teamLogoUrl, teamName = driver.constructorName, modifier = Modifier.size(width = 20.dp, height = 13.dp))
+                                TeamLogo(url = driver.teamLogoUrl, teamName = driver.constructorName, modifier = Modifier.size(width = 22.dp, height = 14.dp))
                                 Text(driver.constructorName, color = TextSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             if (gapToLeader != null) {
@@ -986,7 +1120,7 @@ fun DriverStandingsList(standings: List<SeasonDriverStanding>) {
                             HorizontalDivider(color = tc.copy(alpha = 0.2f))
                             Spacer(Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                StatChip("FULL NAME", driver.driverName.split(" ").last().uppercase(), tc)
+                                StatChip("NAME", driver.driverName.split(" ").last().uppercase(), tc)
                                 StatChip("TEAM", driver.constructorName.split(" ").first(), tc)
                                 StatChip("WINS", driver.wins.toString(), tc)
                                 StatChip("PTS", driver.points.toInt().toString(), tc)
@@ -1232,9 +1366,16 @@ private fun DriverBattleCard(driver: SeasonDriverStanding, pos: Int, tc: Color, 
         modifier = Modifier.width(88.dp)
     ) {
         if (isLeader) {
-            Text("👑", fontSize = 14.sp)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(F1Gold.copy(alpha = 0.18f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text("LEADER", color = F1Gold, fontSize = 7.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+            }
         } else {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
         }
         Box(
             modifier = Modifier.size(width = 68.dp, height = 78.dp)
@@ -1281,7 +1422,7 @@ private fun WCCBattleContent(constructors: List<SeasonConstructorStanding>, hapt
                         TeamLogo(url = leader.teamLogoUrl, teamName = leader.constructorName, modifier = Modifier.fillMaxSize())
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("🏆 WCC LEADER", color = F1Gold, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        Text("WCC LEADER", color = F1Gold, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                         Text(leader.constructorName.uppercase(), color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 0.3.sp)
                         if (leader.wins > 0) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             Icon(Icons.Default.EmojiEvents, null, tint = F1Gold, modifier = Modifier.size(10.dp))
@@ -1579,7 +1720,7 @@ fun QualiResultsList(results: List<QualiResult>, raceName: String?) {
         raceName?.let {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(FL_Purple.copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                    Text("🔵 QUALI · ${shortGP(it).uppercase()}", color = FL_Purple, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                    Text("QUALI · ${shortGP(it).uppercase()}", color = FL_Purple, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
                 }
             }
             Spacer(Modifier.height(2.dp))
@@ -1706,7 +1847,7 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
         raceName?.let {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(F1Red.copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                    Text("🏁 ${shortGP(it).uppercase()}", color = F1Red, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                    Text(shortGP(it).uppercase(), color = F1Red, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
                 }
             }
             Spacer(Modifier.height(2.dp))
@@ -1848,9 +1989,16 @@ private fun PodiumDriver(result: RaceResult, pos: Int, height: Dp) {
                 }
             }
         } else if (pos == 1) {
-            Text("👑", fontSize = 14.sp)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(F1Gold.copy(alpha = 0.18f))
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            ) {
+                Text("P1", color = F1Gold, fontSize = 7.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+            }
         } else {
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
         }
         Box(
             modifier = Modifier.size(headshotSize)

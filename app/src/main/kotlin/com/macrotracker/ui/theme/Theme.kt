@@ -1,9 +1,12 @@
 package com.macrotracker.ui.theme
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -64,12 +67,15 @@ private val AppTypography = Typography(
     ),
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DailyDashTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = DarkColorScheme,
-        typography = AppTypography,
-        content = content,
-    )
+    // Disable stretch/glow overscroll so lists don't rubber-band at the edges.
+    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+        MaterialTheme(
+            colorScheme = DarkColorScheme,
+            typography = AppTypography,
+            content = content,
+        )
+    }
 }
-

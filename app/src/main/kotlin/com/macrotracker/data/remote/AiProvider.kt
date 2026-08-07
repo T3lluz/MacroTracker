@@ -5,7 +5,8 @@ package com.macrotracker.data.remote
  */
 enum class AiProvider(val storageValue: String, val displayName: String) {
     GEMINI("gemini", "Gemini"),
-    OPENAI("openai", "OpenAI");
+    OPENAI("openai", "OpenAI"),
+    OPENROUTER("openrouter", "OpenRouter");
 
     companion object {
         fun fromStorage(value: String?): AiProvider =

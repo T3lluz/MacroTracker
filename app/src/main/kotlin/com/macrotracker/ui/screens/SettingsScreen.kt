@@ -5,6 +5,11 @@ import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +34,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Air
@@ -79,10 +86,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.data.remote.AiApiClient
 import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.OpenRouterModels
+import com.macrotracker.data.update.AppReleaseNotes
 import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.MarkdownText
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
@@ -110,6 +120,8 @@ fun SettingsScreen(
     val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
     val savedKey by viewModel.geminiApiKey.collectAsState()
     val savedOpenAiKey by viewModel.openAiApiKey.collectAsState()
+    val savedOpenRouterKey by viewModel.openRouterApiKey.collectAsState()
+    val openRouterModelId by viewModel.openRouterModelId.collectAsState()
     val aiProvider by viewModel.aiProvider.collectAsState()
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
     val weatherConnected by viewModel.weatherConnected.collectAsState()
@@ -133,6 +145,7 @@ fun SettingsScreen(
     val activeSavedKey = when (aiProvider) {
         AiProvider.GEMINI -> savedKey
         AiProvider.OPENAI -> savedOpenAiKey
+        AiProvider.OPENROUTER -> savedOpenRouterKey
     }
     var draftKey by remember(aiProvider, activeSavedKey) { mutableStateOf(activeSavedKey) }
     var keyVisible by remember { mutableStateOf(false) }
@@ -140,6 +153,12 @@ fun SettingsScreen(
     val haptics = rememberHaptics()
 
     val updateState by appUpdateViewModel.state.collectAsState()
+    val releaseNotes by appUpdateViewModel.releaseNotes.collectAsState()
+    val releaseNotesLoading by appUpdateViewModel.releaseNotesLoading.collectAsState()
+
+    LaunchedEffect(Unit) {
+        appUpdateViewModel.loadReleaseNotes()
+    }
 
     val isDirty = draftKey.trim() != activeSavedKey
     val hasKey = activeSavedKey.isNotBlank()
@@ -149,6 +168,7 @@ fun SettingsScreen(
         draftKey.isNotBlank() && !keyFormatOk -> when (aiProvider) {
             AiProvider.GEMINI -> "Doesn't look like a Gemini key (should start with AIza…)"
             AiProvider.OPENAI -> "Doesn't look like an OpenAI key (should start with sk-…)"
+            AiProvider.OPENROUTER -> "Doesn't look like an OpenRouter key (should start with sk-or-…)"
         }
         else -> null
     }
@@ -422,7 +442,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Choose Gemini or OpenAI for food estimates, label scanning, and weather tips.",
+                text = "Choose Gemini, OpenAI, or OpenRouter for food estimates, label scanning, and weather tips.",
                 fontSize = 13.sp,
                 color = TextSecondary,
                 lineHeight = 18.sp,
@@ -550,45 +570,64 @@ fun SettingsScreen(
             }
         }
 
-        // ── AI Model Info Card ───────────────────────────────────────────
+        // ── AI Model Info / OpenRouter selector ───────────────────────────
         MacroCard(delayMs = 150) {
             Text(
-                text = "AI Model",
+                text = if (aiProvider == AiProvider.OPENROUTER) "OpenRouter Model" else "AI Model",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Background, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
+
+            if (aiProvider == AiProvider.OPENROUTER) {
+                Text(
+                    text = "Pick a cheap vision-capable model. Prices are OpenRouter list rates (USD per 1M tokens) and may change. DailyDash calls are short, so even paid models stay fractions of a cent.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OpenRouterModelSelector(
+                    selectedId = openRouterModelId,
+                    onSelect = { modelId ->
+                        haptics.tick()
+                        viewModel.setOpenRouterModelId(modelId)
+                    },
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Background, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text(
+                            text = AiApiClient.modelLabel(aiProvider),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = when (aiProvider) {
+                                AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
+                                AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
+                                AiProvider.OPENROUTER -> ""
+                            },
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+                    }
                     Text(
-                        text = AiApiClient.modelLabel(aiProvider),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TextPrimary,
-                    )
-                    Text(
-                        text = when (aiProvider) {
-                            AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
-                            AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
-                        },
+                        text = if (hasKey) "Active" else "No Key",
                         fontSize = 12.sp,
-                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (hasKey) Success else Error,
                     )
                 }
-                Text(
-                    text = if (hasKey) "Active" else "No Key",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (hasKey) Success else Error,
-                )
             }
         }
 
@@ -686,7 +725,7 @@ fun SettingsScreen(
             when (val s = updateState) {
                 is AppUpdateUiState.Idle -> {
                     Text(
-                        text = "Checks GitHub Releases for newer tester builds.",
+                        text = "Listens for new GitHub Releases and prompts in-app automatically.",
                         fontSize = 12.sp,
                         color = TextSecondary,
                         modifier = Modifier.padding(bottom = 10.dp),
@@ -795,6 +834,142 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = Border.copy(alpha = 0.6f))
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Release notes",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            when {
+                releaseNotesLoading && releaseNotes.isEmpty() -> {
+                    Text(
+                        text = "Loading release history…",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+                releaseNotes.isEmpty() -> {
+                    Text(
+                        text = "No published releases found yet.",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+                else -> {
+                    releaseNotes.forEach { release ->
+                        ReleaseNotesDropdown(
+                            release = release,
+                            isCurrent = release.versionCode == appUpdateViewModel.currentVersionCode,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReleaseNotesDropdown(
+    release: AppReleaseNotes,
+    isCurrent: Boolean,
+) {
+    var expanded by remember(release.tagName) { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+    val shape = RoundedCornerShape(12.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Background)
+            .border(1.dp, Border.copy(alpha = 0.55f), shape),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    haptics.click()
+                    expanded = !expanded
+                }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "v${release.versionName}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (release.isNewerThanInstalled) Primary else TextPrimary,
+                    )
+                    if (isCurrent) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Installed",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Success,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Success.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    } else if (release.isNewerThanInstalled) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "New",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Primary.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = "build ${release.versionCode}" +
+                        (release.publishedAt?.take(10)?.let { " · $it" } ?: ""),
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = TextSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+            ) {
+                HorizontalDivider(
+                    color = Border.copy(alpha = 0.45f),
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+                MarkdownText(
+                    markdown = release.releaseNotes.ifBlank { "No release notes." },
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+            }
         }
     }
 }
@@ -820,14 +995,97 @@ private fun AiProviderToggle(
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (isSelected) Primary else Color.Transparent)
                     .clickable { onSelect(provider) }
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = 10.dp, horizontal = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = provider.displayName,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isSelected) Color.White else TextSecondary,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenRouterModelSelector(
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OpenRouterModels.options.forEach { model ->
+            val selected = model.id == selectedId
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(
+                        width = 1.dp,
+                        color = if (selected) Primary else Border.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp),
+                    )
+                    .background(if (selected) Primary.copy(alpha = 0.08f) else Background)
+                    .clickable { onSelect(model.id) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = model.displayName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                        )
+                        if (model.recommended) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Best value",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Primary,
+                                modifier = Modifier
+                                    .background(Primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    if (selected) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = Primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = model.priceLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
+                )
+                Text(
+                    text = buildString {
+                        append(model.approxRequestCostLabel)
+                        if (model.supportsVision) append(" · Vision")
+                    },
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = model.blurb,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp,
                 )
             }
         }

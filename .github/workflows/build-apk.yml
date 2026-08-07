@@ -40,8 +40,8 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build debug APK (tester signing)
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build release APK (tester signing, non-debuggable)
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Resolve release metadata
         id: meta
@@ -72,9 +72,9 @@ Installs as an in-app update when signed with the shared tester keystore.
 Bump versionCode in app/build.gradle.kts before each tester push."
           fi
 
-          APK_SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           if [ -z "$APK_SRC" ]; then
-            echo "No debug APK found" >&2
+            echo "No release APK found" >&2
             exit 1
           fi
 

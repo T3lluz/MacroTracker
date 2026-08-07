@@ -91,7 +91,7 @@ private data class FaqItem(val question: String, val answer: String)
 private val FAQ = listOf(
     FaqItem(
         question = "Where is my data stored?",
-        answer = "All data is stored locally on your device using a local database. Nothing is uploaded to a server. AI requests are sent to your selected provider (Google Gemini or OpenAI) but your food logs are never included.",
+        answer = "All data is stored locally on your device using a local database. Nothing is uploaded to a server. AI requests are sent to your selected provider (Google Gemini, OpenAI, or OpenRouter) but your food logs are never included.",
     ),
     FaqItem(
         question = "Why is my progress bar red?",
@@ -99,7 +99,7 @@ private val FAQ = listOf(
     ),
     FaqItem(
         question = "How do I set up an AI API key?",
-        answer = "Go to Settings → AI Provider, choose Gemini or OpenAI, paste your key, and tap \"Save Key\". Gemini keys start with \"AIza\" (aistudio.google.com). OpenAI keys start with \"sk-\" (platform.openai.com).",
+        answer = "Go to Settings → AI Provider, choose Gemini, OpenAI, or OpenRouter, paste your key, and tap \"Save Key\". Gemini keys start with \"AIza\" (aistudio.google.com). OpenAI keys start with \"sk-\" (platform.openai.com). OpenRouter keys start with \"sk-or-\" (openrouter.ai/keys) — then pick a cheap model and see its cost.",
     ),
     FaqItem(
         question = "How do I connect Health Connect?",

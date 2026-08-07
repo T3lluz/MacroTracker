@@ -25,6 +25,8 @@ android {
         targetSdk = 35
         versionCode = 6
         versionName = "1.1.6"
+        versionCode = 11
+        versionName = "1.1.11"
 
         // Read API keys from local.properties
         val localProperties = Properties()
@@ -36,6 +38,8 @@ android {
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
         val openAiKey = localProperties.getProperty("OPENAI_API_KEY", "")
         buildConfigField("String", "OPENAI_API_KEY", "\"$openAiKey\"")
+        val openRouterKey = localProperties.getProperty("OPENROUTER_API_KEY", "")
+        buildConfigField("String", "OPENROUTER_API_KEY", "\"$openRouterKey\"")
         val youtubeKey = localProperties.getProperty("YOUTUBE_API_KEY", "")
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
     }

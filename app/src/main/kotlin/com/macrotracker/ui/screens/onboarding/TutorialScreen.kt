@@ -119,7 +119,7 @@ private val PAGES = listOf(
         body = "Go to the AI tab and type something like \"large bowl of porridge with banana\" — AI returns a macro estimate you can log in one tap.",
         tips = listOf(
             "The more detail you give, the better the estimate",
-            "Add a Gemini or OpenAI API key in Settings",
+            "Add a Gemini, OpenAI, or OpenRouter API key in Settings",
             "The confidence score tells you how sure the AI is",
         ),
     ),
