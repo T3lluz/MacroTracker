@@ -1,6 +1,7 @@
 package com.macrotracker.ui.screens
 
 import android.app.Activity
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,11 +35,14 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.macrotracker.data.update.AppUpdateUiState
+import com.macrotracker.ui.components.AppUpdateDialog
 import com.macrotracker.ui.components.PillNavigationBar
 import com.macrotracker.ui.navigation.DailyDashNavHost
 import com.macrotracker.ui.navigation.OnboardingRoutes
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.screens.onboarding.SplashOverlay
+import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 import kotlin.math.roundToInt
@@ -46,12 +51,18 @@ import kotlin.math.roundToInt
 fun MainScreen(
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
 ) {
+    val activity = LocalContext.current as ComponentActivity
+    val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
     val onboardingCompleted by onboardingViewModel.onboardingCompleted.collectAsState()
     val splashShown by onboardingViewModel.splashShown.collectAsState()
 
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState()
     val hasAiApiKey = geminiApiKey.isNotBlank()
+
+    val updateState by appUpdateViewModel.state.collectAsState()
+    val showUpdateDialog by appUpdateViewModel.showDialog.collectAsState()
+    val context = LocalContext.current
 
     val startDestination = remember(onboardingCompleted) {
         if (onboardingCompleted) Screen.Home.route else OnboardingRoutes.WELCOME
@@ -73,6 +84,13 @@ fun MainScreen(
         { onboardingViewModel.markSplashShown() }
     }
 
+    // After splash (and only once onboarding is done), quietly check GitHub Releases.
+    LaunchedEffect(splashShown, onboardingCompleted) {
+        if (splashShown && onboardingCompleted) {
+            appUpdateViewModel.checkOnLaunch()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         MainScreenScrollScaffold(
             navController = navController,
@@ -84,6 +102,31 @@ fun MainScreen(
 
         if (!splashShown) {
             SplashOverlay(onFinished = onSplashFinished)
+        }
+
+        if (showUpdateDialog &&
+            (updateState is AppUpdateUiState.Available ||
+                updateState is AppUpdateUiState.Downloading ||
+                updateState is AppUpdateUiState.ReadyToInstall)
+        ) {
+            val needsPermission = !appUpdateViewModel.canInstallPackages()
+            AppUpdateDialog(
+                state = updateState,
+                currentVersionName = appUpdateViewModel.currentVersionName,
+                onDismiss = { appUpdateViewModel.dismissDialog(snooze = true) },
+                onUpdate = { info ->
+                    if (appUpdateViewModel.canInstallPackages()) {
+                        appUpdateViewModel.startDownload(info)
+                    } else {
+                        context.startActivity(appUpdateViewModel.installPermissionSettingsIntent())
+                    }
+                },
+                onInstall = { appUpdateViewModel.installDownloaded() },
+                onOpenInstallPermission = {
+                    context.startActivity(appUpdateViewModel.installPermissionSettingsIntent())
+                },
+                needsInstallPermission = needsPermission,
+            )
         }
     }
 }

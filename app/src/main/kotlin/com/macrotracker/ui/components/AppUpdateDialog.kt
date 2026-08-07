@@ -1,0 +1,213 @@
+package com.macrotracker.ui.components
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.macrotracker.data.update.AppUpdateInfo
+import com.macrotracker.data.update.AppUpdateUiState
+import com.macrotracker.ui.theme.Primary
+import com.macrotracker.ui.theme.Surface as AppSurface
+import com.macrotracker.ui.theme.TextPrimary
+import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppUpdateDialog(
+    state: AppUpdateUiState,
+    currentVersionName: String,
+    onDismiss: () -> Unit,
+    onUpdate: (AppUpdateInfo) -> Unit,
+    onInstall: () -> Unit,
+    onOpenInstallPermission: () -> Unit,
+    needsInstallPermission: Boolean,
+) {
+    val info = when (state) {
+        is AppUpdateUiState.Available -> state.info
+        is AppUpdateUiState.Downloading -> state.info
+        is AppUpdateUiState.ReadyToInstall -> state.info
+        else -> return
+    }
+    val haptics = rememberHaptics()
+    val downloading = state is AppUpdateUiState.Downloading
+    val ready = state is AppUpdateUiState.ReadyToInstall
+    val progress = (state as? AppUpdateUiState.Downloading)?.progress ?: 0f
+
+    BasicAlertDialog(
+        onDismissRequest = {
+            if (!downloading) onDismiss()
+        },
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = AppSurface,
+            tonalElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Outlined.SystemUpdate,
+                            contentDescription = null,
+                            tint = Primary,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Update available",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                        )
+                    }
+                    if (!downloading) {
+                        IconButton(onClick = {
+                            haptics.click()
+                            onDismiss()
+                        }) {
+                            Icon(
+                                Icons.Outlined.Close,
+                                contentDescription = "Dismiss",
+                                tint = TextSecondary,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "DailyDash ${info.versionName} (build ${info.versionCode})",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Primary,
+                )
+                Text(
+                    text = "You have $currentVersionName · installs as an update, not a reinstall",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = info.releaseNotes.lineSequence().take(12).joinToString("\n")
+                        .ifBlank { "Bug fixes and improvements." },
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                    lineHeight = 18.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 160.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+
+                if (downloading) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Primary,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Downloading… ${(progress * 100).toInt()}%",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+
+                if (needsInstallPermission) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Allow DailyDash to install updates, then tap Update again.",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                    MacroButton(
+                        text = "Allow installs",
+                        onClick = {
+                            haptics.click()
+                            onOpenInstallPermission()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        variant = ButtonVariant.SECONDARY,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                when {
+                    ready -> MacroButton(
+                        text = "Install update",
+                        onClick = {
+                            haptics.confirm()
+                            onInstall()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !needsInstallPermission,
+                    )
+                    downloading -> MacroButton(
+                        text = "Downloading…",
+                        onClick = {},
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = false,
+                    )
+                    else -> MacroButton(
+                        text = if (needsInstallPermission) "Update (after allowing installs)" else "Update now",
+                        onClick = {
+                            haptics.confirm()
+                            onUpdate(info)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !needsInstallPermission,
+                    )
+                }
+
+                if (!downloading) {
+                    MacroButton(
+                        text = "Later",
+                        onClick = {
+                            haptics.click()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        variant = ButtonVariant.SECONDARY,
+                    )
+                }
+            }
+        }
+    }
+}

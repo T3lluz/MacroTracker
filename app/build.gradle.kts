@@ -23,8 +23,8 @@ android {
         applicationId = "com.macrotracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.1.2"
+        versionCode = 3
+        versionName = "1.1.3"
 
         // Read API keys from local.properties
         val localProperties = Properties()
@@ -38,9 +38,24 @@ android {
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
     }
 
+    signingConfigs {
+        // Shared tester keystore so GitHub Releases updates install over prior tester builds
+        // (same cert + higher versionCode = Android update, not reinstall).
+        create("tester") {
+            storeFile = file("tester.jks")
+            storePassword = "dailydash"
+            keyAlias = "dailydash"
+            keyPassword = "dailydash"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("tester")
+        }
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("tester")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
