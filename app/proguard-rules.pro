@@ -16,3 +16,6 @@
 
 # Optional logging binder pulled in transitively; not shipped on Android.
 -dontwarn org.slf4j.impl.StaticLoggerBinder
+
+# In-app update PackageInstaller callback (manifest-registered)
+-keep class com.macrotracker.data.update.UpdateInstallReceiver { *; }
