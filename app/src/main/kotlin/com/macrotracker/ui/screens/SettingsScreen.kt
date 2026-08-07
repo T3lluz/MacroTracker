@@ -77,6 +77,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.calendar.CalendarInfo
+import com.macrotracker.data.remote.AiApiClient
+import com.macrotracker.data.remote.AiProvider
 import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
@@ -107,6 +109,8 @@ fun SettingsScreen(
     val activity = LocalContext.current as ComponentActivity
     val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
     val savedKey by viewModel.geminiApiKey.collectAsState()
+    val savedOpenAiKey by viewModel.openAiApiKey.collectAsState()
+    val aiProvider by viewModel.aiProvider.collectAsState()
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
     val weatherConnected by viewModel.weatherConnected.collectAsState()
     val calendarConnected by viewModel.calendarConnected.collectAsState()
@@ -126,19 +130,26 @@ fun SettingsScreen(
     val floorsClimbedEnabled by viewModel.floorsClimbedEnabled.collectAsState()
     val activeCaloriesEnabled by viewModel.activeCaloriesEnabled.collectAsState()
 
-    var draftKey by remember(savedKey) { mutableStateOf(savedKey) }
+    val activeSavedKey = when (aiProvider) {
+        AiProvider.GEMINI -> savedKey
+        AiProvider.OPENAI -> savedOpenAiKey
+    }
+    var draftKey by remember(aiProvider, activeSavedKey) { mutableStateOf(activeSavedKey) }
     var keyVisible by remember { mutableStateOf(false) }
     var keySaved by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
 
     val updateState by appUpdateViewModel.state.collectAsState()
 
-    val isDirty = draftKey.trim() != savedKey
-    val hasKey = savedKey.isNotBlank()
+    val isDirty = draftKey.trim() != activeSavedKey
+    val hasKey = activeSavedKey.isNotBlank()
 
-    val keyFormatOk = draftKey.isBlank() || draftKey.trim().startsWith("AIza")
+    val keyFormatOk = AiApiClient.looksLikeValidKey(aiProvider, draftKey)
     val keyFeedback: String? = when {
-        draftKey.isNotBlank() && !keyFormatOk -> "⚠ Doesn't look like a Gemini key (should start with AIza…)"
+        draftKey.isNotBlank() && !keyFormatOk -> when (aiProvider) {
+            AiProvider.GEMINI -> "Doesn't look like a Gemini key (should start with AIza…)"
+            AiProvider.OPENAI -> "Doesn't look like an OpenAI key (should start with sk-…)"
+        }
         else -> null
     }
 
@@ -375,14 +386,14 @@ fun SettingsScreen(
 
             ConnectionRow(
                 icon = Icons.Outlined.SmartToy,
-                name = "Gemini AI",
-                description = "Food estimates & label scanning",
+                name = "AI (${aiProvider.displayName})",
+                description = "Food estimates, label scanning & weather tips",
                 connected = hasKey,
                 iconTint = Color(0xFF7C4DFF)
             )
         }
 
-        // ── Gemini API Key Card ──────────────────────────────────────────
+        // ── AI Provider + API Key Card ────────────────────────────────────
         MacroCard(delayMs = 100) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -392,7 +403,7 @@ fun SettingsScreen(
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
-                    text = "  Gemini API Key",
+                    text = "  AI Provider",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
@@ -411,9 +422,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Required for AI food estimates & label scanning. " +
-                    "Get a free key at aistudio.google.com. " +
-                    "Uses gemini-2.0-flash (free tier).",
+                text = "Choose Gemini or OpenAI for food estimates, label scanning, and weather tips.",
                 fontSize = 13.sp,
                 color = TextSecondary,
                 lineHeight = 18.sp,
@@ -421,13 +430,46 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            AiProviderToggle(
+                selected = aiProvider,
+                onSelect = { provider ->
+                    haptics.tick()
+                    viewModel.setAiProvider(provider)
+                    keySaved = false
+                },
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = "${aiProvider.displayName} API Key",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = AiApiClient.keyHint(aiProvider),
+                fontSize = 12.sp,
+                color = TextSecondary,
+                lineHeight = 16.sp,
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             OutlinedTextField(
                 value = draftKey,
                 onValueChange = {
                     draftKey = it
                     keySaved = false
                 },
-                placeholder = { Text("Paste your Gemini API key here", color = TextSecondary, fontSize = 13.sp) },
+                placeholder = {
+                    Text(
+                        AiApiClient.keyPlaceholder(aiProvider),
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -469,7 +511,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Doesn't look like a Gemini key (should start with AIza…)",
+                        text = keyFeedback,
                         color = TextSecondary,
                         fontSize = 12.sp,
                     )
@@ -486,7 +528,7 @@ fun SettingsScreen(
                     text = if (keySaved) "Saved ✓" else "Save Key",
                     onClick = {
                         haptics.confirm()
-                        viewModel.saveApiKey(draftKey)
+                        viewModel.saveApiKey(aiProvider, draftKey)
                         keySaved = true
                     },
                     modifier = Modifier.weight(1f),
@@ -498,7 +540,7 @@ fun SettingsScreen(
                         onClick = {
                             haptics.reject()
                             draftKey = ""
-                            viewModel.saveApiKey("")
+                            viewModel.saveApiKey(aiProvider, "")
                             keySaved = false
                         },
                         modifier = Modifier.weight(1f),
@@ -527,13 +569,16 @@ fun SettingsScreen(
             ) {
                 Column {
                     Text(
-                        text = "gemini-2.0-flash",
+                        text = AiApiClient.modelLabel(aiProvider),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = TextPrimary,
                     )
                     Text(
-                        text = "Fast · Free tier · Sufficient for nutrition",
+                        text = when (aiProvider) {
+                            AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
+                            AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
+                        },
                         fontSize = 12.sp,
                         color = TextSecondary,
                     )
@@ -749,6 +794,41 @@ fun SettingsScreen(
                         variant = ButtonVariant.SECONDARY,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiProviderToggle(
+    selected: AiProvider,
+    onSelect: (AiProvider) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Background, RoundedCornerShape(12.dp))
+            .border(1.dp, Border.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AiProvider.entries.forEach { provider ->
+            val isSelected = provider == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (isSelected) Primary else Color.Transparent)
+                    .clickable { onSelect(provider) }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = provider.displayName,
+                    fontSize = 14.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) Color.White else TextSecondary,
+                )
             }
         }
     }

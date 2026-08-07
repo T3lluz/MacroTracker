@@ -12,6 +12,7 @@ import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.data.calendar.CalendarRepository
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.local.SettingsRepository
+import com.macrotracker.data.remote.AiProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +33,9 @@ class SettingsViewModel @Inject constructor(
         private const val KEY_SELECTED_CALENDARS = "selected_calendar_ids"
     }
 
+    val aiProvider: StateFlow<AiProvider> = settings.aiProvider
     val geminiApiKey: StateFlow<String> = settings.geminiApiKey
+    val openAiApiKey: StateFlow<String> = settings.openAiApiKey
 
     private val _healthConnectConnected = MutableStateFlow(false)
     val healthConnectConnected: StateFlow<Boolean> = _healthConnectConnected
@@ -127,8 +130,16 @@ class SettingsViewModel @Inject constructor(
         saveSelectedCalendarIds(newSelected)
     }
 
+    fun setAiProvider(provider: AiProvider) {
+        settings.setAiProvider(provider)
+    }
+
     fun saveApiKey(key: String) {
-        settings.saveGeminiApiKey(key)
+        settings.saveApiKeyForProvider(settings.getAiProvider(), key)
+    }
+
+    fun saveApiKey(provider: AiProvider, key: String) {
+        settings.saveApiKeyForProvider(provider, key)
     }
 
     fun refreshConnectionStatus() {

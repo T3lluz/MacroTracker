@@ -1,16 +1,9 @@
 package com.macrotracker.data.remote
 
 import android.util.Log
+import com.macrotracker.BuildConfig
 import com.macrotracker.data.local.SettingsRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -27,9 +20,6 @@ class WeatherAiRepository @Inject constructor(
 ) {
     companion object {
         private const val TAG = "WeatherAI"
-        private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-        private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
-        private val MODELS = listOf("gemini-2.0-flash", "gemini-2.5-flash")
         private const val CACHE_TTL_MS = 60 * 60 * 1000L // 1 hour
     }
 
@@ -49,15 +39,26 @@ class WeatherAiRepository @Inject constructor(
         ) cachedResult else null
     }
 
+    private val provider: AiProvider
+        get() = settings.getAiProvider()
+
     private val apiKey: String
-        get() = settings.getGeminiApiKey().trim()
+        get() {
+            val selected = provider
+            val stored = settings.getApiKeyForProvider(selected).trim()
+            if (stored.isNotBlank()) return stored
+            return when (selected) {
+                AiProvider.GEMINI -> BuildConfig.GEMINI_API_KEY.trim()
+                AiProvider.OPENAI -> BuildConfig.OPENAI_API_KEY.trim()
+            }
+        }
 
     val hasApiKey: Boolean get() = apiKey.isNotBlank()
 
     // ── Public entry point ──────────────────────────────────────────────────
     /**
      * Produces a [WeatherAiResult] containing:
-     *  • An AI-generated weather summary (via Gemini – plain text, no JSON).
+     *  • An AI-generated weather summary (plain text).
      *  • A deterministic clothing recommendation built from the weather data
      *    so it **always** appears even if the AI call fails.
      */
@@ -103,7 +104,18 @@ class WeatherAiRepository @Inject constructor(
         }
 
         return try {
-            callGemini(prompt)
+            val text = AiApiClient.generate(
+                httpClient = httpClient,
+                provider = provider,
+                apiKey = apiKey,
+                params = AiApiClient.GenerateParams(
+                    prompt = prompt,
+                    temperature = 0.7,
+                    maxOutputTokens = 512,
+                    jsonMode = false,
+                ),
+            )
+            cleanSummaryText(text).takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             Log.e(TAG, "AI summary failed: ${e.message}", e)
             null
@@ -186,109 +198,6 @@ class WeatherAiRepository @Inject constructor(
         return "Currently ${temp}°C with ${desc.lowercase()} and winds around ${wind} m/s.$progression"
     }
 
-    // ── Gemini call — plain text, unstructured, with retries ────────────────
-    private suspend fun callGemini(prompt: String): String? {
-        val key = apiKey
-        val partsArray = JSONArray().put(JSONObject().put("text", prompt))
-
-        for (model in MODELS) {
-            for (attempt in 0..2) {                           // 3 attempts per model
-                if (attempt > 0) delay(1500L * attempt)       // back off
-
-                try {
-                    val url = "$BASE_URL/$model:generateContent?key=$key"
-
-                    val generationConfig = JSONObject()
-                        .put("temperature", 0.7)
-                        .put("maxOutputTokens", 512)
-
-                    val body = JSONObject()
-                        .put("contents", JSONArray().put(JSONObject().put("parts", partsArray)))
-                        .put("generationConfig", generationConfig)
-
-                    Log.d(TAG, "→ $model attempt=$attempt")
-
-                    val (code, responseBody) = doPost(url, body.toString())
-
-                    Log.d(TAG, "← $model $code ${responseBody.take(200)}")
-
-                    if (code in 200..299) {
-                        val finishReason = try {
-                            JSONObject(responseBody)
-                                .optJSONArray("candidates")
-                                ?.optJSONObject(0)
-                                ?.optString("finishReason", "")
-                        } catch (_: Exception) { "" }
-
-                        if (finishReason == "MAX_TOKENS") {
-                            Log.w(TAG, "$model truncated, retrying…")
-                            continue
-                        }
-
-                        val text = extractText(responseBody)
-                        if (text.isNotBlank()) return cleanSummaryText(text)
-                    }
-
-                    // Fatal key errors — stop immediately
-                    if (code == 401 || code == 403) {
-                        Log.e(TAG, "Bad API key ($code)")
-                        return null
-                    }
-                    // Model not available — try next model
-                    if (code == 404) break
-                    // Rate limit — retry
-                    if (code == 429) {
-                        Log.w(TAG, "$model rate limited, backing off…")
-                        continue
-                    }
-
-                } catch (e: Exception) {
-                    Log.e(TAG, "Exception $model: ${e.message}")
-                }
-            }
-            delay(300) // brief pause before next model
-        }
-        return null
-    }
-
-    // ── HTTP helper ─────────────────────────────────────────────────────────
-    private suspend fun doPost(url: String, jsonBody: String): Pair<Int, String> =
-        withContext(Dispatchers.IO) {
-            val request = Request.Builder()
-                .url(url)
-                .post(jsonBody.toRequestBody(JSON_MEDIA))
-                .build()
-            httpClient.newCall(request).execute().use { resp ->
-                Pair(resp.code, resp.body?.string() ?: "")
-            }
-        }
-
-    // ── Response parsing ────────────────────────────────────────────────────
-    private fun extractText(responseBody: String): String {
-        return try {
-            val json = JSONObject(responseBody)
-            val parts = json
-                .optJSONArray("candidates")
-                ?.optJSONObject(0)
-                ?.optJSONObject("content")
-                ?.optJSONArray("parts")
-                ?: return ""
-
-            buildString {
-                for (i in 0 until parts.length()) {
-                    val t = parts.optJSONObject(i)?.optString("text", "") ?: ""
-                    if (t.isNotEmpty()) {
-                        if (isNotEmpty()) append("\n")
-                        append(t)
-                    }
-                }
-            }.trim()
-        } catch (e: Exception) {
-            Log.e(TAG, "Parse error: ${e.message}")
-            ""
-        }
-    }
-
     /** Strip markdown / code-fence artifacts the model may include. */
     private fun cleanSummaryText(raw: String): String {
         return raw
@@ -300,4 +209,3 @@ class WeatherAiRepository @Inject constructor(
             .trim()
     }
 }
-
