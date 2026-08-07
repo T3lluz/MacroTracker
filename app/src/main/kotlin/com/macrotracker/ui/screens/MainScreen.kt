@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,6 +32,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -62,6 +65,7 @@ fun MainScreen(
 
     val updateState by appUpdateViewModel.state.collectAsState()
     val showUpdateDialog by appUpdateViewModel.showDialog.collectAsState()
+    val updateAvailable by appUpdateViewModel.updateAvailable.collectAsState()
     val context = LocalContext.current
 
     val startDestination = remember(onboardingCompleted) {
@@ -84,11 +88,25 @@ fun MainScreen(
         { onboardingViewModel.markSplashShown() }
     }
 
-    // After splash (and only once onboarding is done), quietly check GitHub Releases.
+    // After splash (and only once onboarding is done), start listening for GitHub Releases.
     LaunchedEffect(splashShown, onboardingCompleted) {
         if (splashShown && onboardingCompleted) {
-            appUpdateViewModel.checkOnLaunch()
+            appUpdateViewModel.startListening()
         }
+    }
+
+    // Re-check when returning to the foreground.
+    DisposableEffect(activity, splashShown, onboardingCompleted) {
+        if (!splashShown || !onboardingCompleted) {
+            return@DisposableEffect onDispose { }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                appUpdateViewModel.checkOnResume()
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -98,6 +116,7 @@ fun MainScreen(
             startDestination = startDestination,
             onboardingCompleted = onboardingCompleted,
             onOnboardingComplete = onOnboardingComplete,
+            showSettingsUpdateBadge = updateAvailable,
         )
 
         if (!splashShown) {
@@ -138,6 +157,7 @@ private fun MainScreenScrollScaffold(
     startDestination: String,
     onboardingCompleted: Boolean,
     onOnboardingComplete: () -> Unit,
+    showSettingsUpdateBadge: Boolean,
 ) {
     val density = LocalDensity.current
     val navBarHeight = 102.dp
@@ -185,6 +205,7 @@ private fun MainScreenScrollScaffold(
                     hideDistancePx = totalBottomOffsetPx,
                     navController = navController,
                     items = items,
+                    showSettingsUpdateBadge = showSettingsUpdateBadge,
                 )
             },
         ) { _ ->
@@ -205,6 +226,7 @@ private fun ScrollAwareBottomBar(
     hideDistancePx: Float,
     navController: NavHostController,
     items: List<Screen>,
+    showSettingsUpdateBadge: Boolean,
 ) {
     val targetOffsetPx = if (navBarHidden) -hideDistancePx else 0f
     val animatedOffset by animateFloatAsState(
@@ -238,6 +260,7 @@ private fun ScrollAwareBottomBar(
             items = items,
             currentRoute = currentRoute,
             onItemClick = onItemClick,
+            showSettingsUpdateBadge = showSettingsUpdateBadge,
         )
     }
 }

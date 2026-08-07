@@ -17,6 +17,20 @@ data class AppUpdateInfo(
     val tagName: String,
 )
 
+/**
+ * Historical release entry for the Settings changelog dropdown.
+ * Includes past versions (not only newer ones).
+ */
+data class AppReleaseNotes(
+    val versionName: String,
+    val versionCode: Int,
+    val tagName: String,
+    val releaseNotes: String,
+    val htmlUrl: String,
+    val publishedAt: String?,
+    val isNewerThanInstalled: Boolean,
+)
+
 sealed class AppUpdateUiState {
     data object Idle : AppUpdateUiState()
     data object Checking : AppUpdateUiState()
@@ -26,3 +40,8 @@ sealed class AppUpdateUiState {
     data class ReadyToInstall(val info: AppUpdateInfo, val apkPath: String) : AppUpdateUiState()
     data class Error(val message: String) : AppUpdateUiState()
 }
+
+val AppUpdateUiState.updateAvailable: Boolean
+    get() = this is AppUpdateUiState.Available ||
+        this is AppUpdateUiState.Downloading ||
+        this is AppUpdateUiState.ReadyToInstall

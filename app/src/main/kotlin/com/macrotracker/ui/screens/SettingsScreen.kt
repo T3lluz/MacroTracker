@@ -5,6 +5,11 @@ import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +34,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Air
@@ -79,10 +86,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.data.remote.AiApiClient
 import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.update.AppReleaseNotes
 import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.MarkdownText
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
@@ -140,6 +149,12 @@ fun SettingsScreen(
     val haptics = rememberHaptics()
 
     val updateState by appUpdateViewModel.state.collectAsState()
+    val releaseNotes by appUpdateViewModel.releaseNotes.collectAsState()
+    val releaseNotesLoading by appUpdateViewModel.releaseNotesLoading.collectAsState()
+
+    LaunchedEffect(Unit) {
+        appUpdateViewModel.loadReleaseNotes()
+    }
 
     val isDirty = draftKey.trim() != activeSavedKey
     val hasKey = activeSavedKey.isNotBlank()
@@ -686,7 +701,7 @@ fun SettingsScreen(
             when (val s = updateState) {
                 is AppUpdateUiState.Idle -> {
                     Text(
-                        text = "Checks GitHub Releases for newer tester builds.",
+                        text = "Listens for new GitHub Releases and prompts in-app automatically.",
                         fontSize = 12.sp,
                         color = TextSecondary,
                         modifier = Modifier.padding(bottom = 10.dp),
@@ -794,6 +809,142 @@ fun SettingsScreen(
                         variant = ButtonVariant.SECONDARY,
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = Border.copy(alpha = 0.6f))
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Release notes",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            when {
+                releaseNotesLoading && releaseNotes.isEmpty() -> {
+                    Text(
+                        text = "Loading release history…",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+                releaseNotes.isEmpty() -> {
+                    Text(
+                        text = "No published releases found yet.",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+                else -> {
+                    releaseNotes.forEach { release ->
+                        ReleaseNotesDropdown(
+                            release = release,
+                            isCurrent = release.versionCode == appUpdateViewModel.currentVersionCode,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReleaseNotesDropdown(
+    release: AppReleaseNotes,
+    isCurrent: Boolean,
+) {
+    var expanded by remember(release.tagName) { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+    val shape = RoundedCornerShape(12.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Background)
+            .border(1.dp, Border.copy(alpha = 0.55f), shape),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    haptics.click()
+                    expanded = !expanded
+                }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "v${release.versionName}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (release.isNewerThanInstalled) Primary else TextPrimary,
+                    )
+                    if (isCurrent) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Installed",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Success,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Success.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    } else if (release.isNewerThanInstalled) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "New",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Primary.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = "build ${release.versionCode}" +
+                        (release.publishedAt?.take(10)?.let { " · $it" } ?: ""),
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = TextSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+            ) {
+                HorizontalDivider(
+                    color = Border.copy(alpha = 0.45f),
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+                MarkdownText(
+                    markdown = release.releaseNotes.ifBlank { "No release notes." },
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
             }
         }
     }

@@ -11,6 +11,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -27,9 +29,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.navigation.Screen
-import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.Primary
-import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 
@@ -37,7 +38,9 @@ import com.macrotracker.ui.util.rememberHaptics
 fun PillNavigationBar(
     items: List<Screen>,
     currentRoute: String?,
-    onItemClick: (Screen) -> Unit
+    onItemClick: (Screen) -> Unit,
+    /** Shows a small update bubble on the Settings tab when an update is available. */
+    showSettingsUpdateBadge: Boolean = false,
 ) {
     val haptics = rememberHaptics()
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
@@ -143,13 +146,37 @@ fun PillNavigationBar(
                             translationY = -16.dp.toPx() * selectionProgressState.value
                         }
                     ) {
-                        Icon(
-                            imageVector = screen.icon,
-                            contentDescription = screen.label,
-                            tint = if (isSelected) Color.White else TextSecondary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Icon(
+                                imageVector = screen.icon,
+                                contentDescription = screen.label,
+                                tint = if (isSelected) Color.White else TextSecondary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            if (showSettingsUpdateBadge && screen is Screen.Settings) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = 8.dp, y = (-6).dp)
+                                        .size(16.dp)
+                                        .shadow(4.dp, CircleShape)
+                                        .clip(CircleShape)
+                                        .background(Error)
+                                        .border(
+                                            BorderStroke(1.5.dp, Color(0xFF1B2436)),
+                                            CircleShape,
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.SystemUpdate,
+                                        contentDescription = "Update available",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(10.dp),
+                                    )
+                                }
+                            }
+                        }
+
                         Text(
                             text = screen.label,
                             color = Color.White,

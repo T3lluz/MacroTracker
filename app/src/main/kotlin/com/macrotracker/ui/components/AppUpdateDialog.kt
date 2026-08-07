@@ -123,16 +123,15 @@ fun AppUpdateDialog(
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = info.releaseNotes.lineSequence().take(12).joinToString("\n")
-                        .ifBlank { "Bug fixes and improvements." },
-                    fontSize = 13.sp,
-                    color = TextSecondary,
-                    lineHeight = 18.sp,
+                MarkdownText(
+                    markdown = info.releaseNotes.ifBlank { "Bug fixes and improvements." },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 160.dp)
+                        .heightIn(max = 200.dp)
                         .verticalScroll(rememberScrollState()),
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
                 )
 
                 if (downloading) {

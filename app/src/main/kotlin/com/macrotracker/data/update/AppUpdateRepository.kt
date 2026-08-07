@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -34,12 +35,20 @@ class AppUpdateRepository @Inject constructor(
         private const val REPO = "MacroTracker"
         private const val LATEST_RELEASE_URL =
             "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+        private const val RELEASES_URL =
+            "https://api.github.com/repos/$OWNER/$REPO/releases?per_page=20"
         private const val PREFS = "app_update_prefs"
         private const val KEY_DISMISSED_VERSION_CODE = "dismissed_version_code"
         private const val KEY_LAST_CHECK_MS = "last_check_ms"
 
-        /** Auto-check at most once every 6 hours unless forced from Settings. */
-        const val AUTO_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
+        /**
+         * While the app is in the foreground, poll GitHub this often so a newly
+         * published release prompts in-app quickly.
+         */
+        const val FOREGROUND_POLL_INTERVAL_MS = 2L * 60L * 1000L
+
+        /** Minimum gap between network checks (avoids hammering on rapid resume). */
+        const val MIN_CHECK_INTERVAL_MS = 30L * 1000L
 
         /**
          * Asset naming contract used by CI and the client:
@@ -65,9 +74,9 @@ class AppUpdateRepository @Inject constructor(
     fun currentVersionName(): String = BuildConfig.VERSION_NAME
     fun currentVersionCode(): Int = BuildConfig.VERSION_CODE
 
-    fun shouldAutoCheck(): Boolean {
+    fun shouldAutoCheck(minIntervalMs: Long = MIN_CHECK_INTERVAL_MS): Boolean {
         val last = prefs.getLong(KEY_LAST_CHECK_MS, 0L)
-        return System.currentTimeMillis() - last >= AUTO_CHECK_INTERVAL_MS
+        return System.currentTimeMillis() - last >= minIntervalMs
     }
 
     fun markCheckedNow() {
@@ -108,42 +117,107 @@ class AppUpdateRepository @Inject constructor(
         }
     }
 
+    /**
+     * Fetches recent published releases for the Settings changelog dropdown.
+     */
+    suspend fun listReleaseNotes(): List<AppReleaseNotes> = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(RELEASES_URL)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "DailyDash/${BuildConfig.VERSION_NAME}")
+            .get()
+            .build()
+
+        apiClient.newCall(request).execute().use { response ->
+            if (response.code == 404) return@withContext emptyList()
+            if (!response.isSuccessful) {
+                throw IOException("GitHub releases list HTTP ${response.code}")
+            }
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) return@withContext emptyList()
+            parseReleaseList(body)
+        }
+    }
+
     internal fun parseLatestRelease(json: String): AppUpdateInfo? {
         val root = JSONObject(json)
         if (root.optBoolean("draft", false) || root.optBoolean("prerelease", false)) {
             return null
         }
+        return parseReleaseObject(root)
+            ?.takeIf { it.apkDownloadUrl.isNotBlank() && it.versionCode > currentVersionCode() }
+    }
 
+    internal fun parseReleaseList(json: String): List<AppReleaseNotes> {
+        val arr = JSONArray(json)
+        val out = mutableListOf<AppReleaseNotes>()
+        for (i in 0 until arr.length()) {
+            val root = arr.optJSONObject(i) ?: continue
+            if (root.optBoolean("draft", false) || root.optBoolean("prerelease", false)) continue
+            val info = parseReleaseObject(root) ?: continue
+            out += AppReleaseNotes(
+                versionName = info.versionName,
+                versionCode = info.versionCode,
+                tagName = info.tagName,
+                releaseNotes = info.releaseNotes,
+                htmlUrl = info.htmlUrl,
+                publishedAt = root.optString("published_at").takeIf { it.isNotBlank() },
+                isNewerThanInstalled = info.versionCode > currentVersionCode(),
+            )
+        }
+        return out.sortedByDescending { it.versionCode }
+    }
+
+    private fun parseReleaseObject(root: JSONObject): AppUpdateInfo? {
         val tagName = root.optString("tag_name").orEmpty()
         val htmlUrl = root.optString("html_url").orEmpty()
         val releaseNotes = root.optString("body").orEmpty().trim()
-        val assets = root.optJSONArray("assets") ?: return null
+        val assets = root.optJSONArray("assets")
 
         var best: AppUpdateInfo? = null
-        for (i in 0 until assets.length()) {
-            val asset = assets.optJSONObject(i) ?: continue
-            val name = asset.optString("name").orEmpty()
-            val match = APK_NAME_REGEX.matchEntire(name) ?: continue
-            val versionName = match.groupValues[1]
-            val versionCode = match.groupValues[2].toIntOrNull() ?: continue
-            val url = asset.optString("browser_download_url").orEmpty()
-            if (url.isBlank()) continue
-            val size = asset.optLong("size").takeIf { it > 0 }
+        if (assets != null) {
+            for (i in 0 until assets.length()) {
+                val asset = assets.optJSONObject(i) ?: continue
+                val name = asset.optString("name").orEmpty()
+                val match = APK_NAME_REGEX.matchEntire(name) ?: continue
+                val versionName = match.groupValues[1]
+                val versionCode = match.groupValues[2].toIntOrNull() ?: continue
+                val url = asset.optString("browser_download_url").orEmpty()
+                if (url.isBlank()) continue
+                val size = asset.optLong("size").takeIf { it > 0 }
 
-            if (versionCode <= currentVersionCode()) continue
-            if (best == null || versionCode > best.versionCode) {
-                best = AppUpdateInfo(
-                    versionName = versionName,
-                    versionCode = versionCode,
-                    releaseNotes = releaseNotes.ifBlank { "Bug fixes and improvements." },
-                    apkDownloadUrl = url,
-                    apkBytes = size,
-                    htmlUrl = htmlUrl,
-                    tagName = tagName.ifBlank { "v$versionName" },
-                )
+                if (best == null || versionCode > best.versionCode) {
+                    best = AppUpdateInfo(
+                        versionName = versionName,
+                        versionCode = versionCode,
+                        releaseNotes = releaseNotes.ifBlank { "Bug fixes and improvements." },
+                        apkDownloadUrl = url,
+                        apkBytes = size,
+                        htmlUrl = htmlUrl,
+                        tagName = tagName.ifBlank { "v$versionName" },
+                    )
+                }
             }
         }
-        return best
+
+        if (best != null) return best
+
+        // Fallback for changelog entries without a parseable APK asset yet.
+        val fallbackVersion = tagName.removePrefix("v").trim()
+        if (fallbackVersion.isBlank()) return null
+        val codeGuess = fallbackVersion.split('.')
+            .mapNotNull { it.toIntOrNull() }
+            .fold(0) { acc, n -> acc * 100 + n }
+            .coerceAtLeast(0)
+        return AppUpdateInfo(
+            versionName = fallbackVersion,
+            versionCode = codeGuess,
+            releaseNotes = releaseNotes.ifBlank { "Bug fixes and improvements." },
+            apkDownloadUrl = "",
+            apkBytes = null,
+            htmlUrl = htmlUrl,
+            tagName = tagName.ifBlank { "v$fallbackVersion" },
+        )
     }
 
     /**
@@ -153,6 +227,9 @@ class AppUpdateRepository @Inject constructor(
         info: AppUpdateInfo,
         onProgress: (Float) -> Unit,
     ): File = withContext(Dispatchers.IO) {
+        if (info.apkDownloadUrl.isBlank()) {
+            throw IOException("No APK download URL for ${info.versionName}")
+        }
         updatesDir.listFiles()?.forEach { it.delete() }
         val outFile = File(updatesDir, "DailyDash-${info.versionName}-vc${info.versionCode}.apk")
 
