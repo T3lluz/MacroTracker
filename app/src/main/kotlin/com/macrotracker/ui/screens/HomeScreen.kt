@@ -91,7 +91,7 @@ fun HomeScreen(
 
     val defaultHomeWidgets = remember {
         listOf(
-            Triple("F1", "F1 Standings", Icons.Default.Flag),
+            Triple("F1", "Formula 1", Icons.Default.Flag),
             Triple("YOUTUBE", "YouTube Feed", Icons.Default.PlayArrow),
             Triple("WEATHER", "Weather", Icons.Default.Cloud),
             Triple("CALENDAR", "Calendar", Icons.Default.CalendarMonth),
