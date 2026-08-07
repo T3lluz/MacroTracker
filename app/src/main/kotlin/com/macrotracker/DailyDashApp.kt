@@ -3,6 +3,8 @@ package com.macrotracker
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.macrotracker.widget.WidgetRefreshWorker
 import com.macrotracker.widget.WidgetStateProvider
 import dagger.hilt.android.HiltAndroidApp
@@ -22,7 +24,7 @@ class DailyDashApp : Application(), ImageLoaderFactory {
         super.onCreate()
         if (WidgetStateProvider.hasAnyWidget(this)) {
             WidgetRefreshWorker.enqueuePeriodicRefresh(this)
-            WidgetRefreshWorker.enqueueImmediateRefresh(this)
+            // Periodic worker covers freshness; skip an immediate full refresh on every cold start.
         }
     }
 
@@ -43,7 +45,18 @@ class DailyDashApp : Application(), ImageLoaderFactory {
 
         return ImageLoader.Builder(this)
             .okHttpClient(client)
-            .crossfade(true)
+            .crossfade(false)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.20)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(64L * 1024 * 1024)
+                    .build()
+            }
             .build()
     }
 }

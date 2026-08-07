@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
@@ -69,88 +71,108 @@ class F1RepositoryImpl @Inject constructor(
         }
 
         return@withLock try {
-            val drivers = try {
-                api.getSeasonDriverStandings()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error fetching driver standings: ${e.message}")
-                emptyList()
-            }
-
-            val constructors = if (drivers.isNotEmpty()) {
-                drivers.groupBy { it.constructorName }
-                    .map { (team, teamDrivers) ->
-                        SeasonConstructorStanding(
-                            position = 0,
-                            points = teamDrivers.sumOf { it.points },
-                            wins = teamDrivers.sumOf { it.wins },
-                            constructorName = team,
-                            teamColor = teamDrivers.first().teamColor,
-                            teamLogoUrl = teamDrivers.first().teamLogoUrl,
-                        )
+            coroutineScope {
+                val driversDeferred = async {
+                    try {
+                        api.getSeasonDriverStandings()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error fetching driver standings: ${e.message}")
+                        emptyList()
                     }
-                    .sortedByDescending { it.points }
-                    .mapIndexed { index, constructor ->
-                        constructor.copy(position = index + 1)
+                }
+                val newsDeferred = async {
+                    try {
+                        api.getF1News()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error fetching F1 news: ${e.message}")
+                        emptyList()
                     }
-            } else emptyList()
+                }
+                val lastRaceDeferred = async {
+                    try {
+                        api.getLastRaceResults()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error fetching last race: ${e.message}")
+                        Pair(emptyList(), null)
+                    }
+                }
+                val lastQualiDeferred = async {
+                    try {
+                        api.getLastQualiResults()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error fetching quali: ${e.message}")
+                        emptyList()
+                    }
+                }
+                val scheduleDeferred = async {
+                    try {
+                        api.getSchedule()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error fetching schedule: ${e.message}")
+                        emptyList()
+                    }
+                }
 
-            val news = try { api.getF1News() } catch (e: Exception) {
-                Log.e(TAG, "Error fetching F1 news: ${e.message}")
-                emptyList()
+                val drivers = driversDeferred.await()
+                val constructors = if (drivers.isNotEmpty()) {
+                    drivers.groupBy { it.constructorName }
+                        .map { (team, teamDrivers) ->
+                            SeasonConstructorStanding(
+                                position = 0,
+                                points = teamDrivers.sumOf { it.points },
+                                wins = teamDrivers.sumOf { it.wins },
+                                constructorName = team,
+                                teamColor = teamDrivers.first().teamColor,
+                                teamLogoUrl = teamDrivers.first().teamLogoUrl,
+                            )
+                        }
+                        .sortedByDescending { it.points }
+                        .mapIndexed { index, constructor ->
+                            constructor.copy(position = index + 1)
+                        }
+                } else emptyList()
+
+                val news = newsDeferred.await()
+                val lastRacePair = lastRaceDeferred.await()
+                val lastRace = lastRacePair.first
+                val lastRaceName = lastRacePair.second
+                val lastQuali = lastQualiDeferred.await()
+                val schedule = scheduleDeferred.await()
+
+                val result = F1Standings(
+                    driverStandings = drivers,
+                    constructorStandings = constructors,
+                    news = news,
+                    lastRaceResults = lastRace.ifEmpty { null },
+                    lastQualiResults = lastQuali.ifEmpty { null },
+                    schedule = schedule,
+                    lastSessionName = "Championship Standings",
+                    lastLocation = "Live Data Hub",
+                    lastRaceName = lastRaceName,
+                )
+
+                // Guard: never overwrite a valid cache with an all-empty result from a failed
+                // network sweep.
+                val resultIsEmpty = drivers.isEmpty() && schedule.isEmpty()
+                val existingCacheIsValid = cachedStandings?.let {
+                    it.driverStandings.isNotEmpty() || it.schedule.isNotEmpty()
+                } ?: false
+                if (resultIsEmpty && existingCacheIsValid) {
+                    Log.w(TAG, "All API calls returned empty — keeping existing valid cache to avoid data loss")
+                    return@coroutineScope Result.success(cachedStandings!!)
+                }
+
+                cachedStandings = result
+                lastFetchTime = now
+                cachedYear = currentYear
+                persistDiskCache(result, now, currentYear)
+
+                Result.success(result)
             }
-
-            val lastRacePair = try { api.getLastRaceResults() } catch (e: Exception) {
-                Log.e(TAG, "Error fetching last race: ${e.message}")
-                Pair(emptyList(), null)
-            }
-            val lastRace = lastRacePair.first
-            val lastRaceName = lastRacePair.second
-
-            val lastQuali = try { api.getLastQualiResults() } catch (e: Exception) {
-                Log.e(TAG, "Error fetching quali: ${e.message}")
-                emptyList()
-            }
-
-            val schedule = try { api.getSchedule() } catch (e: Exception) {
-                Log.e(TAG, "Error fetching schedule: ${e.message}")
-                emptyList()
-            }
-
-            val result = F1Standings(
-                driverStandings = drivers,
-                constructorStandings = constructors,
-                news = news,
-                lastRaceResults = lastRace.ifEmpty { null },
-                lastQualiResults = lastQuali.ifEmpty { null },
-                schedule = schedule,
-                lastSessionName = "Championship Standings",
-                lastLocation = "Live Data Hub",
-                lastRaceName = lastRaceName,
-            )
-
-            // Guard: never overwrite a valid cache with an all-empty result from a failed
-            // network sweep. Each individual API call is wrapped in try/catch and returns
-            // emptyList() on failure, so both drivers AND schedule being empty almost
-            // certainly means every endpoint failed. Returning the existing cache prevents
-            // the widget being stuck in "no data" state due to a momentary network blip.
-            val resultIsEmpty = drivers.isEmpty() && schedule.isEmpty()
-            val existingCacheIsValid = cachedStandings?.let {
-                it.driverStandings.isNotEmpty() || it.schedule.isNotEmpty()
-            } ?: false
-            if (resultIsEmpty && existingCacheIsValid) {
-                Log.w(TAG, "All API calls returned empty — keeping existing valid cache to avoid data loss")
-                return@withLock Result.success(cachedStandings!!)
-            }
-
-            cachedStandings = result
-            lastFetchTime = now
-            cachedYear = currentYear
-            persistDiskCache(result, now, currentYear)
-
-            Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Unexpected error in getOverallF1Data: ${e.message}", e)
-            cachedStandings?.let { Result.success(it) } ?: Result.failure(e)
+            Log.e(TAG, "F1 fetch failed: ${e.message}", e)
+            cachedStandings?.let { Result.success(it) }
+                ?: Result.failure(e)
         }
     }
 

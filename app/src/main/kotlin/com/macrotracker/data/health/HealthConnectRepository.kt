@@ -369,10 +369,10 @@ class HealthConnectRepository @Inject constructor(
                 ),
             )
 
-            val restingHeartRate = readRecords(todayRange, RestingHeartRateRecord::class).map { it.beatsPerMinute }.average().toLong()
-            val oxygenSaturation = readRecords(todayRange, OxygenSaturationRecord::class).map { it.percentage.value }.average()
-            val respiratoryRate = readRecords(todayRange, RespiratoryRateRecord::class).map { it.rate }.average().toLong()
-
+            // Latest-only reads (pageSize=1) — far cheaper than scanning every record.
+            val restingHeartRate = getLatestRestingHeartRate() ?: 0L
+            val oxygenSaturation = getLatestOxygenSaturation() ?: 0.0
+            val respiratoryRate = getLatestRespiratoryRate()?.toLong() ?: 0L
 
             HealthStats(
                 steps = response[StepsRecord.COUNT_TOTAL] ?: 0L,
@@ -429,23 +429,20 @@ class HealthConnectRepository @Inject constructor(
                     )
                 )
 
+                // Aggregate buckets only — skip per-day RHR/SpO2/resp full-range reads
+                // (those were ~3 unbound IPC calls × N days and dominated Health tab jank).
                 response.forEach { bucket ->
                     val bucketDate = bucket.startTime.toLocalDate()
                     val result = bucket.result
 
-                    val steps = result[StepsRecord.COUNT_TOTAL] ?: 0L
-                    val hr = result[HeartRateRecord.BPM_AVG] ?: 0L
-                    val cals = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0
-                    val sleepMin = result[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L
-                    val dist = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0
-                    val floors = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0
-
-                    val dateRange = TimeRangeFilter.between(bucket.startTime, bucket.endTime)
-                    val restingHeartRate = readRecords(dateRange, RestingHeartRateRecord::class).map { it.beatsPerMinute }.average().toLong()
-                    val oxygenSaturation = readRecords(dateRange, OxygenSaturationRecord::class).map { it.percentage.value }.average()
-                    val respiratoryRate = readRecords(dateRange, RespiratoryRateRecord::class).map { it.rate }.average().toLong()
-
-                    dailyStatsMap[bucketDate] = HealthStats(steps, hr, sleepMin, cals, restingHeartRate, oxygenSaturation, respiratoryRate, dist, floors)
+                    dailyStatsMap[bucketDate] = HealthStats(
+                        steps = result[StepsRecord.COUNT_TOTAL] ?: 0L,
+                        avgHeartRate = result[HeartRateRecord.BPM_AVG] ?: 0L,
+                        sleepMinutes = result[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L,
+                        totalCaloriesBurned = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
+                        distance = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
+                        floorsClimbed = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to aggregate history stats: ${e.message}", e)

@@ -151,6 +151,13 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var selectedChannelId by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // Lazy-load feed when the card is first composed (not in ViewModel init).
+    LaunchedEffect(Unit) {
+        if (youtubeState is YouTubeUiState.Idle) {
+            viewModel.loadLatestVideos()
+        }
+    }
+
     MacroCard(
         borderColor = YtRed.copy(alpha = 0.18f),
     ) {
@@ -1154,8 +1161,9 @@ private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(8.dp))
                 .background(YtDark),
         ) {
+            val listThumb = rememberYoutubeThumbnailRequest(video.thumbnailUrl, 360, 202)
             AsyncImage(
-                model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+                model = listThumb,
                 contentDescription = video.title,
                 modifier = Modifier.matchParentSize(),
                 contentScale = ContentScale.Crop,
@@ -1216,8 +1224,9 @@ private fun HeroVideoCard(video: YoutubeVideo, onClick: () -> Unit) {
             .background(YtDark),
     ) {
         // Full-width thumbnail
+        val heroThumb = rememberYoutubeThumbnailRequest(video.thumbnailUrl, 720, 405)
         AsyncImage(
-            model = ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(true).build(),
+            model = heroThumb,
             contentDescription = video.title,
             modifier = Modifier
                 .fillMaxWidth()
@@ -1440,8 +1449,9 @@ private fun ChannelSectionHeader(channel: YoutubeChannel, videoCount: Int) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (channel.thumbnailUrl.isNotBlank()) {
+            val avatarReq = rememberYoutubeThumbnailRequest(channel.thumbnailUrl, 66, 66)
             AsyncImage(
-                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                model = avatarReq,
                 contentDescription = channel.title,
                 modifier = Modifier
                     .size(22.dp)
@@ -1535,8 +1545,9 @@ private fun ChannelPill(
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         if (channel.thumbnailUrl.isNotBlank()) {
+            val chipAvatar = rememberYoutubeThumbnailRequest(channel.thumbnailUrl, 54, 54)
             AsyncImage(
-                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                model = chipAvatar,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp).clip(CircleShape),
                 contentScale = ContentScale.Crop,
@@ -1976,8 +1987,9 @@ private fun SuggestionRow(
     ) {
         // Avatar
         if (channel.thumbnailUrl.isNotBlank()) {
+            val searchAvatar = rememberYoutubeThumbnailRequest(channel.thumbnailUrl, 108, 108)
             AsyncImage(
-                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                model = searchAvatar,
                 contentDescription = channel.title,
                 modifier = Modifier.size(36.dp).clip(CircleShape).background(Border),
                 contentScale = ContentScale.Crop,
@@ -2070,8 +2082,9 @@ private fun ChannelListRow(
 
     Row(modifier = modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         if (channel.thumbnailUrl.isNotBlank()) {
+            val resultAvatar = rememberYoutubeThumbnailRequest(channel.thumbnailUrl, 126, 126)
             AsyncImage(
-                model = ImageRequest.Builder(context).data(channel.thumbnailUrl).crossfade(true).build(),
+                model = resultAvatar,
                 contentDescription = channel.title,
                 modifier = Modifier.size(42.dp).clip(CircleShape).background(Border),
                 contentScale = ContentScale.Crop,

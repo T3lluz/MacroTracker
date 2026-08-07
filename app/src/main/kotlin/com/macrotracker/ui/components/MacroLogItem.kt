@@ -1,7 +1,5 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,15 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,33 +29,19 @@ import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
-import kotlinx.coroutines.delay
 
 @Composable
 fun MacroLogItem(
     log: MacroLogEntity,
     onDelete: (String) -> Unit,
-    index: Int,
+    index: Int = 0,
 ) {
     val haptics = rememberHaptics()
-
-    // Only animate on first appearance; skip re-animation when navigating back.
-    var hasAnimated by rememberSaveable { mutableStateOf(false) }
-    val alpha = remember { Animatable(if (hasAnimated) 1f else 0f) }
-
-    LaunchedEffect(Unit) {
-        if (!hasAnimated) {
-            delay(minOf(index * 30L, 150L))
-            alpha.animateTo(1f, animationSpec = tween(180))
-            hasAnimated = true
-        }
-    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp)
-            .graphicsLayer { this.alpha = alpha.value },
+            .padding(vertical = 5.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
         border = BorderStroke(1.dp, Border),
@@ -111,4 +88,3 @@ fun MacroLogItem(
         }
     }
 }
-

@@ -22,6 +22,7 @@ import com.macrotracker.data.remote.LocationProvider
 import com.macrotracker.data.remote.WeatherAiRepository
 import com.macrotracker.data.remote.WeatherInfo
 import com.macrotracker.data.remote.WeatherRepository
+import com.macrotracker.widget.WidgetStateProvider
 import com.macrotracker.widget.WidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -134,11 +135,15 @@ class HomeViewModel @Inject constructor(
     private var f1DataJob: Job? = null
     private var widgetUpdateJob: Job? = null
     private var refreshJob: Job? = null
+    private var loadDataJob: Job? = null
+    private var lastLoadDataMs = 0L
 
+    /** Coalesced widget refresh — skips entirely when no Glance widgets are installed. */
     private fun scheduleWidgetUpdate(immediate: Boolean = false) {
+        if (!WidgetStateProvider.hasAnyWidget(appContext)) return
         widgetUpdateJob?.cancel()
         widgetUpdateJob = viewModelScope.launch {
-            if (!immediate) delay(500)
+            if (!immediate) delay(800)
             WidgetUpdater.updateAllWidgets(appContext)
         }
     }
@@ -203,8 +208,15 @@ class HomeViewModel @Inject constructor(
         prefs.edit { putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet()) }
     }
 
-    fun loadData() {
-        viewModelScope.launch { loadDataInternal() }
+    fun loadData(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && lastLoadDataMs > 0 && now - lastLoadDataMs < 30_000L) return
+        if (loadDataJob?.isActive == true && !force) return
+        loadDataJob?.cancel()
+        loadDataJob = viewModelScope.launch {
+            loadDataInternal()
+            lastLoadDataMs = System.currentTimeMillis()
+        }
     }
 
     private suspend fun loadDataInternal() {
@@ -227,6 +239,7 @@ class HomeViewModel @Inject constructor(
 
     /** Epoch-ms of the last completed refreshAll, used to throttle ON_RESUME calls. */
     private var lastRefreshMs = 0L
+    private val loadedWidgetIds = mutableSetOf<String>()
 
     fun refreshAll(
         hasLocationPermission: Boolean,
@@ -235,35 +248,40 @@ class HomeViewModel @Inject constructor(
         widgetIds: Set<String> = emptySet(),
     ) {
         val now = System.currentTimeMillis()
-        if (!force && lastRefreshMs > 0 && now - lastRefreshMs < 30_000L) return
-        if (refreshJob?.isActive == true && !force) return
+        val pendingWidgets = if (force) widgetIds else widgetIds - loadedWidgetIds
+        // Throttle full refreshes, but always allow first-time loads for newly visible widgets.
+        if (!force && pendingWidgets.isEmpty() && lastRefreshMs > 0 && now - lastRefreshMs < 30_000L) return
+        if (refreshJob?.isActive == true && !force && pendingWidgets.isEmpty()) return
+
+        val widgetsToLoad = if (force || pendingWidgets.isEmpty()) widgetIds else pendingWidgets
 
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
-            _isRefreshing.value = true
+            if (force) _isRefreshing.value = true
             try {
                 coroutineScope {
                     val jobs = mutableListOf(
                         async { loadDataInternal() },
                     )
-                    if ("WEATHER" in widgetIds) {
+                    if ("WEATHER" in widgetsToLoad) {
                         jobs += async { loadWeatherInternal(hasLocationPermission, forceRefresh = force) }
                     }
-                    if ("BODY_STATS" in widgetIds) {
+                    if ("BODY_STATS" in widgetsToLoad) {
                         jobs += async { loadHealthConnectInternal(silent = true) }
                     }
-                    if ("CALENDAR" in widgetIds) {
+                    if ("CALENDAR" in widgetsToLoad) {
                         jobs += async { loadCalendarInternal(hasCalendarPermission) }
                     }
-                    if ("F1" in widgetIds) {
+                    if ("F1" in widgetsToLoad) {
                         jobs += async { loadF1DataInternal(forceRefresh = force) }
                     }
                     awaitAll(*jobs.toTypedArray())
                 }
+                loadedWidgetIds += widgetsToLoad
                 lastRefreshMs = System.currentTimeMillis()
-                if (force) {
-                    WidgetUpdater.updateAllWidgets(appContext)
-                }
+                lastLoadDataMs = lastRefreshMs
+                // One coalesced widget update after the batch — not per-widget mid-flight.
+                scheduleWidgetUpdate(immediate = force)
             } catch (e: Exception) {
                 Log.e(TAG, "refreshAll failed: ${e.message}", e)
             } finally {
@@ -272,24 +290,13 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun loadWidgetIfNeeded(
-        widgetId: String,
-        hasLocationPermission: Boolean,
-        hasCalendarPermission: Boolean,
-    ) {
-        when (widgetId) {
-            "F1" -> loadF1Data()
-            "WEATHER" -> loadWeather(hasLocationPermission)
-            "CALENDAR" -> loadCalendar(hasCalendarPermission)
-            "BODY_STATS" -> loadHealthConnect(silent = true)
-            "PROGRESS", "QUICK_ADD" -> loadData()
-        }
-    }
-
     fun loadF1Data(forceRefresh: Boolean = false) {
         if (!forceRefresh && f1DataJob?.isActive == true) return
         f1DataJob?.cancel()
-        f1DataJob = viewModelScope.launch { loadF1DataInternal(forceRefresh) }
+        f1DataJob = viewModelScope.launch {
+            loadF1DataInternal(forceRefresh)
+            scheduleWidgetUpdate()
+        }
     }
 
     private suspend fun loadF1DataInternal(forceRefresh: Boolean) {
@@ -306,7 +313,6 @@ class HomeViewModel @Inject constructor(
                 val fetchedAt = f1Repository.lastFetchTimeMs
                     .takeIf { it > 0 }?.let(Instant::ofEpochMilli)
                 _f1State.value = F1UiState.Success(f1Data, lastUpdatedAt = fetchedAt)
-                scheduleWidgetUpdate()
             }
             .onFailure { error ->
                 if (cached == null) {
@@ -316,7 +322,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadHealthConnect(silent: Boolean = false) {
-        viewModelScope.launch { loadHealthConnectInternal(silent) }
+        viewModelScope.launch {
+            loadHealthConnectInternal(silent)
+            scheduleWidgetUpdate()
+        }
     }
 
     private suspend fun loadHealthConnectInternal(silent: Boolean = false) {
@@ -340,7 +349,6 @@ class HomeViewModel @Inject constructor(
             } else {
                 _healthState.value = HomeHealthState.Success(stats, lastUpdatedAt = Instant.now())
             }
-            scheduleWidgetUpdate()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read health data for home: ${e.message}", e)
             if (current !is HomeHealthState.Success) {
@@ -352,7 +360,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadCalendar(hasPermission: Boolean) {
-        viewModelScope.launch { loadCalendarInternal(hasPermission) }
+        viewModelScope.launch {
+            loadCalendarInternal(hasPermission)
+            scheduleWidgetUpdate()
+        }
     }
 
     private suspend fun loadCalendarInternal(hasPermission: Boolean) {
@@ -394,7 +405,6 @@ class HomeViewModel @Inject constructor(
                 selectedCalendarIds = selected,
                 lastUpdatedAt = Instant.now(),
             )
-            scheduleWidgetUpdate()
         } catch (e: Exception) {
             Log.e(TAG, "Calendar error: ${e.message}", e)
             _calendarState.value = CalendarUiState.Unavailable
@@ -402,14 +412,16 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadWeather(hasPermission: Boolean, forceRefresh: Boolean = false) {
-        viewModelScope.launch { loadWeatherInternal(hasPermission, forceRefresh) }
+        viewModelScope.launch {
+            loadWeatherInternal(hasPermission, forceRefresh)
+            scheduleWidgetUpdate()
+        }
     }
 
     private suspend fun loadWeatherInternal(hasPermission: Boolean, forceRefresh: Boolean = false) {
         if (!settingsRepository.weatherEnabled.value) {
             _weatherState.value = WeatherUiState.PermissionRequired
             appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE).edit { clear() }
-            scheduleWidgetUpdate()
             return
         }
         if (!hasPermission) {
@@ -457,7 +469,6 @@ class HomeViewModel @Inject constructor(
             }
 
             cacheWeatherForWidget(weather, location.latitude, location.longitude)
-            scheduleWidgetUpdate()
         } catch (e: Exception) {
             Log.e(TAG, "Weather error: ${e.message}", e)
             if (_weatherState.value !is WeatherUiState.Success) {
@@ -574,7 +585,7 @@ class HomeViewModel @Inject constructor(
                 protein = protein,
             )
             repository.saveLog(log)
-            loadData()
+            loadData(force = true)
             scheduleWidgetUpdate(immediate = true)
         }
     }

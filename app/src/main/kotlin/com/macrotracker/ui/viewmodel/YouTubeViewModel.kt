@@ -68,7 +68,7 @@ class YouTubeViewModel @Inject constructor(
 
     init {
         loadTrackedChannels()
-        loadLatestVideos()
+        // Videos load lazily when YoutubeCard first becomes visible / calls loadLatestVideos().
     }
 
     fun loadTrackedChannels() {
