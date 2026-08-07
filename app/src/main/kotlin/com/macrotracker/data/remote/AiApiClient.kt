@@ -12,7 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Shared Gemini / OpenAI HTTP helpers used by nutrition, weather, and widget AI features.
+ * Shared Gemini / OpenAI / OpenRouter HTTP helpers used by nutrition, weather, and widget AI features.
  * Keeps provider-specific request/response shapes in one place.
  */
 object AiApiClient {
@@ -25,12 +25,16 @@ object AiApiClient {
     private const val OPENAI_URL = "https://api.openai.com/v1/chat/completions"
     private val OPENAI_MODELS = listOf("gpt-4o-mini", "gpt-4o")
 
+    private const val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
     data class GenerateParams(
         val prompt: String,
         val base64Jpeg: String? = null,
         val temperature: Double = 0.2,
         val maxOutputTokens: Int = 1024,
         val jsonMode: Boolean = false,
+        /** OpenRouter model id when [AiProvider.OPENROUTER] is selected. */
+        val openRouterModelId: String? = null,
     )
 
     suspend fun generate(
@@ -42,7 +46,29 @@ object AiApiClient {
         require(apiKey.isNotBlank()) { "API key is blank" }
         return when (provider) {
             AiProvider.GEMINI -> generateGemini(httpClient, apiKey, params)
-            AiProvider.OPENAI -> generateOpenAi(httpClient, apiKey, params)
+            AiProvider.OPENAI -> generateOpenAiCompatible(
+                httpClient = httpClient,
+                apiKey = apiKey,
+                params = params,
+                url = OPENAI_URL,
+                models = OPENAI_MODELS,
+                providerLabel = "OpenAI",
+            )
+            AiProvider.OPENROUTER -> {
+                val selected = OpenRouterModels.resolveId(params.openRouterModelId)
+                generateOpenAiCompatible(
+                    httpClient = httpClient,
+                    apiKey = apiKey,
+                    params = params,
+                    url = OPENROUTER_URL,
+                    models = listOf(selected),
+                    providerLabel = "OpenRouter",
+                    extraHeaders = mapOf(
+                        "HTTP-Referer" to "https://github.com/T3lluz/DailyDash",
+                        "X-Title" to "DailyDash",
+                    ),
+                )
+            }
         }
     }
 
@@ -170,17 +196,21 @@ object AiApiClient {
         }
     }
 
-    // ── OpenAI ──────────────────────────────────────────────────────────────
+    // ── OpenAI-compatible (OpenAI + OpenRouter) ─────────────────────────────
 
-    private suspend fun generateOpenAi(
+    private suspend fun generateOpenAiCompatible(
         httpClient: OkHttpClient,
         apiKey: String,
         params: GenerateParams,
+        url: String,
+        models: List<String>,
+        providerLabel: String,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): String {
         var lastError = ""
         var lastCode = 0
 
-        for (model in OPENAI_MODELS) {
+        for (model in models) {
             for (attempt in 0..1) {
                 if (attempt > 0) delay(2000)
 
@@ -219,16 +249,17 @@ object AiApiClient {
                     body.put("response_format", JSONObject().put("type", "json_object"))
                 }
 
-                Log.d(TAG, "→ OpenAI $model | json=${params.jsonMode} | attempt=$attempt")
+                Log.d(TAG, "→ $providerLabel $model | json=${params.jsonMode} | attempt=$attempt")
 
                 try {
                     val (code, responseBody) = doPost(
                         httpClient,
-                        OPENAI_URL,
+                        url,
                         body.toString(),
                         bearerToken = apiKey,
+                        extraHeaders = extraHeaders,
                     )
-                    Log.d(TAG, "← OpenAI $model | $code | ${responseBody.take(200)}")
+                    Log.d(TAG, "← $providerLabel $model | $code | ${responseBody.take(200)}")
 
                     if (code in 200..299) {
                         val text = extractOpenAiText(responseBody)
@@ -240,7 +271,7 @@ object AiApiClient {
 
                     if (isApiKeyError(code, responseBody)) {
                         throw Exception(
-                            "OpenAI API key is invalid or unauthorized. Check Settings → AI Provider.",
+                            "$providerLabel API key is invalid or unauthorized. Check Settings → AI Provider.",
                         )
                     }
                     if (code == 429 || isRateLimitError(responseBody)) {
@@ -252,7 +283,7 @@ object AiApiClient {
                     if (code == 400) break
                 } catch (e: Exception) {
                     if (e.message?.contains("API key") == true) throw e
-                    Log.e(TAG, "OpenAI exception ($model): ${e.message}")
+                    Log.e(TAG, "$providerLabel exception ($model): ${e.message}")
                     lastError = e.message ?: "Unknown error"
                 }
             }
@@ -260,7 +291,7 @@ object AiApiClient {
         }
 
         if (isRateLimitError(lastError) || lastCode == 429) {
-            throw Exception("OpenAI rate limit reached — wait a moment and try again.")
+            throw Exception("$providerLabel rate limit reached — wait a moment and try again.")
         }
         val snippet = lastError.replace(Regex("<[^>]+>"), "").take(200).trim()
         throw Exception(
@@ -281,7 +312,7 @@ object AiApiClient {
             choice.optJSONObject("message")?.optString("content", "")?.trim().orEmpty()
         } catch (e: Exception) {
             if (e.message?.contains("truncated") == true) throw e
-            Log.e(TAG, "Failed to parse OpenAI response: ${e.message}")
+            Log.e(TAG, "Failed to parse OpenAI-compatible response: ${e.message}")
             ""
         }
     }
@@ -293,6 +324,7 @@ object AiApiClient {
         url: String,
         jsonBody: String,
         bearerToken: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): Pair<Int, String> = withContext(Dispatchers.IO) {
         val builder = Request.Builder()
             .url(url)
@@ -300,6 +332,9 @@ object AiApiClient {
             .header("Content-Type", "application/json")
         if (bearerToken != null) {
             builder.header("Authorization", "Bearer $bearerToken")
+        }
+        for ((name, value) in extraHeaders) {
+            builder.header(name, value)
         }
         httpClient.newCall(builder.build()).execute().use { response ->
             Pair(response.code, response.body?.string() ?: "")
@@ -314,7 +349,8 @@ object AiApiClient {
             lower.contains("api key not valid") ||
             lower.contains("api key expired") ||
             lower.contains("invalid_api_key") ||
-            lower.contains("incorrect api key")
+            lower.contains("incorrect api key") ||
+            lower.contains("user not found") // OpenRouter missing/invalid key
     }
 
     fun isRateLimitError(body: String): Boolean {
@@ -326,9 +362,10 @@ object AiApiClient {
             lower.contains("rate_limit_exceeded")
     }
 
-    fun modelLabel(provider: AiProvider): String = when (provider) {
+    fun modelLabel(provider: AiProvider, openRouterModelId: String? = null): String = when (provider) {
         AiProvider.GEMINI -> "gemini-2.0-flash"
         AiProvider.OPENAI -> "gpt-4o-mini"
+        AiProvider.OPENROUTER -> OpenRouterModels.find(openRouterModelId).displayName
     }
 
     fun keyHint(provider: AiProvider): String = when (provider) {
@@ -336,11 +373,14 @@ object AiApiClient {
             "Get a free key at aistudio.google.com. Uses gemini-2.0-flash (free tier)."
         AiProvider.OPENAI ->
             "Get a key at platform.openai.com. Uses gpt-4o-mini."
+        AiProvider.OPENROUTER ->
+            "Get a key at openrouter.ai/keys. Pick a cheap model below — costs are per 1M tokens."
     }
 
     fun keyPlaceholder(provider: AiProvider): String = when (provider) {
         AiProvider.GEMINI -> "Paste your Gemini API key here"
         AiProvider.OPENAI -> "Paste your OpenAI API key here"
+        AiProvider.OPENROUTER -> "Paste your OpenRouter API key here"
     }
 
     /** Soft format check for the settings field (warning only). */
@@ -349,7 +389,8 @@ object AiApiClient {
         val trimmed = key.trim()
         return when (provider) {
             AiProvider.GEMINI -> trimmed.startsWith("AIza")
-            AiProvider.OPENAI -> trimmed.startsWith("sk-")
+            AiProvider.OPENAI -> trimmed.startsWith("sk-") && !trimmed.startsWith("sk-or-")
+            AiProvider.OPENROUTER -> trimmed.startsWith("sk-or-")
         }
     }
 }

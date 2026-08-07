@@ -12,9 +12,10 @@ API keys go in `local.properties` (never committed):
 ```
 GEMINI_API_KEY=...
 OPENAI_API_KEY=...
+OPENROUTER_API_KEY=...
 YOUTUBE_API_KEY=...
 ```
-At runtime, Settings lets the user pick **Gemini** or **OpenAI** and enter the matching API key. Stored keys take priority over build-time keys. `NutritionAiRepository` / `WeatherAiRepository` / widget insights all route through `AiApiClient` based on `SettingsRepository.aiProvider`.
+At runtime, Settings lets the user pick **Gemini**, **OpenAI**, or **OpenRouter** and enter the matching API key. For OpenRouter, Settings also shows a curated cheap-model picker with list prices. Stored keys take priority over build-time keys. `NutritionAiRepository` / `WeatherAiRepository` / widget insights all route through `AiApiClient` based on `SettingsRepository.aiProvider`.
 
 ## Architecture Overview
 ```
@@ -29,7 +30,7 @@ com.macrotracker/
                               SettingsRepository (two SharedPrefs: `macro_tracker_settings` +
                               `health_connect_settings`; per-metric health toggles + master toggle
                               + `weatherEnabled`/`calendarEnabled` all as `StateFlow`)
-    remote/                ← Gemini/OpenAI via OkHttp (`AiApiClient`; NutritionAiRepository, WeatherAiRepository),
+    remote/                ← Gemini/OpenAI/OpenRouter via OkHttp (`AiApiClient`; NutritionAiRepository, WeatherAiRepository),
                               WeatherRepository, LocationProvider
     health/                ← HealthConnectRepository (read-only; lazy client; PERMISSIONS companion set);
                               reads: Steps, HeartRate, RestingHeartRate, OxygenSaturation,
@@ -128,7 +129,7 @@ F1 widget theming goes through `F1WidgetColors.kt`: instantiate `F1Clr` for the 
 ### External APIs
 | Service | Client | Notes |
 |---|---|---|
-| Gemini / OpenAI | OkHttp (`AiApiClient`) | Provider + key from Settings; BuildConfig fallback |
+| Gemini / OpenAI / OpenRouter | OkHttp (`AiApiClient`) | Provider + key from Settings; OpenRouter model picker; BuildConfig fallback |
 | OpenF1 | Ktor (`HttpClient`) | Base URL `https://api.openf1.org/v1/`; browser User-Agent set in `AppModule` |
 | YouTube | RSS feed (OkHttp) | No API key; tracked channels in SharedPrefs |
 | Weather | HTTP (WeatherRepository) | AI summary via Gemini |

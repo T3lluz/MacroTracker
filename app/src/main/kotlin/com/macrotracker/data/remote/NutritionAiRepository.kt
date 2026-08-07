@@ -44,7 +44,7 @@ class NutritionAiRepository @Inject constructor(
                 Log.d(TAG, "Using ${selected.displayName} key from Settings (${stored.take(8)}…)")
                 return stored
             }
-            // Build-time fallback only for Gemini (legacy local.properties support)
+            // Build-time fallback from local.properties
             if (selected == AiProvider.GEMINI) {
                 val buildKey = BuildConfig.GEMINI_API_KEY.trim()
                 if (buildKey.isNotBlank()) {
@@ -56,6 +56,13 @@ class NutritionAiRepository @Inject constructor(
                 val buildKey = BuildConfig.OPENAI_API_KEY.trim()
                 if (buildKey.isNotBlank()) {
                     Log.d(TAG, "Using OpenAI key from BuildConfig (${buildKey.take(8)}…)")
+                    return buildKey
+                }
+            }
+            if (selected == AiProvider.OPENROUTER) {
+                val buildKey = BuildConfig.OPENROUTER_API_KEY.trim()
+                if (buildKey.isNotBlank()) {
+                    Log.d(TAG, "Using OpenRouter key from BuildConfig (${buildKey.take(8)}…)")
                     return buildKey
                 }
             }
@@ -101,6 +108,7 @@ class NutritionAiRepository @Inject constructor(
                 temperature = 0.2,
                 maxOutputTokens = 1024,
                 jsonMode = true,
+                openRouterModelId = settings.getOpenRouterModelId(),
             ),
         )
         return parseNutritionEstimate(responseText, foodQuery)
@@ -137,6 +145,7 @@ class NutritionAiRepository @Inject constructor(
                 temperature = 0.2,
                 maxOutputTokens = 1024,
                 jsonMode = true,
+                openRouterModelId = settings.getOpenRouterModelId(),
             ),
         )
         return parseScanResult(responseText)
@@ -150,6 +159,8 @@ class NutritionAiRepository @Inject constructor(
                     "No Gemini API key set. Go to Settings, choose Gemini, and paste your free key from aistudio.google.com."
                 AiProvider.OPENAI ->
                     "No OpenAI API key set. Go to Settings, choose OpenAI, and paste your key from platform.openai.com."
+                AiProvider.OPENROUTER ->
+                    "No OpenRouter API key set. Go to Settings, choose OpenRouter, and paste your key from openrouter.ai/keys."
             }
             throw Exception(hint)
         }

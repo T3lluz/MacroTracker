@@ -38,6 +38,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.macrotracker.data.remote.AiProvider
 import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.AppUpdateDialog
 import com.macrotracker.ui.components.PillNavigationBar
@@ -60,8 +61,15 @@ fun MainScreen(
     val splashShown by onboardingViewModel.splashShown.collectAsState()
 
     val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val aiProvider by settingsViewModel.aiProvider.collectAsState()
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState()
-    val hasAiApiKey = geminiApiKey.isNotBlank()
+    val openAiApiKey by settingsViewModel.openAiApiKey.collectAsState()
+    val openRouterApiKey by settingsViewModel.openRouterApiKey.collectAsState()
+    val hasAiApiKey = when (aiProvider) {
+        AiProvider.GEMINI -> geminiApiKey.isNotBlank()
+        AiProvider.OPENAI -> openAiApiKey.isNotBlank()
+        AiProvider.OPENROUTER -> openRouterApiKey.isNotBlank()
+    }
 
     val updateState by appUpdateViewModel.state.collectAsState()
     val showUpdateDialog by appUpdateViewModel.showDialog.collectAsState()
