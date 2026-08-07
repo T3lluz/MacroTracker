@@ -475,13 +475,237 @@ private fun F1CollapsedWidget(data: F1Standings) {
     val next = remember(data.schedule) {
         data.schedule.filter { !isPast(it.raceDate) }.minByOrNull { daysUntil(it.raceDate) }
     }
+    val completedRounds = remember(data.schedule) { data.schedule.count { isPast(it.raceDate) } }
 
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Spacer(Modifier.height(6.dp))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Spacer(Modifier.height(4.dp))
         if (next != null) {
-            NextRaceBanner(next, daysUntil(next.raceDate), data.schedule)
+            CompactNextRace(
+                race = next,
+                days = daysUntil(next.raceDate),
+                totalRounds = data.schedule.size,
+                completedRounds = completedRounds,
+            )
         }
+        CompactSnapshotStrip(data)
         CompactStandingsPreview(data.driverStandings)
+        CompactLastRaceRow(data)
+    }
+}
+
+@Composable
+private fun CompactNextRace(
+    race: RaceScheduleEntry,
+    days: Long,
+    totalRounds: Int,
+    completedRounds: Int,
+) {
+    val isSoon = days in 0..7
+    val accent = if (isSoon) F1Red else TextPrimary
+    val localRaceTime = remember(race.raceDate, race.raceTime) { formatLocalTime(race.raceDate, race.raceTime) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(RowSurface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accent),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("NEXT", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    Text("R${race.round}/$totalRounds", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    if (race.sprintDate != null) {
+                        Text("SPRINT", color = SprintPink, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
+                    }
+                }
+                Text(
+                    shortGP(race.raceName),
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    buildString {
+                        val place = listOfNotNull(
+                            countryLabel(race.countryCode).takeIf { it != "—" },
+                            race.locality,
+                        ).joinToString(" · ")
+                        append(place)
+                        if (place.isNotBlank()) append(" · ")
+                        append(formatShort(race.raceDate))
+                        if (localRaceTime.isNotEmpty()) append(" · $localRaceTime")
+                    },
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    when {
+                        days == 0L -> "TODAY"
+                        days < 0 -> "—"
+                        else -> "${days}D"
+                    },
+                    color = accent,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 20.sp,
+                )
+                if (completedRounds > 0 && totalRounds > 0) {
+                    Text(
+                        "$completedRounds done",
+                        color = TextSecondary,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+        }
+        if (isSoon) {
+            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
+            LiveCountdown(race.raceDate, race.raceTime, accent)
+        }
+    }
+}
+
+@Composable
+private fun CompactSnapshotStrip(data: F1Standings) {
+    val leader = data.driverStandings.firstOrNull()
+    val p2 = data.driverStandings.getOrNull(1)
+    val wcc = data.constructorStandings.firstOrNull()
+    val totalRounds = data.schedule.size
+    val completedRounds = data.schedule.count { isPast(it.raceDate) }
+    val lastWinner = data.lastRaceResults?.firstOrNull()
+
+    data class Snap(
+        val label: String,
+        val value: String,
+        val sub: String,
+        val accent: Color,
+    )
+
+    val snaps = remember(
+        leader?.driverAcronym,
+        leader?.points,
+        p2?.points,
+        wcc?.constructorName,
+        wcc?.points,
+        totalRounds,
+        completedRounds,
+        lastWinner?.driverAcronym,
+        data.lastRaceName,
+    ) {
+        buildList {
+            if (leader != null) {
+                add(
+                    Snap(
+                        "WDC",
+                        leader.driverAcronym,
+                        "${leader.points.toInt()} pts",
+                        safeTeamColor(leader.teamColor),
+                    ),
+                )
+            }
+            if (leader != null && p2 != null) {
+                val gap = (leader.points - p2.points).toInt()
+                add(Snap("GAP", "+$gap", "to P2", F1Silver))
+            }
+            if (wcc != null) {
+                add(
+                    Snap(
+                        "WCC",
+                        wcc.constructorName.split(" ").first().take(8),
+                        "${wcc.points.toInt()} pts",
+                        safeTeamColor(wcc.teamColor),
+                    ),
+                )
+            }
+            if (totalRounds > 0) {
+                add(
+                    Snap(
+                        "SEASON",
+                        "R$completedRounds/$totalRounds",
+                        if (totalRounds > 0) "${(completedRounds * 100 / totalRounds)}%" else "—",
+                        F1Red,
+                    ),
+                )
+            } else if (lastWinner != null) {
+                add(
+                    Snap(
+                        "LAST",
+                        lastWinner.driverAcronym ?: lastWinner.driverName.split(" ").last().take(3).uppercase(),
+                        shortGP(data.lastRaceName ?: ""),
+                        F1Red,
+                    ),
+                )
+            }
+        }
+    }
+
+    if (snaps.isEmpty()) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(RowSurface)
+            .padding(vertical = 8.dp),
+    ) {
+        snaps.forEachIndexed { index, snap ->
+            Column(
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(snap.label, color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    snap.value,
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    snap.sub,
+                    color = snap.accent.copy(alpha = 0.9f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (index < snaps.lastIndex) {
+                Box(
+                    modifier = Modifier
+                        .width(0.5.dp)
+                        .height(36.dp)
+                        .background(Hairline),
+                )
+            }
+        }
     }
 }
 
@@ -489,8 +713,16 @@ private fun F1CollapsedWidget(data: F1Standings) {
 private fun CompactStandingsPreview(standings: List<SeasonDriverStanding>) {
     if (standings.isEmpty()) return
     val leader = standings.firstOrNull()
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        standings.take(3).forEachIndexed { index, driver ->
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Drivers", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Text("Top ${standings.take(5).size}", color = TextSecondary.copy(alpha = 0.7f), fontSize = 10.sp)
+        }
+        standings.take(5).forEachIndexed { index, driver ->
             val tc = safeTeamColor(driver.teamColor)
             val gap = if (leader != null && driver.position > 1) {
                 "-${(leader.points - driver.points).toInt()}"
@@ -498,23 +730,23 @@ private fun CompactStandingsPreview(standings: List<SeasonDriverStanding>) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
                         .width(3.dp)
-                        .height(28.dp)
+                        .height(24.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(tc),
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     "${driver.position}",
-                    color = TextSecondary,
-                    fontWeight = FontWeight.Medium,
+                    color = medalColor(driver.position) ?: TextSecondary,
+                    fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
-                    modifier = Modifier.width(18.dp),
+                    modifier = Modifier.width(16.dp),
                 )
                 DriverHeadshot(
                     url = driver.headshotUrl,
@@ -522,41 +754,124 @@ private fun CompactStandingsPreview(standings: List<SeasonDriverStanding>) {
                     driverAcronym = driver.driverAcronym,
                     driverNumber = driver.driverNumber,
                     teamColor = tc,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(26.dp),
                 )
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    driver.driverAcronym,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier.width(40.dp),
+                )
+                Text(
+                    driver.constructorName.split(" ").first().take(9),
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (driver.wins > 0) {
                     Text(
-                        driver.driverAcronym,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                    )
-                    Text(
-                        driver.constructorName,
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        "${driver.wins}W",
+                        color = F1Gold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 6.dp),
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         "${driver.points.toInt()}",
                         color = TextPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
                     )
-                    Text(
-                        gap ?: "pts",
-                        color = TextSecondary,
-                        fontSize = 10.sp,
-                    )
+                    if (gap != null) {
+                        Text(gap, color = TextSecondary, fontSize = 9.sp)
+                    }
                 }
             }
-            if (index < 2) {
-                HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 13.dp))
+            if (index < standings.take(5).lastIndex) {
+                HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 11.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactLastRaceRow(data: F1Standings) {
+    val results = data.lastRaceResults ?: return
+    if (results.isEmpty()) return
+    val podium = results.filter { it.position in 1..3 }
+    val fl = results.firstOrNull { it.fastestLap }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(RowSurface)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Last race", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
+            data.lastRaceName?.let {
+                Text(shortGP(it), color = TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (podium.size >= 3) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                podium.take(3).forEach { r ->
+                    val tc = safeTeamColor(r.teamColor)
+                    val acronym = r.driverAcronym
+                        ?: r.driverName.split(" ").lastOrNull()?.take(3)?.uppercase()
+                        ?: "—"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "P${r.position}",
+                            color = medalColor(r.position) ?: TextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(tc),
+                        )
+                        Text(acronym, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                if (fl != null) {
+                    val flAcronym = fl.driverAcronym
+                        ?: fl.driverName.split(" ").lastOrNull()?.take(3)?.uppercase()
+                        ?: "FL"
+                    Text("FL $flAcronym", color = FL_Purple, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        } else {
+            val winner = results.first()
+            Text(
+                "${winner.driverAcronym ?: winner.driverName} · ${winner.constructorName}",
+                color = TextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -584,10 +899,10 @@ private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Starts in", color = TextSecondary, fontSize = 12.sp)
+        Text("Starts in", color = TextSecondary, fontSize = 11.sp)
         Spacer(Modifier.weight(1f))
         if (days > 0) {
             CountdownUnit("${days}", "d", accentColor)
@@ -604,127 +919,17 @@ private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color)
 @Composable
 private fun CountdownUnit(value: String, unit: String, color: Color) {
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-        Text(value, color = color, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-        Text(unit, color = TextSecondary, fontSize = 11.sp, modifier = Modifier.padding(bottom = 2.dp))
+        Text(value, color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(unit, color = TextSecondary, fontSize = 10.sp, modifier = Modifier.padding(bottom = 2.dp))
     }
 }
 
 @Composable
 private fun CountdownSep() {
-    Text("·", color = TextSecondary.copy(alpha = 0.4f), fontSize = 14.sp)
+    Text("·", color = TextSecondary.copy(alpha = 0.4f), fontSize = 13.sp)
 }
 
-// ── Next-race banner ──────────────────────────────────────────────────────────
-@Composable
-private fun NextRaceBanner(race: RaceScheduleEntry, days: Long, allRaces: List<RaceScheduleEntry>) {
-    val isSoon = days <= 7
-    val col = if (isSoon) F1Red else TextPrimary
-    var showTrack by rememberSaveable { mutableStateOf(false) }
-    val haptics = rememberHaptics()
-    val localRaceTime = remember(race.raceDate, race.raceTime) { formatLocalTime(race.raceDate, race.raceTime) }
-    val tz = remember { getLocalTimezone() }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(RowSurface)
-            .clickable { haptics.tick(); showTrack = !showTrack }
-            .padding(14.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    "Next race",
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    shortGP(race.raceName),
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    listOfNotNull(
-                        countryLabel(race.countryCode).takeIf { it != "—" },
-                        race.locality,
-                    ).joinToString(" · "),
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    buildString {
-                        append(formatShort(race.raceDate))
-                        if (localRaceTime.isNotEmpty()) append(" · $localRaceTime ($tz)")
-                    },
-                    color = TextSecondary.copy(alpha = 0.85f),
-                    fontSize = 11.sp,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    when {
-                        days == 0L -> "Today"
-                        days < 0 -> "Past"
-                        else -> "${days}d"
-                    },
-                    color = col,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp,
-                )
-                if (race.sprintDate != null) {
-                    Text("Sprint", color = SprintPink, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                }
-                Icon(
-                    if (showTrack) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    null,
-                    tint = TextSecondary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
-
-        if (isSoon && days >= 0) {
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            Spacer(Modifier.height(12.dp))
-            LiveCountdown(race.raceDate, race.raceTime, col)
-        }
-
-        AnimatedVisibility(showTrack, enter = expandVertically(tween(220)) + fadeIn(), exit = shrinkVertically(tween(180)) + fadeOut()) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    race.laps?.let { CircuitStat("Laps", "$it") }
-                    race.lapRecord?.let { CircuitStat("Lap rec", it) }
-                    CircuitStat("Round", "${race.round}/${allRaces.size}")
-                    race.qualifyingDate?.let { CircuitStat("Quali", formatShort(it)) }
-                }
-                TrackVisualization(circuitId = race.circuitId ?: "", accentColor = col, raceName = shortGP(race.raceName))
-                race.fp1Date?.let    { SessionRow("FP1",   it, null,                TextSecondary) }
-                race.fp2Date?.let    { SessionRow("FP2",   it, null,                TextSecondary) }
-                race.fp3Date?.let    { SessionRow("FP3",   it, null,                TextSecondary) }
-                race.qualifyingDate?.let { SessionRow("Quali", it, race.qualifyingTime, TextPrimary) }
-                race.sprintDate?.let     { SessionRow("Sprint", it, race.sprintTime, SprintPink) }
-                SessionRow("Race", race.raceDate, race.raceTime, col, bold = true)
-            }
-        }
-    }
-}
-
+// ── Shared circuit stat ───────────────────────────────────────────────────────
 @Composable
 private fun CircuitStat(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
