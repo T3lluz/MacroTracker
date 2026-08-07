@@ -3,13 +3,12 @@ package com.macrotracker.data.update
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.macrotracker.BuildConfig
@@ -290,76 +289,73 @@ class AppUpdateRepository @Inject constructor(
         if (!apkFile.exists()) {
             throw IOException("APK file not found: ${apkFile.absolutePath}")
         }
-        // Prefer PackageInstaller self-update sessions. On Android 12+ with
-        // UPDATE_PACKAGES_WITHOUT_USER_ACTION this can commit without showing the
-        // system Package Installer / Play Protect "Scan app" confirmation UI.
-        try {
-            installWithPackageInstaller(apkFile)
-        } catch (e: Exception) {
-            Log.w(TAG, "PackageInstaller session failed; falling back to VIEW intent", e)
-            installWithViewIntent(apkFile)
-        }
+        // Always use PackageInstaller self-update sessions. Never fall back to
+        // ACTION_VIEW — that opens the system Package Installer and always shows
+        // Play Protect's "Scan app" UI for sideloaded APKs.
+        //
+        // On Android 12+ with UPDATE_PACKAGES_WITHOUT_USER_ACTION, same-package
+        // upgrades can commit without any system confirmation when the device
+        // treats this as a self-update (or we are installer/update-owner).
+        installWithPackageInstaller(apkFile)
     }
 
     private fun installWithPackageInstaller(apkFile: File) {
         val installer = context.packageManager.packageInstaller
+        val apkBytes = apkFile.length()
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL,
         ).apply {
             setAppPackageName(context.packageName)
+            setAppLabel("DailyDash")
+            setSize(apkBytes)
+            setInstallLocation(PackageInfo.INSTALL_LOCATION_AUTO)
+            setInstallReason(PackageManager.INSTALL_REASON_USER)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Request silent commit for same-package self-updates.
                 setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Avoid PACKAGE_SOURCE_DOWNLOADED_FILE / LOCAL_FILE paths that
+                // Android 15+ treats as high-friction internet sideloads.
+                setPackageSource(PackageInstaller.PACKAGE_SOURCE_OTHER)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                setDontKillApp(true)
+                setInstallerPackageName(context.packageName)
+                // Claim update ownership on fresh installs; no-op on updates but
+                // required so a one-time confirmation can transfer ownership to us.
+                setRequestUpdateOwnership(true)
             }
         }
 
         val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            apkFile.inputStream().use { input ->
-                session.openWrite("base.apk", 0, apkFile.length()).use { output ->
-                    input.copyTo(output)
-                    session.fsync(output)
+        Log.i(TAG, "Created PackageInstaller session=$sessionId for ${apkFile.name} ($apkBytes bytes)")
+        try {
+            installer.openSession(sessionId).use { session ->
+                apkFile.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, apkBytes).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
                 }
-            }
 
-            val callback = Intent(context, UpdateInstallReceiver::class.java).apply {
-                action = UpdateInstallReceiver.ACTION_INSTALL_COMPLETE
-            }
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    PendingIntent.FLAG_MUTABLE
-                } else {
-                    0
+                // Activity PendingIntent (not BroadcastReceiver): OEM background
+                // restrictions often block starting the confirmation UI from a receiver.
+                val callback = Intent(context, UpdateInstallActivity::class.java).apply {
+                    action = UpdateInstallActivity.ACTION_INSTALL_COMPLETE
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-            val pending = PendingIntent.getBroadcast(context, sessionId, callback, flags)
-            session.commit(pending.intentSender)
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        PendingIntent.FLAG_MUTABLE
+                    } else {
+                        0
+                    }
+                val pending = PendingIntent.getActivity(context, sessionId, callback, flags)
+                session.commit(pending.intentSender)
+            }
+        } catch (e: Exception) {
+            runCatching { installer.abandonSession(sessionId) }
+            throw e
         }
-    }
-
-    private fun installWithViewIntent(apkFile: File) {
-        val uri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            apkFile,
-        )
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val resInfoList = context.packageManager.queryIntentActivities(
-            intent,
-            PackageManager.MATCH_DEFAULT_ONLY,
-        )
-        for (resolveInfo in resInfoList) {
-            context.grantUriPermission(
-                resolveInfo.activityInfo.packageName,
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-        }
-        context.startActivity(intent)
     }
 }
