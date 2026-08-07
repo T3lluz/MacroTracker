@@ -216,7 +216,9 @@ private fun DriverHeadshot(
                 model = request,
                 contentDescription = driverName,
                 modifier = Modifier.fillMaxSize(),
+                // Prefer the top of the frame so full-body fallbacks still show faces.
                 contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
             ) {
                 when (painter.state) {
                     is AsyncImagePainter.State.Loading -> Box(
@@ -1063,7 +1065,8 @@ fun DriverStandingsList(standings: List<SeasonDriverStanding>) {
     val leader = standings.firstOrNull()
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        standings.take(20).forEach { driver ->
+        // 2026 grid is 22 drivers (11 teams × 2); show the full championship list.
+        standings.take(22).forEach { driver ->
             val tc = safeTeamColor(driver.teamColor)
             val medal = medalColor(driver.position)
             val isExp = expanded == driver.driverAcronym
@@ -1886,7 +1889,7 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
             Spacer(Modifier.height(4.dp))
         }
         val remainingResults = remember(results) {
-            results.drop(if (podium.size >= 3) 3 else 0).take(17)
+            results.drop(if (podium.size >= 3) 3 else 0).take(19)
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
