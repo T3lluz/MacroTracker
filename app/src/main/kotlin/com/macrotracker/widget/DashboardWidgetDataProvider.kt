@@ -16,19 +16,19 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.room.Room
-import com.macrotracker.data.remote.WeatherInfo
-import com.macrotracker.data.remote.WeatherRepository
 import com.macrotracker.BuildConfig
 import com.macrotracker.data.local.GoalsEntity
 import com.macrotracker.data.local.MacroDatabase
+import com.macrotracker.data.local.SettingsRepository
+import com.macrotracker.data.remote.AiApiClient
+import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.WeatherInfo
+import com.macrotracker.data.remote.WeatherRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit
  * - [loadData] — fast, for `provideGlance`. Returns memory cache or loads local
  *   data + cached AI from SharedPrefs. **Never** makes network calls.
  * - [refreshNow] — full, for background workers. Loads local data + fresh AI
- *   insights from Gemini in parallel. Updates memory + disk caches.
+ *   insights from the selected AI provider in parallel. Updates memory + disk caches.
  */
 object DashboardWidgetDataProvider {
 
@@ -658,7 +658,7 @@ object DashboardWidgetDataProvider {
         }
     }
 
-    // ── AI daily insight (Gemini 2.0 Flash free tier, cached 1 h) ────────
+    // ── AI daily insight (selected provider, cached 1 h) ────────────────
     private suspend fun loadAiInsight(
         context: Context,
         data: DashboardWidgetData,
@@ -671,54 +671,50 @@ object DashboardWidgetDataProvider {
         val ts = prefs.getLong(cacheTsKey, 0L)
         if (cached != null && System.currentTimeMillis() - ts < AI_INSIGHT_TTL) return cached
 
-        // Get API key from settings prefs (same store the app uses)
+        // Get provider + API key from settings prefs (same store the app uses)
         val settingsPrefs = context.getSharedPreferences("macro_tracker_settings", Context.MODE_PRIVATE)
-        val apiKey = (settingsPrefs.getString("gemini_api_key", null)?.trim() ?: "")
-            .ifBlank { BuildConfig.GEMINI_API_KEY.trim() }
+        val provider = AiProvider.fromStorage(
+            settingsPrefs.getString(SettingsRepository.KEY_AI_PROVIDER, null),
+        )
+        val storedKey = when (provider) {
+            AiProvider.GEMINI -> settingsPrefs.getString(SettingsRepository.KEY_GEMINI_API_KEY, null)
+            AiProvider.OPENAI -> settingsPrefs.getString(SettingsRepository.KEY_OPENAI_API_KEY, null)
+        }?.trim().orEmpty()
+        val apiKey = storedKey.ifBlank {
+            when (provider) {
+                AiProvider.GEMINI -> BuildConfig.GEMINI_API_KEY.trim()
+                AiProvider.OPENAI -> BuildConfig.OPENAI_API_KEY.trim()
+            }
+        }
         if (apiKey.isBlank()) return cached  // no key → keep stale or null
 
         return withContext(Dispatchers.IO) {
             try {
-                val body = JSONObject().apply {
-                    put("contents", JSONArray().put(JSONObject().apply {
-                        put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-                    }))
-                    put("generationConfig", JSONObject().apply {
-                        put("maxOutputTokens", 120)
-                        put("temperature", 0.7)
-                    })
-                }.toString()
-
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey"
                 val client = OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.SECONDS)
                     .build()
-                val request = Request.Builder()
-                    .url(url)
-                    .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
 
-                val response = client.newCall(request).execute()
-                val json = JSONObject(response.body?.string() ?: "")
-                val rawText = json
-                    .optJSONArray("candidates")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("content")
-                    ?.optJSONArray("parts")
-                    ?.optJSONObject(0)
-                    ?.optString("text")
-                    ?.trim()
+                val rawText = AiApiClient.generate(
+                    httpClient = client,
+                    provider = provider,
+                    apiKey = apiKey,
+                    params = AiApiClient.GenerateParams(
+                        prompt = prompt,
+                        temperature = 0.7,
+                        maxOutputTokens = 120,
+                        jsonMode = false,
+                    ),
+                ).trim()
 
                 // Trim to the last complete sentence so we never show a truncated fragment.
-                val text = rawText?.let { raw ->
+                val text = rawText.let { raw ->
                     val truncated = raw.take(220)
-                    // Find the last sentence-ending punctuation
                     val lastEnd = truncated.indexOfLast { it == '.' || it == '!' || it == '?' }
                     if (lastEnd >= 0) truncated.substring(0, lastEnd + 1) else truncated
                 }
 
-                if (!text.isNullOrBlank()) {
+                if (text.isNotBlank()) {
                     prefs.edit()
                         .putString(cacheKey, text)
                         .putLong(cacheTsKey, System.currentTimeMillis())

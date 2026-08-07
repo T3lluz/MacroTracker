@@ -67,7 +67,7 @@ private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.AutoAwesome,
         title = "AI Food Estimates",
-        body = "On the AI tab, type a description such as \"1 medium avocado\" or \"bowl of oatmeal with banana\" and tap \"Estimate with AI\". A Gemini-powered estimate with calories, protein and a confidence level will appear — tap once to log it.",
+        body = "On the AI tab, type a description such as \"1 medium avocado\" or \"bowl of oatmeal with banana\" and tap \"Estimate with AI\". An AI-powered estimate with calories, protein and a confidence level will appear — tap once to log it.",
     ),
     HelpStep(
         icon = Icons.Outlined.BarChart,
@@ -91,15 +91,15 @@ private data class FaqItem(val question: String, val answer: String)
 private val FAQ = listOf(
     FaqItem(
         question = "Where is my data stored?",
-        answer = "All data is stored locally on your device using a local database. Nothing is uploaded to a server. AI requests are sent to Google Gemini but your food logs are never included.",
+        answer = "All data is stored locally on your device using a local database. Nothing is uploaded to a server. AI requests are sent to your selected provider (Google Gemini or OpenAI) but your food logs are never included.",
     ),
     FaqItem(
         question = "Why is my progress bar red?",
         answer = "The calorie progress bar turns red when your total calories for the day exceed your calorie goal. Set or adjust your goal in Settings → Stats & Goals.",
     ),
     FaqItem(
-        question = "How do I add a Gemini API key?",
-        answer = "Go to Settings, find the Gemini API Key card, paste your key (it should start with \"AIza\") and tap \"Save Key\". Get a free key at aistudio.google.com. The app uses gemini-2.0-flash on the free tier.",
+        question = "How do I set up an AI API key?",
+        answer = "Go to Settings → AI Provider, choose Gemini or OpenAI, paste your key, and tap \"Save Key\". Gemini keys start with \"AIza\" (aistudio.google.com). OpenAI keys start with \"sk-\" (platform.openai.com).",
     ),
     FaqItem(
         question = "How do I connect Health Connect?",

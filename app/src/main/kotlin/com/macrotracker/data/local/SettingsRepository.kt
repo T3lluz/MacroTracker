@@ -2,6 +2,7 @@ package com.macrotracker.data.local
 
 import android.content.Context
 import androidx.core.content.edit
+import com.macrotracker.data.remote.AiProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,8 +16,16 @@ class SettingsRepository @Inject constructor(
     private val prefs = context.getSharedPreferences("macro_tracker_settings", Context.MODE_PRIVATE)
     private val healthPrefs = context.getSharedPreferences("health_connect_settings", Context.MODE_PRIVATE)
 
+    private val _aiProvider = MutableStateFlow(
+        AiProvider.fromStorage(prefs.getString(KEY_AI_PROVIDER, AiProvider.GEMINI.storageValue)),
+    )
+    val aiProvider: StateFlow<AiProvider> = _aiProvider
+
     private val _geminiApiKey = MutableStateFlow(prefs.getString(KEY_GEMINI_API_KEY, "") ?: "")
     val geminiApiKey: StateFlow<String> = _geminiApiKey
+
+    private val _openAiApiKey = MutableStateFlow(prefs.getString(KEY_OPENAI_API_KEY, "") ?: "")
+    val openAiApiKey: StateFlow<String> = _openAiApiKey
 
     private val _onboardingCompleted = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false))
     val onboardingCompleted: StateFlow<Boolean> = _onboardingCompleted
@@ -67,17 +76,45 @@ class SettingsRepository @Inject constructor(
     )
     val healthWidgetOrder: StateFlow<String> = _healthWidgetOrder
 
+    fun setAiProvider(provider: AiProvider) {
+        prefs.edit { putString(KEY_AI_PROVIDER, provider.storageValue) }
+        _aiProvider.value = provider
+    }
+
+    fun getAiProvider(): AiProvider = _aiProvider.value
+
     fun saveGeminiApiKey(key: String) {
         prefs.edit { putString(KEY_GEMINI_API_KEY, key.trim()) }
         _geminiApiKey.value = key.trim()
     }
 
+    fun saveOpenAiApiKey(key: String) {
+        prefs.edit { putString(KEY_OPENAI_API_KEY, key.trim()) }
+        _openAiApiKey.value = key.trim()
+    }
+
+    /** Saves the API key for the currently selected provider. */
+    fun saveApiKeyForProvider(provider: AiProvider, key: String) {
+        when (provider) {
+            AiProvider.GEMINI -> saveGeminiApiKey(key)
+            AiProvider.OPENAI -> saveOpenAiApiKey(key)
+        }
+    }
+
+    fun getGeminiApiKey(): String = _geminiApiKey.value
+
+    fun getOpenAiApiKey(): String = _openAiApiKey.value
+
+    fun getApiKeyForProvider(provider: AiProvider = getAiProvider()): String =
+        when (provider) {
+            AiProvider.GEMINI -> getGeminiApiKey()
+            AiProvider.OPENAI -> getOpenAiApiKey()
+        }
+
     fun setOnboardingCompleted(completed: Boolean = true) {
         prefs.edit { putBoolean(KEY_ONBOARDING_COMPLETED, completed) }
         _onboardingCompleted.value = completed
     }
-
-    fun getGeminiApiKey(): String = _geminiApiKey.value
 
     fun updateHomeWidgetOrder(order: String) {
         prefs.edit { putString("home_widget_order", order) }
@@ -119,7 +156,9 @@ class SettingsRepository @Inject constructor(
     }
 
     companion object {
-        private const val KEY_GEMINI_API_KEY = "gemini_api_key"
+        const val KEY_AI_PROVIDER = "ai_provider"
+        const val KEY_GEMINI_API_KEY = "gemini_api_key"
+        const val KEY_OPENAI_API_KEY = "openai_api_key"
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }
 }

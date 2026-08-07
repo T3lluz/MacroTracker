@@ -3,14 +3,7 @@ package com.macrotracker.data.remote
 import android.util.Log
 import com.macrotracker.BuildConfig
 import com.macrotracker.data.local.SettingsRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,21 +33,33 @@ class NutritionAiRepository @Inject constructor(
     private val httpClient: OkHttpClient,
     private val settings: SettingsRepository,
 ) {
+    private val provider: AiProvider
+        get() = settings.getAiProvider()
+
     private val apiKey: String
         get() {
-            // Always prefer the key saved in the app's Settings UI
-            val stored = settings.getGeminiApiKey().trim()
+            val selected = provider
+            val stored = settings.getApiKeyForProvider(selected).trim()
             if (stored.isNotBlank()) {
-                Log.d(TAG, "Using Gemini key from app Settings (${stored.take(8)}…)")
+                Log.d(TAG, "Using ${selected.displayName} key from Settings (${stored.take(8)}…)")
                 return stored
             }
-            // Fall back to build-time key from local.properties (usually empty)
-            val buildKey = BuildConfig.GEMINI_API_KEY.trim()
-            if (buildKey.isNotBlank()) {
-                Log.d(TAG, "Using Gemini key from BuildConfig (${buildKey.take(8)}…)")
-                return buildKey
+            // Build-time fallback only for Gemini (legacy local.properties support)
+            if (selected == AiProvider.GEMINI) {
+                val buildKey = BuildConfig.GEMINI_API_KEY.trim()
+                if (buildKey.isNotBlank()) {
+                    Log.d(TAG, "Using Gemini key from BuildConfig (${buildKey.take(8)}…)")
+                    return buildKey
+                }
             }
-            Log.w(TAG, "No Gemini API key configured")
+            if (selected == AiProvider.OPENAI) {
+                val buildKey = BuildConfig.OPENAI_API_KEY.trim()
+                if (buildKey.isNotBlank()) {
+                    Log.d(TAG, "Using OpenAI key from BuildConfig (${buildKey.take(8)}…)")
+                    return buildKey
+                }
+            }
+            Log.w(TAG, "No ${selected.displayName} API key configured")
             return ""
         }
 
@@ -62,10 +67,6 @@ class NutritionAiRepository @Inject constructor(
 
     companion object {
         private const val TAG = "NutritionAI"
-        private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-
-        private val MODELS = listOf("gemini-2.0-flash", "gemini-2.5-flash")
-        private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }
 
     // ─── Estimate nutrition from text ─────────────────────────────────────────
@@ -91,13 +92,25 @@ class NutritionAiRepository @Inject constructor(
             - Keep notes under 120 characters.
         """.trimIndent()
 
-        val partsArray = JSONArray().put(JSONObject().put("text", prompt))
-        val responseText = callGeminiWithFallback(partsArray)
+        val responseText = AiApiClient.generate(
+            httpClient = httpClient,
+            provider = provider,
+            apiKey = apiKey,
+            params = AiApiClient.GenerateParams(
+                prompt = prompt,
+                temperature = 0.2,
+                maxOutputTokens = 1024,
+                jsonMode = true,
+            ),
+        )
         return parseNutritionEstimate(responseText, foodQuery)
     }
 
     // ─── Scan image for nutrition label ───────────────────────────────────────
-    suspend fun analyzeImageWithGemini(base64Image: String): ScanResult {
+    suspend fun analyzeImageWithGemini(base64Image: String): ScanResult =
+        analyzeNutritionLabelImage(base64Image)
+
+    suspend fun analyzeNutritionLabelImage(base64Image: String): ScanResult {
         requireApiKey()
 
         val prompt = """
@@ -114,178 +127,31 @@ class NutritionAiRepository @Inject constructor(
             Use 0 for missing numbers. No markdown. No explanation.
         """.trimIndent()
 
-        val partsArray = JSONArray()
-            .put(JSONObject().put("text", prompt))
-            .put(
-                JSONObject().put(
-                    "inline_data",
-                    JSONObject()
-                        .put("mime_type", "image/jpeg")
-                        .put("data", base64Image),
-                ),
-            )
-
-        val responseText = callGeminiWithFallback(partsArray)
+        val responseText = AiApiClient.generate(
+            httpClient = httpClient,
+            provider = provider,
+            apiKey = apiKey,
+            params = AiApiClient.GenerateParams(
+                prompt = prompt,
+                base64Jpeg = base64Image,
+                temperature = 0.2,
+                maxOutputTokens = 1024,
+                jsonMode = true,
+            ),
+        )
         return parseScanResult(responseText)
-    }
-
-    // ─── Core Gemini call — plain OkHttp + JSONObject, no Moshi/Retrofit ─────
-    private suspend fun callGeminiWithFallback(partsArray: JSONArray): String {
-        val key = apiKey
-        var lastError = ""
-        var lastCode = 0
-
-        for (model in MODELS) {
-            // Try unstructured first (more widely supported), then structured JSON
-            for (structured in listOf(false, true)) {
-                for (attempt in 0..1) {
-                    if (attempt > 0) delay(2000) // back off before retry
-
-                    val url = "$BASE_URL/$model:generateContent?key=$key"
-
-                    val generationConfig = JSONObject()
-                        .put("temperature", 0.2)
-                        .put("maxOutputTokens", 1024)
-
-                    if (structured) {
-                        generationConfig.put("responseMimeType", "application/json")
-                    }
-
-                    val body = JSONObject()
-                        .put(
-                            "contents",
-                            JSONArray().put(
-                                JSONObject().put("parts", partsArray),
-                            ),
-                        )
-                        .put("generationConfig", generationConfig)
-
-                    Log.d(TAG, "→ $model | structured=$structured | attempt=$attempt")
-
-                    try {
-                        val (code, responseBody) = doPost(url, body.toString())
-
-                        Log.d(TAG, "← $model | $code | ${responseBody.take(200)}")
-
-                        if (code in 200..299) {
-                            val text = extractTextFromResponse(responseBody)
-                            if (text.isNotBlank()) return text
-                            Log.w(TAG, "Empty response body from $model")
-                        }
-
-                        lastCode = code
-                        lastError = responseBody
-
-                        // Fatal key errors — throw immediately
-                        if (isApiKeyError(code, responseBody)) {
-                            throw Exception("Gemini API key is invalid or unauthorized. Check Stats → Settings → Gemini API Key.")
-                        }
-
-                        // Rate limit — retry once, then move to next model
-                        if (code == 429 || isRateLimitError(responseBody)) {
-                            if (attempt == 0) continue
-                            break
-                        }
-
-                        // Model not found — skip to next model
-                        if (code == 404) break
-
-                        // Structured not supported on this model — try unstructured
-                        if (code == 400 && structured) break
-
-                    } catch (e: Exception) {
-                        // Re-throw user-facing errors
-                        if (e.message?.contains("API key") == true) throw e
-                        Log.e(TAG, "Exception calling $model: ${e.message}")
-                        lastError = e.message ?: "Unknown error"
-                    }
-                }
-            }
-            // Small delay before next model
-            delay(300)
-        }
-
-        // All models exhausted
-        if (isRateLimitError(lastError) || lastCode == 429) {
-            throw Exception("Gemini rate limit reached — wait ~60 seconds and try again.")
-        }
-        val snippet = lastError.replace(Regex("<[^>]+>"), "").take(200).trim()
-        throw Exception("AI request failed ($lastCode): $snippet".ifBlank { "AI request failed. Check your API key and internet connection." })
-    }
-
-    // ─── HTTP helper — runs on IO dispatcher ─────────────────────────────────
-    private suspend fun doPost(url: String, jsonBody: String): Pair<Int, String> =
-        withContext(Dispatchers.IO) {
-            val request = Request.Builder()
-                .url(url)
-                .post(jsonBody.toRequestBody(JSON_MEDIA))
-                .build()
-            httpClient.newCall(request).execute().use { response ->
-                Pair(response.code, response.body?.string() ?: "")
-            }
-        }
-
-    // ─── Response parsing ────────────────────────────────────────────────────
-    private fun extractTextFromResponse(responseBody: String): String {
-        return try {
-            val json = JSONObject(responseBody)
-
-            // Check for truncation
-            val finishReason = json
-                .optJSONArray("candidates")
-                ?.optJSONObject(0)
-                ?.optString("finishReason", "") ?: ""
-            if (finishReason == "MAX_TOKENS") {
-                throw Exception("AI response was truncated. Try a shorter description.")
-            }
-
-            val parts = json
-                .optJSONArray("candidates")
-                ?.optJSONObject(0)
-                ?.optJSONObject("content")
-                ?.optJSONArray("parts")
-
-            if (parts == null || parts.length() == 0) return ""
-
-            buildString {
-                for (i in 0 until parts.length()) {
-                    val text = parts.optJSONObject(i)?.optString("text", "") ?: ""
-                    if (text.isNotEmpty()) {
-                        if (isNotEmpty()) append("\n")
-                        append(text)
-                    }
-                }
-            }.trim()
-        } catch (e: Exception) {
-            if (e.message?.contains("truncated") == true) throw e
-            Log.e(TAG, "Failed to parse Gemini response: ${e.message}")
-            ""
-        }
-    }
-
-    // ─── Error classification ────────────────────────────────────────────────
-    private fun isApiKeyError(code: Int, body: String): Boolean {
-        if (code == 401 || code == 403) return true
-        val lower = body.lowercase()
-        return lower.contains("api_key_invalid") ||
-                lower.contains("api key invalid") ||
-                lower.contains("api key not valid") ||
-                lower.contains("api key expired")
-    }
-
-    private fun isRateLimitError(body: String): Boolean {
-        val lower = body.lowercase()
-        return lower.contains("resource_exhausted") ||
-                lower.contains("quota") ||
-                lower.contains("rate limit") ||
-                lower.contains("too many requests")
     }
 
     private fun requireApiKey() {
         if (!hasApiKey) {
-            throw Exception(
-                "No Gemini API key set. Go to Stats → Settings and paste your free key from aistudio.google.com.",
-            )
+            val selected = provider
+            val hint = when (selected) {
+                AiProvider.GEMINI ->
+                    "No Gemini API key set. Go to Settings, choose Gemini, and paste your free key from aistudio.google.com."
+                AiProvider.OPENAI ->
+                    "No OpenAI API key set. Go to Settings, choose OpenAI, and paste your key from platform.openai.com."
+            }
+            throw Exception(hint)
         }
     }
 
@@ -373,4 +239,3 @@ fun maybeComputeTotals(
         totalProtein = (proteinPerServing * servings).toInt(),
     )
 }
-

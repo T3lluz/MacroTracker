@@ -116,10 +116,10 @@ private val PAGES = listOf(
         accentColor = androidx.compose.ui.graphics.Color(0xFFA855F7),
         badge = "AI",
         title = "Ask AI About Your Meal",
-        body = "Go to the AI tab and type something like \"large bowl of porridge with banana\" — Gemini returns a macro estimate you can log in one tap.",
+        body = "Go to the AI tab and type something like \"large bowl of porridge with banana\" — AI returns a macro estimate you can log in one tap.",
         tips = listOf(
             "The more detail you give, the better the estimate",
-            "A free Gemini API key is needed — add it in Settings",
+            "Add a Gemini or OpenAI API key in Settings",
             "The confidence score tells you how sure the AI is",
         ),
     ),
