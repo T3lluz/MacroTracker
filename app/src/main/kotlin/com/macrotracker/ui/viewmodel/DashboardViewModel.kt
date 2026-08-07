@@ -50,7 +50,8 @@ class DashboardViewModel @Inject constructor(
     private var loadJob: Job? = null
 
     init {
-        loadData()
+        // Defer initial load to the screen's ON_RESUME / loadDataThrottled so we
+        // don't race HealthViewModel and hammer Health Connect on cold start.
     }
 
     /** Throttled version for ON_RESUME — skips if called within 30 s of last load. */

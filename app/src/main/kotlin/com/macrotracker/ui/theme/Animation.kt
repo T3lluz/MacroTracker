@@ -97,15 +97,12 @@ object MacroMotion {
         ) { it }
 
     // ── Directional tab transitions ──────────────────────────────────
-    fun tabEnter(toRight: Boolean): EnterTransition =
-        slideInHorizontally(
-            animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
-        ) { if (toRight) it else -it }
+    // Crossfade tabs — sliding entire Home/Health trees caused measurable jank.
+    @Suppress("UNUSED_PARAMETER")
+    fun tabEnter(toRight: Boolean): EnterTransition = contentEnter
 
-    fun tabExit(toRight: Boolean): ExitTransition =
-        slideOutHorizontally(
-            animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
-        ) { if (toRight) -it / 3 else it / 3 }
+    @Suppress("UNUSED_PARAMETER")
+    fun tabExit(toRight: Boolean): ExitTransition = contentExit
 }
 
 

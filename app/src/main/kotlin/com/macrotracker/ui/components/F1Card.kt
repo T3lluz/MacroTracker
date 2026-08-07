@@ -47,7 +47,6 @@ import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.CachePolicy
 import coil.request.ImageRequest
-import coil.size.Size as CoilSize
 import com.macrotracker.data.f1.*
 import com.macrotracker.R
 import com.macrotracker.ui.theme.*
@@ -137,7 +136,13 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
         return
     }
     val request = remember(url) {
-        ImageRequest.Builder(context).data(url).memoryCachePolicy(CachePolicy.ENABLED).diskCachePolicy(CachePolicy.ENABLED).crossfade(true).build()
+        ImageRequest.Builder(context)
+            .data(url)
+            .size(128)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .crossfade(false)
+            .build()
     }
     SubcomposeAsyncImage(model = request, contentDescription = teamName, modifier = modifier, contentScale = contentScale) {
         when (painter.state) {
@@ -193,11 +198,11 @@ private fun DriverHeadshot(url: String?, driverName: String, driverAcronym: Stri
             val request = remember(activeUrl) {
                 ImageRequest.Builder(context)
                     .data(activeUrl)
-                    .crossfade(true)
+                    .crossfade(false)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .size(CoilSize.ORIGINAL)
+                    .size(256)
                     .build()
             }
             SubcomposeAsyncImage(
@@ -768,7 +773,8 @@ private fun TrackVisualization(circuitId: String, accentColor: Color, raceName: 
                 val request = remember(svgUrl) {
                     ImageRequest.Builder(context)
                         .data(svgUrl)
-                        .crossfade(true)
+                        .size(720, 480)
+                        .crossfade(false)
                         .setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         .memoryCachePolicy(CachePolicy.ENABLED)
                         .diskCachePolicy(CachePolicy.ENABLED)
@@ -1294,19 +1300,16 @@ private fun WCCBattleContent(constructors: List<SeasonConstructorStanding>, hapt
         constructors.take(10).forEachIndexed { i, t ->
             val tc = safeTeamColor(t.teamColor)
             val ratio = (t.points / maxTeamPts).toFloat().coerceIn(0f, 1f)
-            val bar by animateFloatAsState(ratio, tween(800 + i * 80, easing = FastOutSlowInEasing), label = "wcc$i")
+            val bar by animateFloatAsState(ratio, tween(400, easing = FastOutSlowInEasing), label = "wcc$i")
             val isSelected = selectedTeam == t.constructorName
             val isTop3 = t.position <= 3
 
-            var visible by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { delay(i * 60L); visible = true }
-            AnimatedVisibility(visible, enter = fadeIn(tween(200)) + slideInHorizontally(tween(220)) { -20 }) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) tc.copy(alpha = 0.1f) else if (isTop3) tc.copy(alpha = 0.05f) else Color.Transparent)
-                        .clickable { haptics.tick(); selectedTeam = if (isSelected) null else t.constructorName }
-                        .padding(horizontal = 6.dp, vertical = 5.dp)
-                ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(if (isSelected) tc.copy(alpha = 0.1f) else if (isTop3) tc.copy(alpha = 0.05f) else Color.Transparent)
+                    .clickable { haptics.tick(); selectedTeam = if (isSelected) null else t.constructorName }
+                    .padding(horizontal = 6.dp, vertical = 5.dp)
+            ) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(modifier = Modifier.size(26.dp).clip(CircleShape).background(medalColor(t.position) ?: tc.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
                             Text("${t.position}", color = if (medalColor(t.position) != null) Color.White else tc, fontWeight = FontWeight.Black, fontSize = 10.sp)
@@ -1330,7 +1333,6 @@ private fun WCCBattleContent(constructors: List<SeasonConstructorStanding>, hapt
                             }
                         }
                     }
-                }
             }
         }
     }

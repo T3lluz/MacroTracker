@@ -24,6 +24,8 @@ object WidgetUpdater {
      * Call from the app whenever macro/health/weather/calendar data changes.
      */
     suspend fun updateAllWidgets(context: Context) {
+        if (!WidgetStateProvider.hasAnyWidget(context)) return
+
         DashboardWidgetDataProvider.invalidate(context)
         F1WidgetDataProvider.invalidate()
 
@@ -40,6 +42,7 @@ object WidgetUpdater {
      * Useful after macro logging, health sync, etc.
      */
     suspend fun updateDashboardWidgets(context: Context) {
+        if (!WidgetStateProvider.hasAnyDashboardWidget(context)) return
         DashboardWidgetDataProvider.invalidate(context)
         withContext(Dispatchers.Main) {
             updatePlacedDashboardWidgets(context)
@@ -51,6 +54,7 @@ object WidgetUpdater {
      * the refresh button visibly updates weather/calendar/health data immediately.
      */
     suspend fun forceRefreshDashboardWidgets(context: Context) {
+        if (!WidgetStateProvider.hasAnyDashboardWidget(context)) return
         DashboardWidgetDataProvider.invalidate(context)
         DashboardWidgetDataProvider.refreshNow(context)
         withContext(Dispatchers.Main) {

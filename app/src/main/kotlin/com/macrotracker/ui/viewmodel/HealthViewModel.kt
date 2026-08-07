@@ -13,6 +13,9 @@ import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
 import com.macrotracker.data.local.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.drop
@@ -61,8 +64,7 @@ class HealthViewModel @Inject constructor(
     private val _healthHistory = MutableStateFlow<List<DailyHealthStats>>(emptyList())
     val healthHistory: StateFlow<List<DailyHealthStats>> = _healthHistory
 
-    // Detail States
-    private val _selectedDate = MutableStateFlow<LocalDate>(LocalDate.now())
+    private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate
 
     private val _intradayHeartRate = MutableStateFlow<List<HeartRateRecord.Sample>>(emptyList())
@@ -81,20 +83,24 @@ class HealthViewModel @Inject constructor(
 
     val healthWidgetOrder: StateFlow<String> = settingsRepository.healthWidgetOrder
 
-    /** Epoch-ms of the last ON_RESUME data load; used to skip redundant loads during tab switches. */
     private var lastResumeLoadMs = 0L
+    private var macrosJob: Job? = null
+    private var healthJob: Job? = null
+    private var detailJob: Job? = null
+
+    /** Which detail panel (if any) should load heavy intraday datasets. */
+    private var detailMetric: DetailMetric = DetailMetric.NONE
+
+    enum class DetailMetric { NONE, HEART_RATE, SLEEP }
 
     init {
-        // drop(1) skips the initial StateFlow replay — the screen calls loadDataOnResume()
-        // on first composition which covers the initial load. Only react to user-driven changes.
         settingsRepository.masterHealthConnectEnabled.drop(1).onEach {
             loadHealthConnect()
         }.launchIn(viewModelScope)
     }
 
     /**
-     * Call from ON_RESUME. Skips if called within 30 s of the previous load unless [force] is true,
-     * preventing jank from heavy data fetches during every tab-switch transition.
+     * Call from ON_RESUME. Skips if called within 30 s of the previous load unless [force] is true.
      */
     fun loadDataOnResume(force: Boolean = false) {
         val now = System.currentTimeMillis()
@@ -110,23 +116,34 @@ class HealthViewModel @Inject constructor(
 
     fun setWeekStartDay(day: DayOfWeek) {
         _weekStartDay.value = day
-        loadData()
-        loadHealthConnect(silent = true)
+        reloadWeekOnly()
     }
 
     fun nextWeek() {
         if (_weeksBack.value > 0) {
             _weeksBack.value -= 1
-            loadData()
-            loadHealthConnect(silent = true)
+            reloadWeekOnly()
         }
     }
 
     fun previousWeek() {
-        if (_weeksBack.value < 2) { // 2 weeks back max
+        if (_weeksBack.value < 2) {
             _weeksBack.value += 1
-            loadData()
-            loadHealthConnect(silent = true)
+            reloadWeekOnly()
+        }
+    }
+
+    /** Week navigation only needs history ranges — skip re-reading today's aggregates. */
+    private fun reloadWeekOnly() {
+        viewModelScope.launch {
+            val (start, end) = getWeekRange()
+            _weekHistory.value = repository.getDailySummariesBetween(start, end)
+            if (settingsRepository.masterHealthConnectEnabled.value &&
+                healthConnectRepository.isAvailable() &&
+                healthConnectRepository.hasAllPermissions()
+            ) {
+                _healthHistory.value = healthConnectRepository.readHistoryStatsBetween(start, end)
+            }
         }
     }
 
@@ -142,7 +159,8 @@ class HealthViewModel @Inject constructor(
     }
 
     fun loadData() {
-        viewModelScope.launch {
+        macrosJob?.cancel()
+        macrosJob = viewModelScope.launch {
             _summary.value = repository.getDailySummary(today)
             _logs.value = repository.getLogsForDate(today)
             val (start, end) = getWeekRange()
@@ -152,22 +170,41 @@ class HealthViewModel @Inject constructor(
 
     fun selectDate(date: LocalDate) {
         _selectedDate.value = date
-        loadDetailedData(date)
+        loadDetailedData(date, detailMetric)
     }
 
-    private fun loadDetailedData(date: LocalDate) {
-        viewModelScope.launch {
-            if (healthConnectRepository.hasAllPermissions()) {
-                _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
-                _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+    fun setDetailMetric(metric: DetailMetric) {
+        if (detailMetric == metric) return
+        detailMetric = metric
+        if (metric == DetailMetric.NONE) {
+            _intradayHeartRate.value = emptyList()
+            _detailedSleep.value = emptyList()
+            return
+        }
+        loadDetailedData(_selectedDate.value, metric)
+    }
+
+    private fun loadDetailedData(date: LocalDate, metric: DetailMetric) {
+        if (metric == DetailMetric.NONE) return
+        detailJob?.cancel()
+        detailJob = viewModelScope.launch {
+            if (!healthConnectRepository.hasAllPermissions()) return@launch
+            when (metric) {
+                DetailMetric.HEART_RATE -> {
+                    _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
+                }
+                DetailMetric.SLEEP -> {
+                    _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+                }
+                DetailMetric.NONE -> Unit
             }
         }
     }
 
     fun loadHealthConnect(permissionsGranted: Boolean = false, silent: Boolean = false) {
-        viewModelScope.launch {
+        healthJob?.cancel()
+        healthJob = viewModelScope.launch {
             if (permissionsGranted) {
-                // If permissions were just granted, make sure the master setting is enabled.
                 settingsRepository.setMasterHealthConnectEnabled(true)
             }
 
@@ -177,7 +214,6 @@ class HealthViewModel @Inject constructor(
                 return@launch
             }
 
-            // Also check master toggle
             if (!settingsRepository.masterHealthConnectEnabled.value) {
                 _healthConnectState.value = HealthConnectUiState.PermissionRequired
                 return@launch
@@ -197,16 +233,20 @@ class HealthViewModel @Inject constructor(
             }
 
             try {
-                val stats = healthConnectRepository.readTodayStats()
-                if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
-                    _healthConnectState.value = current.copy(isRefreshing = false, stats = stats)
-                } else {
-                    _healthConnectState.value = HealthConnectUiState.Success(stats)
+                coroutineScope {
+                    val statsDeferred = async { healthConnectRepository.readTodayStats() }
+                    val (start, end) = getWeekRange()
+                    val historyDeferred = async { healthConnectRepository.readHistoryStatsBetween(start, end) }
+                    val stats = statsDeferred.await()
+                    if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
+                        _healthConnectState.value = current.copy(isRefreshing = false, stats = stats)
+                    } else {
+                        _healthConnectState.value = HealthConnectUiState.Success(stats)
+                    }
+                    _healthHistory.value = historyDeferred.await()
                 }
-
-                val (start, end) = getWeekRange()
-                _healthHistory.value = healthConnectRepository.readHistoryStatsBetween(start, end)
-                loadDetailedData(_selectedDate.value)
+                // Detail datasets only when the HR/Sleep panel is open.
+                loadDetailedData(_selectedDate.value, detailMetric)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to read health data", e)
                 if (current !is HealthConnectUiState.Success) {

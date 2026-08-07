@@ -3,7 +3,6 @@ package com.macrotracker.ui.screens
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -174,6 +173,16 @@ fun HealthScreen(
     var selectedMetric by rememberSaveable { mutableStateOf(HealthMetric.STEPS) }
     var isEditMode by rememberSaveable { mutableStateOf(false) }
 
+    LaunchedEffect(selectedMetric) {
+        healthViewModel.setDetailMetric(
+            when (selectedMetric) {
+                HealthMetric.HEART_RATE -> HealthViewModel.DetailMetric.HEART_RATE
+                HealthMetric.SLEEP -> HealthViewModel.DetailMetric.SLEEP
+                else -> HealthViewModel.DetailMetric.NONE
+            },
+        )
+    }
+
     var foodName by rememberSaveable { mutableStateOf("") }
     var calories by rememberSaveable { mutableStateOf("") }
     var protein by rememberSaveable { mutableStateOf("") }
@@ -189,8 +198,8 @@ fun HealthScreen(
             Triple("RECENT_LOGS", "Recent Logs", Icons.Default.List)
         )
     }
-    val parsedConfigs by remember(healthWidgetOrder) {
-        derivedStateOf { parseWidgetConfig(healthWidgetOrder, defaultHealthWidgets) }
+    val parsedConfigs = remember(healthWidgetOrder) {
+        parseWidgetConfig(healthWidgetOrder, defaultHealthWidgets)
     }
 
     // Health Connect data states from the new ViewModel
@@ -234,8 +243,8 @@ fun HealthScreen(
     val todayFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d")) }
 
     val scope = rememberCoroutineScope()
-    val visibleConfigs by remember(parsedConfigs) {
-        derivedStateOf { parsedConfigs.filter { it.isVisible } }
+    val visibleConfigs = remember(parsedConfigs) {
+        parsedConfigs.filter { it.isVisible }
     }
     val dragState = rememberDraggableWidgetListState(
         items = visibleConfigs,
@@ -620,15 +629,10 @@ fun HealthScreen(
                                                     modifier = Modifier.padding(bottom = 4.dp)
                                                 )
                                             }
-                                            val animatedHeight by animateDpAsState(
-                                                targetValue = targetHeight,
-                                                animationSpec = MacroMotion.entranceSpring(),
-                                                label = "barHeight",
-                                            )
                                             Box(
                                                 modifier = Modifier
                                                     .width(20.dp)
-                                                    .height(animatedHeight)
+                                                    .height(targetHeight)
                                                     .clip(RoundedCornerShape(4.dp))
                                                     .background(if (isToday) Primary else PrimaryVariant),
                                             )
@@ -666,12 +670,11 @@ fun HealthScreen(
                                         .fillMaxWidth(),
                                 )
                             } else {
-                                val reversedLogs = remember(logs) { logs.asReversed() }
-                                reversedLogs.forEachIndexed { index, log ->
+                                val reversedLogs = remember(logs) { logs.asReversed().take(20) }
+                                reversedLogs.forEach { log ->
                                     MacroLogItem(
                                         log = log,
                                         onDelete = { healthViewModel.deleteLog(it) },
-                                        index = index,
                                     )
                                 }
                             }
@@ -1166,15 +1169,10 @@ private fun HealthHistoryCard(
                                 }
                             }
 
-                            val animatedHeight by animateDpAsState(
-                                targetValue = targetHeight,
-                                animationSpec = MacroMotion.entranceSpring(),
-                                label = "barHeight",
-                            )
                             Box(
                                 modifier = Modifier
                                     .width(if (isSelected) 28.dp else 24.dp)
-                                    .height(animatedHeight)
+                                    .height(targetHeight)
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(if (isSelected) color else color.copy(alpha = 0.3f)),
                             )
@@ -1317,32 +1315,54 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
             if (samples.isEmpty()) {
                 Text("No detailed heart rate data available.", color = TextSecondary, fontSize = 14.sp)
             } else {
+                val zone = remember { java.time.ZoneId.systemDefault() }
+                // Precompute hour fractions and downsample dense HR streams for draw/hit-test.
+                val chartPoints = remember(samples) {
+                    val raw = samples.map { sample ->
+                        val zdt = sample.time.atZone(zone)
+                        val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
+                        hourFraction to sample
+                    }
+                    if (raw.size <= 400) raw
+                    else {
+                        val step = (raw.size / 400).coerceAtLeast(1)
+                        raw.filterIndexed { index, _ -> index % step == 0 }
+                    }
+                }
+                val hourFractions = remember(chartPoints) { FloatArray(chartPoints.size) { chartPoints[it].first } }
                 var touchX by remember { mutableStateOf<Float?>(null) }
                 val textMeasurer = rememberTextMeasurer()
+
+                fun nearestIndex(clampedX: Float, width: Float): Int {
+                    if (hourFractions.isEmpty() || width <= 0f) return -1
+                    val target = (clampedX / width) * 24f
+                    var lo = 0
+                    var hi = hourFractions.lastIndex
+                    while (lo < hi) {
+                        val mid = (lo + hi) ushr 1
+                        if (hourFractions[mid] < target) lo = mid + 1 else hi = mid
+                    }
+                    val cand = lo
+                    val prev = (cand - 1).coerceAtLeast(0)
+                    return if (kotlin.math.abs(hourFractions[prev] - target) <=
+                        kotlin.math.abs(hourFractions[cand] - target)
+                    ) prev else cand
+                }
 
                 Canvas(modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Background)
-                    .pointerInput(samples) {
+                    .pointerInput(chartPoints) {
                         var lastClosestIndex = -1
-                        val width = size.width.toFloat()
-
                         detectDragGestures(
                             onDragStart = { touchX = it.x.coerceIn(0f, size.width.toFloat()) },
                             onDrag = { change, _ ->
-                                val clampedX = change.position.x.coerceIn(0f, size.width.toFloat())
+                                val width = size.width.toFloat()
+                                val clampedX = change.position.x.coerceIn(0f, width)
                                 touchX = clampedX
-                                val closestIndex = samples
-                                    .withIndex()
-                                    .minByOrNull {
-                                        val zdt = it.value.time.atZone(java.time.ZoneId.systemDefault())
-                                        val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
-                                        val px = (hourFraction / 24f) * width
-                                        kotlin.math.abs(px - clampedX)
-                                    }?.index ?: -1
-
+                                val closestIndex = nearestIndex(clampedX, width)
                                 if (closestIndex != -1 && closestIndex != lastClosestIndex) {
                                     haptics.tick()
                                     lastClosestIndex = closestIndex
@@ -1352,7 +1372,7 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
                             onDragCancel = { touchX = null }
                         )
                     }
-                    .pointerInput(samples) {
+                    .pointerInput(chartPoints) {
                         detectTapGestures(
                             onPress = {
                                 touchX = it.x.coerceIn(0f, size.width.toFloat())
@@ -1366,29 +1386,22 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
                     val width = size.width
                     val height = size.height
                     val minHr = 40f
-                    val maxHr = maxOf(180f, samples.maxOf { it.beatsPerMinute }.toFloat())
+                    val maxHr = maxOf(180f, chartPoints.maxOf { it.second.beatsPerMinute }.toFloat())
                     val hrRange = maxHr - minHr
 
                     val path = androidx.compose.ui.graphics.Path()
-                    val points = mutableListOf<Pair<Offset, HeartRateRecord.Sample>>()
+                    val points = ArrayList<Pair<Offset, HeartRateRecord.Sample>>(chartPoints.size)
 
-                    // Top margin to ensure tooltip doesn't draw out of bounds easily
                     val topMargin = 40.dp.toPx()
                     val graphHeight = height - topMargin
 
-                    samples.forEachIndexed { index, sample ->
-                        val zdt = sample.time.atZone(java.time.ZoneId.systemDefault())
-                        val hourFraction = zdt.hour + zdt.minute / 60f + zdt.second / 3600f
+                    chartPoints.forEachIndexed { index, (hourFraction, sample) ->
                         val x = (hourFraction / 24f) * width
                         val y = topMargin + graphHeight - ((sample.beatsPerMinute - minHr) / hrRange) * graphHeight
-
-                        val point = Offset(x, y)
-                        points.add(point to sample)
-
+                        points.add(Offset(x, y) to sample)
                         if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                     }
 
-                    // Draw the heart rate continuous line
                     drawPath(
                         path = path,
                         color = Color(0xFFEF5350),
@@ -1399,13 +1412,12 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
                         )
                     )
 
-                    // Draw interactive data overlay if currently touching/dragging
-                    if (touchX != null && points.isNotEmpty()) {
-                        val closest = points.minByOrNull { kotlin.math.abs(it.first.x - touchX!!) }
-                        if (closest != null) {
-                            val (point, sample) = closest
+                    val currentTouchX = touchX
+                    if (currentTouchX != null && points.isNotEmpty()) {
+                        val closestIndex = nearestIndex(currentTouchX, width)
+                        if (closestIndex in points.indices) {
+                            val (point, sample) = points[closestIndex]
 
-                            // Draw vertical indicator line
                             drawLine(
                                 color = Color.Gray.copy(alpha = 0.5f),
                                 start = Offset(point.x, topMargin),
@@ -1414,20 +1426,10 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
                                 pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                             )
 
-                            // Highlight the data point
-                            drawCircle(
-                                color = Color.White,
-                                radius = 4.dp.toPx(),
-                                center = point
-                            )
-                            drawCircle(
-                                color = Color(0xFFEF5350),
-                                radius = 3.dp.toPx(),
-                                center = point
-                            )
+                            drawCircle(color = Color.White, radius = 4.dp.toPx(), center = point)
+                            drawCircle(color = Color(0xFFEF5350), radius = 3.dp.toPx(), center = point)
 
-                            // Draw Tooltip showing exact time and bpm
-                            val zdt = sample.time.atZone(java.time.ZoneId.systemDefault())
+                            val zdt = sample.time.atZone(zone)
                             val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
                             val text = "${sample.beatsPerMinute} bpm\n${zdt.format(timeFmt)}"
 
@@ -1444,12 +1446,10 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
                             val tooltipWidth = textLayout.size.width + 16.dp.toPx()
                             val tooltipHeight = textLayout.size.height + 8.dp.toPx()
 
-                            // Constrain tooltip horizontally to not clip off screen
                             var tooltipX = point.x - tooltipWidth / 2f
                             if (tooltipX < 0) tooltipX = 0f
                             if (tooltipX + tooltipWidth > width) tooltipX = width - tooltipWidth
 
-                            // Draw background box for tooltip
                             drawRoundRect(
                                 color = Color(0xFF333333),
                                 topLeft = Offset(tooltipX, 0f),
@@ -1457,7 +1457,6 @@ private fun HeartRateDetailContent(samples: List<HeartRateRecord.Sample>, date: 
                                 cornerRadius = CornerRadius(6.dp.toPx())
                             )
 
-                            // Draw tooltip text
                             drawText(
                                 textLayoutResult = textLayout,
                                 topLeft = Offset(tooltipX + 8.dp.toPx(), 4.dp.toPx())

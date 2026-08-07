@@ -147,16 +147,20 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val todayFormatted = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
-    val greeting = when (java.time.LocalTime.now().hour) {
-        in 0..11 -> "Good Morning"
-        in 12..16 -> "Good Afternoon"
-        in 17..20 -> "Good Evening"
-        else -> "Good Night"
+    val todayFormatted = remember {
+        LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+    }
+    val greeting = remember {
+        when (java.time.LocalTime.now().hour) {
+            in 0..11 -> "Good Morning"
+            in 12..16 -> "Good Afternoon"
+            in 17..20 -> "Good Evening"
+            else -> "Good Night"
+        }
     }
 
-    val parsedConfigs by remember(homeWidgetOrder) {
-        derivedStateOf { parseWidgetConfig(homeWidgetOrder, defaultHomeWidgets) }
+    val parsedConfigs = remember(homeWidgetOrder) {
+        parseWidgetConfig(homeWidgetOrder, defaultHomeWidgets)
     }
 
     PullToRefreshBox(
@@ -171,8 +175,8 @@ fun HomeScreen(
         },
         modifier = Modifier.fillMaxSize().background(Background),
     ) {
-        val visibleConfigs by remember(parsedConfigs) {
-            derivedStateOf { parsedConfigs.filter { it.isVisible } }
+        val visibleConfigs = remember(parsedConfigs) {
+            parsedConfigs.filter { it.isVisible }
         }
         val dragState = rememberDraggableWidgetListState(
             items = visibleConfigs,
@@ -186,6 +190,7 @@ fun HomeScreen(
         val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
         val visibleWidgetIds = rememberVisibleHomeWidgetIds(listState)
 
+        // Load data for newly visible widgets only; ViewModel tracks already-loaded IDs.
         LaunchedEffect(visibleWidgetIds) {
             if (visibleWidgetIds.isNotEmpty()) {
                 viewModel.refreshAll(
