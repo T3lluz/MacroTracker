@@ -363,15 +363,34 @@ fun F1Card(
                         color = TextPrimary,
                         letterSpacing = 0.6.sp,
                     )
-                    val seasonYear = (state as? F1UiState.Success)?.f1Data?.schedule?.firstOrNull()?.raceDate
+                    val successData = (state as? F1UiState.Success)?.f1Data
+                    val seasonYear = successData?.schedule?.firstOrNull()?.raceDate
                         ?.take(4)
                         ?: java.time.Year.now().value.toString()
+                    val nextRace = successData?.schedule
+                        ?.filter { !isPast(it.raceDate) }
+                        ?.minByOrNull { daysUntil(it.raceDate) }
+                    val headerSub = when {
+                        !expanded && nextRace != null -> {
+                            val days = daysUntil(nextRace.raceDate)
+                            val name = shortGP(nextRace.raceName)
+                            when {
+                                days == 0L -> "NEXT · $name · TODAY"
+                                days in 1..7 -> "NEXT · $name · ${days}D"
+                                else -> "NEXT · $name"
+                            }
+                        }
+                        expanded -> "$seasonYear · HUB"
+                        else -> seasonYear
+                    }
                     Text(
-                        "$seasonYear · LIVE HUB",
+                        headerSub,
                         fontSize = 11.sp,
                         color = TextSecondary,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.4.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 val headerSuccess = state as? F1UiState.Success
@@ -415,7 +434,10 @@ fun F1Card(
                     )
                 }
                 is F1UiState.Success -> {
-                    F1CollapsedWidget(state.f1Data)
+                    // Collapsed glance only — expanded hub starts fresh at the tabs
+                    if (!expanded) {
+                        F1CollapsedWidget(state.f1Data)
+                    }
                 }
             }
 
@@ -530,35 +552,95 @@ private fun F1CollapsedWidget(data: F1Standings) {
         data.schedule.filter { !isPast(it.raceDate) }.minByOrNull { daysUntil(it.raceDate) }
     }
     val completedRounds = remember(data.schedule) { data.schedule.count { isPast(it.raceDate) } }
-    val racesLeft = (data.schedule.size - completedRounds).coerceAtLeast(0)
     val leader = data.driverStandings.firstOrNull()
-    val chase = data.driverStandings.getOrNull(1)
+    val lastWinner = data.lastRaceResults?.firstOrNull { it.position == 1 }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Spacer(Modifier.height(2.dp))
-        if (leader != null) {
-            ChampionshipLeaderHero(
-                leader = leader,
-                chase = chase,
-                racesDone = completedRounds,
-                racesLeft = racesLeft,
-                compact = true,
-            )
-        }
         if (next != null) {
             CompactNextRace(
                 race = next,
                 days = daysUntil(next.raceDate),
                 totalRounds = data.schedule.size,
                 completedRounds = completedRounds,
+                showTrack = true,
             )
         }
-        CompactFormLabStrip(data, completedRounds, racesLeft)
-        CompactChasePack(data.driverStandings.drop(1).take(3), leader)
-        CompactLastRaceRow(data)
+        CompactSeasonPulse(
+            leader = leader,
+            lastWinner = lastWinner,
+            lastRaceName = data.lastRaceName,
+            completedRounds = completedRounds,
+            totalRounds = data.schedule.size,
+        )
+    }
+}
+
+/** One-line WDC / last-winner context under the next-race card. */
+@Composable
+private fun CompactSeasonPulse(
+    leader: SeasonDriverStanding?,
+    lastWinner: RaceResult?,
+    lastRaceName: String?,
+    completedRounds: Int,
+    totalRounds: Int,
+) {
+    if (leader == null && lastWinner == null) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SharpShape)
+            .background(RowSurface)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (leader != null) {
+            Text("WDC", color = F1Gold, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+            Text(leader.driverAcronym, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Black)
+            Text(
+                "${leader.points.toInt()} PTS",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (leader != null && lastWinner != null) {
+            Text("·", color = Hairline, fontSize = 12.sp)
+        }
+        if (lastWinner != null) {
+            Text("LAST", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+            Text(
+                lastWinner.driverAcronym ?: "—",
+                color = TextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+            )
+            lastRaceName?.let {
+                Text(
+                    shortGP(it),
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+        if (totalRounds > 0) {
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                "$completedRounds/$totalRounds",
+                color = TextSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
@@ -741,10 +823,13 @@ private fun CompactNextRace(
     days: Long,
     totalRounds: Int,
     completedRounds: Int,
+    showTrack: Boolean = false,
 ) {
     val isSoon = days in 0..7
     val accent = if (isSoon) F1Red else TextPrimary
     val localRaceTime = remember(race.raceDate, race.raceTime) { formatLocalTime(race.raceDate, race.raceTime) }
+    val trackUrl = remember(race.circuitId) { race.circuitId?.let { getCircuitSvgUrl(it) } }
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -761,7 +846,7 @@ private fun CompactNextRace(
             Box(
                 modifier = Modifier
                     .width(4.dp)
-                    .height(46.dp)
+                    .height(if (showTrack) 64.dp else 46.dp)
                     .background(accent),
             )
             Spacer(Modifier.width(10.dp))
@@ -800,233 +885,90 @@ private fun CompactNextRace(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            Column(horizontalAlignment = Alignment.End) {
                 Text(
                     when {
                         days == 0L -> "TODAY"
                         days < 0 -> "—"
-                        else -> "${days}D"
+                        else -> "IN ${days}D"
                     },
                     color = accent,
                     fontWeight = FontWeight.Black,
-                    fontSize = 22.sp,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
-                if (completedRounds > 0 && totalRounds > 0) {
+            }
+            if (showTrack && trackUrl != null) {
+                Spacer(Modifier.width(8.dp))
+                val request = remember(trackUrl) {
+                    ImageRequest.Builder(context)
+                        .data(trackUrl)
+                        .size(280, 180)
+                        .crossfade(false)
+                        .setHeader(
+                            "User-Agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        )
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build()
+                }
+                Box(
+                    modifier = Modifier
+                        .width(96.dp)
+                        .height(64.dp)
+                        .clip(SharpShape)
+                        .background(Color(0xFF080D14)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SubcomposeAsyncImage(
+                        model = request,
+                        contentDescription = "${shortGP(race.raceName)} circuit",
+                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                        contentScale = ContentScale.Fit,
+                    ) {
+                        when (painter.state) {
+                            is AsyncImagePainter.State.Loading ->
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = accent.copy(alpha = 0.5f),
+                                )
+                            is AsyncImagePainter.State.Error ->
+                                Text(
+                                    "TRACK",
+                                    color = TextSecondary.copy(alpha = 0.4f),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            else -> SubcomposeAsyncImageContent()
+                        }
+                    }
+                }
+            } else {
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "$completedRounds/$totalRounds done",
-                        color = TextSecondary,
-                        fontSize = 10.sp,
+                        when {
+                            days == 0L -> "TODAY"
+                            days < 0 -> "—"
+                            else -> "${days}D"
+                        },
+                        color = accent,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 22.sp,
                     )
+                    if (completedRounds > 0 && totalRounds > 0) {
+                        Text(
+                            "$completedRounds/$totalRounds done",
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                        )
+                    }
                 }
             }
         }
         if (isSoon) {
             HorizontalDivider(color = Hairline, thickness = 0.5.dp)
             LiveCountdown(race.raceDate, race.raceTime, accent)
-        }
-    }
-}
-
-@Composable
-private fun CompactFormLabStrip(data: F1Standings, racesDone: Int, racesLeft: Int) {
-    val leader = data.driverStandings.firstOrNull() ?: return
-    val chase = data.driverStandings.getOrNull(1)
-    val wcc = data.constructorStandings.firstOrNull()
-    val lab = remember(leader, chase, racesDone, racesLeft) {
-        computeDriverFormLab(leader, chase, racesDone, racesLeft)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(SharpShape)
-            .background(RowSurface)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("FORM LAB", color = LabAmber, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            Text(lab.clinchHint.uppercase(), color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            LabMetric("WIN%", "${lab.winRate}%", Modifier.weight(1f))
-            LabMetric("POD%", "${lab.podiumRate}%", Modifier.weight(1f))
-            LabMetric("PPR", String.format("%.1f", lab.ptsPerRace), Modifier.weight(1f))
-            LabMetric(
-                "WCC",
-                wcc?.constructorName?.split(" ")?.first()?.take(7) ?: "—",
-                Modifier.weight(1f),
-            )
-        }
-        Text(
-            lab.momentumLabel + " · " + lab.momentumDetail,
-            color = TextPrimary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun LabMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
-        Text(label, color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-        Text(value, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun CompactChasePack(chasers: List<SeasonDriverStanding>, leader: SeasonDriverStanding?) {
-    if (chasers.isEmpty() || leader == null) return
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(SharpShape)
-            .background(RowSurface)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("THE CHASE", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-        chasers.forEach { driver ->
-            val tc = safeTeamColor(driver.teamColor)
-            val gap = (leader.points - driver.points).toInt()
-            val ratio = if (leader.points > 0) (driver.points / leader.points).toFloat().coerceIn(0f, 1f) else 0f
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "P${driver.position}",
-                    color = medalColor(driver.position) ?: TextSecondary,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 12.sp,
-                    modifier = Modifier.width(28.dp),
-                )
-                DriverHeadshot(
-                    url = driver.headshotUrl,
-                    driverName = driver.driverName,
-                    driverAcronym = driver.driverAcronym,
-                    driverNumber = driver.driverNumber,
-                    teamColor = tc,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(driver.driverAcronym, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("−$gap", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(tc.copy(alpha = 0.15f)),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(ratio)
-                                .fillMaxHeight()
-                                .background(tc),
-                        )
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "${driver.points.toInt()}",
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 14.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompactLastRaceRow(data: F1Standings) {
-    val results = data.lastRaceResults ?: return
-    if (results.isEmpty()) return
-    val podium = results.filter { it.position in 1..3 }
-    val fl = results.firstOrNull { it.fastestLap }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(SharpShape)
-            .background(RowSurface)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("LAST RACE", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            data.lastRaceName?.let {
-                Text(shortGP(it), color = TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        if (podium.size >= 3) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                podium.take(3).forEach { r ->
-                    val tc = safeTeamColor(r.teamColor)
-                    val acronym = r.driverAcronym
-                        ?: r.driverName.split(" ").lastOrNull()?.take(3)?.uppercase()
-                        ?: "—"
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "P${r.position}",
-                            color = medalColor(r.position) ?: TextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(tc),
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(acronym, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-                if (fl != null) {
-                    val flAcronym = fl.driverAcronym
-                        ?: fl.driverName.split(" ").lastOrNull()?.take(3)?.uppercase()
-                        ?: "FL"
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("FL", color = FL_Purple, fontSize = 10.sp, fontWeight = FontWeight.Black)
-                        Text(flAcronym, color = FL_Purple, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        } else {
-            val winner = results.first()
-            Text(
-                "${winner.driverAcronym ?: winner.driverName} · ${winner.constructorName}",
-                color = TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -1094,33 +1036,37 @@ private fun CircuitStat(label: String, value: String) {
     }
 }
 
-// ── Track SVG URL mapping ─────────────────────────────────────────────────────
-private fun getCircuitSvgUrl(circuitId: String): String? = when (circuitId) {
-    "albert_park"   -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Australia_Circuit.png.transform/7col/image.png"
-    "bahrain"       -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Bahrain_Circuit.png.transform/7col/image.png"
-    "jeddah"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244990/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Saudi_Arabia_Circuit.png.transform/7col/image.png"
-    "shanghai"      -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/China_Circuit.png.transform/7col/image.png"
-    "miami"         -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244990/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Miami_Circuit.png.transform/7col/image.png"
-    "imola"         -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Emilia_Romagna_Circuit.png.transform/7col/image.png"
-    "monaco"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Monaco_Circuit.png.transform/7col/image.png"
-    "villeneuve"    -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Canada_Circuit.png.transform/7col/image.png"
-    "catalunya"     -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Spain_Circuit.png.transform/7col/image.png"
-    "red_bull_ring" -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Austria_Circuit.png.transform/7col/image.png"
-    "silverstone"   -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Great_Britain_Circuit.png.transform/7col/image.png"
-    "hungaroring"   -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Hungary_Circuit.png.transform/7col/image.png"
-    "spa"           -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Belgium_Circuit.png.transform/7col/image.png"
-    "zandvoort"     -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Netherlands_Circuit.png.transform/7col/image.png"
-    "monza"         -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Italy_Circuit.png.transform/7col/image.png"
-    "baku"          -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Baku_Circuit.png.transform/7col/image.png"
-    "marina_bay"    -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244990/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Singapore_Circuit.png.transform/7col/image.png"
-    "suzuka"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Japan_Circuit.png.transform/7col/image.png"
-    "austin"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/USA_Circuit.png.transform/7col/image.png"
-    "rodriguez"     -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Mexico_Circuit.png.transform/7col/image.png"
-    "interlagos"    -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244988/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Brazil_Circuit.png.transform/7col/image.png"
-    "las_vegas"     -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244990/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Las_Vegas_Circuit.png.transform/7col/image.png"
-    "losail"        -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Qatar_Circuit.png.transform/7col/image.png"
-    "yas_marina"    -> "https://media.formula1.com/image/upload/f_auto/q_auto/v1677244989/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Abu_Dhabi_Circuit.png.transform/7col/image.png"
-    else            -> null
+// ── Track map URL mapping (official 2026 F1 CDN detailed circuits) ────────────
+private fun getCircuitSvgUrl(circuitId: String): String? {
+    val slug = when (circuitId) {
+        "albert_park" -> "melbourne"
+        "shanghai" -> "shanghai"
+        "suzuka" -> "suzuka"
+        "miami" -> "miami"
+        "villeneuve" -> "montreal"
+        "monaco" -> "montecarlo"
+        "catalunya" -> "catalunya"
+        "red_bull_ring" -> "spielberg"
+        "silverstone" -> "silverstone"
+        "spa" -> "spafrancorchamps"
+        "hungaroring" -> "hungaroring"
+        "zandvoort" -> "zandvoort"
+        "monza" -> "monza"
+        "madring" -> "madring"
+        "baku" -> "baku"
+        "sepang" -> "kualalumpur"
+        "marina_bay" -> "singapore"
+        "americas", "austin" -> "austin"
+        "rodriguez" -> "mexicocity"
+        "interlagos" -> "interlagos"
+        "vegas", "las_vegas" -> "lasvegas"
+        "losail" -> "lusail"
+        "yas_marina" -> "yasmarinacircuit"
+        "jeddah" -> "jeddah"
+        "imola" -> "imola"
+        else -> null
+    } ?: return null
+    return "https://media.formula1.com/image/upload/c_fit,h_704/q_auto/v1740000001/common/f1/2026/track/2026track${slug}detailed.webp"
 }
 
 // ── Track Visualization ───────────────────────────────────────────────────────
@@ -2232,9 +2178,9 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
                         if (!race.circuitId.isNullOrBlank()) {
                             TrackVisualization(circuitId = race.circuitId, accentColor = if (isNext) F1Red else TextPrimary, raceName = shortGP(race.raceName))
                         }
-                        race.fp1Date?.let    { SessionRow("FP1",   it, null,                TextSecondary) }
-                        race.fp2Date?.let    { SessionRow("FP2",   it, null,                TextSecondary) }
-                        race.fp3Date?.let    { SessionRow("FP3",   it, null,                TextSecondary) }
+                        race.fp1Date?.let    { SessionRow("FP1",   it, race.fp1Time,        TextSecondary) }
+                        race.fp2Date?.let    { SessionRow("FP2",   it, race.fp2Time,        TextSecondary) }
+                        race.fp3Date?.let    { SessionRow("FP3",   it, race.fp3Time,        TextSecondary) }
                         race.qualifyingDate?.let { SessionRow("Quali", it, race.qualifyingTime, TextPrimary) }
                         race.sprintDate?.let     { SessionRow("Sprint", it, race.sprintTime, SprintPink) }
                         SessionRow("Race", race.raceDate, race.raceTime, if (isNext) F1Red else TextPrimary, bold = true)

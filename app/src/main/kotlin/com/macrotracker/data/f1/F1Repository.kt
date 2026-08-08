@@ -38,7 +38,7 @@ class F1RepositoryImpl @Inject constructor(
         private const val KEY_FULL_SNAPSHOT = "f1_snapshot_json"
         private const val KEY_LEGACY_DRIVERS = "drivers_json"
         /** Bump when headshot/logo URL scheme changes so stale disk cache is discarded. */
-        private const val CACHE_VERSION = 3
+        private const val CACHE_VERSION = 4
         private const val KEY_CACHE_VERSION = "cache_version"
     }
 
