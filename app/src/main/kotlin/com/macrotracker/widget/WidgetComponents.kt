@@ -93,12 +93,6 @@ fun classify(w: Dp, h: Dp): WSize = when {
 }
 
 /** How many columns of cards are comfortable at a given width */
-fun cardCols(w: Dp): Int = when {
-    w >= 340.dp -> 4
-    w >= 260.dp -> 3
-    w >= 180.dp -> 2
-    else        -> 1
-}
 
 // ─────────────────────────────────────────────────────────────────
 //  SCALE TOKENS
@@ -420,37 +414,6 @@ fun WidgetProgressBar(
     Box(trackMod) {
         if (progress > 0f)
             Box(GlanceModifier.width(filled).height(sc.barH).cornerRadius(sc.barCorner).background(accent)) {}
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  LABELED BAR  (label + value + bar)
-// ─────────────────────────────────────────────────────────────────
-
-@Composable
-fun LabeledBar(
-    label: String,
-    value: String,
-    progress: Float,
-    accent: ColorProvider,
-    track: ColorProvider,
-    c: WidgetClr,
-    sc: WScale,
-    contentWidth: Dp? = null,
-) {
-    val pctInt = (progress * 100).toInt().coerceIn(0, 100)
-    Column(GlanceModifier.fillMaxWidth()) {
-        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = TextStyle(fontSize = sc.fxs, fontWeight = FontWeight.Bold, color = c.text), maxLines = 1)
-            Spacer(GlanceModifier.defaultWeight())
-            Text(
-                "$value  $pctInt%",
-                style = TextStyle(fontSize = sc.fxs, fontWeight = FontWeight.Bold, color = accent),
-                maxLines = 1,
-            )
-        }
-        Spacer(GlanceModifier.height(sc.spaceXs))
-        WidgetProgressBar(progress, accent, track, sc, contentWidth = contentWidth)
     }
 }
 

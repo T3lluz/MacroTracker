@@ -6,8 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import com.macrotracker.ui.theme.MacroMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -147,20 +146,17 @@ fun PermissionsScreen(onContinue: () -> Unit) {
         grantedState.value = updated
     }
 
+    // Alpha-only reveal — NavHost already owns the horizontal slide entrance.
     val headerAlpha = remember { Animatable(0f) }
-    val headerY = remember { Animatable(20f) }
     val contentAlpha = remember { Animatable(0f) }
-    val contentY = remember { Animatable(20f) }
 
     LaunchedEffect(Unit) {
         launch {
-            headerAlpha.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
-            headerY.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
+            headerAlpha.animateTo(1f, MacroMotion.revealTween())
         }
         delay(150)
         launch {
-            contentAlpha.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
-            contentY.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
+            contentAlpha.animateTo(1f, MacroMotion.revealTween())
         }
     }
 
@@ -176,7 +172,6 @@ fun PermissionsScreen(onContinue: () -> Unit) {
         Column(
             modifier = Modifier.graphicsLayer {
                 alpha = headerAlpha.value
-                translationY = headerY.value
             }
         ) {
             Text(
@@ -209,7 +204,6 @@ fun PermissionsScreen(onContinue: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .graphicsLayer {
                     alpha = contentAlpha.value
-                    translationY = contentY.value
                 },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

@@ -23,6 +23,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.macrotracker.BuildConfig
 import com.macrotracker.data.remote.AiProvider
 import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.AppUpdateDialog
@@ -53,10 +54,14 @@ fun MainScreen(
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState()
     val openAiApiKey by settingsViewModel.openAiApiKey.collectAsState()
     val openRouterApiKey by settingsViewModel.openRouterApiKey.collectAsState()
+    // Align with NutritionAiRepository: Settings key wins, BuildConfig is fallback.
     val hasAiApiKey = when (aiProvider) {
-        AiProvider.GEMINI -> geminiApiKey.isNotBlank()
-        AiProvider.OPENAI -> openAiApiKey.isNotBlank()
-        AiProvider.OPENROUTER -> openRouterApiKey.isNotBlank()
+        AiProvider.GEMINI ->
+            geminiApiKey.isNotBlank() || BuildConfig.GEMINI_API_KEY.isNotBlank()
+        AiProvider.OPENAI ->
+            openAiApiKey.isNotBlank() || BuildConfig.OPENAI_API_KEY.isNotBlank()
+        AiProvider.OPENROUTER ->
+            openRouterApiKey.isNotBlank() || BuildConfig.OPENROUTER_API_KEY.isNotBlank()
     }
 
     val updateState by appUpdateViewModel.state.collectAsState()
@@ -113,6 +118,7 @@ fun MainScreen(
             onboardingCompleted = onboardingCompleted,
             onOnboardingComplete = onOnboardingComplete,
             showSettingsUpdateBadge = updateAvailable,
+            hasAiApiKey = hasAiApiKey,
         )
 
         if (!splashShown) {
@@ -154,6 +160,7 @@ private fun MainScreenScaffold(
     onboardingCompleted: Boolean,
     onOnboardingComplete: () -> Unit,
     showSettingsUpdateBadge: Boolean,
+    hasAiApiKey: Boolean,
 ) {
     val navHostModifier = remember { Modifier.statusBarsPadding() }
 
@@ -161,6 +168,20 @@ private fun MainScreenScaffold(
     val currentRoute = navBackStackEntry?.destination?.route
     val isMainTabRoute = items.any { it.route == currentRoute }
     val context = LocalContext.current
+
+    // If the AI key is cleared while parked on AI, leave that route so the
+    // bottom bar does not vanish with no selected tab.
+    LaunchedEffect(hasAiApiKey, currentRoute) {
+        if (!hasAiApiKey && currentRoute == Screen.AI.route) {
+            navController.navigate(Screen.Home.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     // Predictive back on root tabs: collect progress so the system gesture
     // can animate, then finish only if the gesture completes.

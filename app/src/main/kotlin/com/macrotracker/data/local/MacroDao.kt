@@ -45,11 +45,5 @@ interface MacroDao {
 
     @Query("SELECT * FROM goals WHERE id = 0")
     suspend fun getGoals(): GoalsEntity?
-
-    @Query("DELETE FROM macro_logs")
-    suspend fun clearAllLogs()
-
-    @Query("DELETE FROM goals")
-    suspend fun clearAllGoals()
 }
 

@@ -144,16 +144,6 @@ class WeatherRepository @Inject constructor(
     /** Epoch-ms of the last successful network weather fetch (0 if never / cleared). */
     val lastFetchTimeMs: Long get() = cacheTimestamp
 
-    /** True when in-memory weather is still within the TTL for this lat/lon. */
-    fun hasFreshCache(lat: Double, lon: Double): Boolean {
-        val now = System.currentTimeMillis()
-        val roundedLat = (lat * 100).roundToLong().toDouble() / 100
-        val roundedLon = (lon * 100).roundToLong().toDouble() / 100
-        return cachedWeather != null &&
-            roundedLat == cachedLat &&
-            roundedLon == cachedLon &&
-            now - cacheTimestamp < CACHE_TTL_MS
-    }
 
     /** Force a refresh by clearing the cache for the current location. */
     fun clearCache() {

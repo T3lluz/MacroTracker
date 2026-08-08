@@ -7,6 +7,7 @@ import com.macrotracker.data.local.MacroRepository
 import com.macrotracker.data.remote.NutritionAiRepository
 import com.macrotracker.data.remote.ScanResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -86,10 +87,13 @@ class CameraScanViewModel @Inject constructor(
 
     fun setPhase(p: ScanPhase) { _phase.value = p }
 
+    private var analyzeJob: Job? = null
+
     fun analyzeImage(base64: String) {
+        analyzeJob?.cancel()
         _scanning.value = true
         _error.value = null
-        viewModelScope.launch {
+        analyzeJob = viewModelScope.launch {
             try {
                 val scanResult = aiRepo.analyzeImageWithGemini(base64)
                 _result.value = scanResult
@@ -99,18 +103,27 @@ class CameraScanViewModel @Inject constructor(
                 _servingsOverride.value = if (scanResult.servingsPerContainer > 0) formatDouble(scanResult.servingsPerContainer) else "1"
                 _servingSizeOverride.value = formatNum(scanResult.servingSizeGrams)
                 _packageWeightOverride.value = formatNum(scanResult.packageWeightGrams)
-                
+
                 // Defaults for consumption
                 _amountEaten.value = "1"
                 _unitEaten.value = "servings"
 
                 _phase.value = ScanPhase.RESULT
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _error.value = e.message ?: "Scan failed."
             } finally {
                 _scanning.value = false
+                analyzeJob = null
             }
         }
+    }
+
+    /** Cancel an in-flight label analysis so the user is never stuck waiting on OkHttp. */
+    fun cancelAnalyze() {
+        analyzeJob?.cancel()
+        analyzeJob = null
+        _scanning.value = false
     }
 
     fun getLogSummary(

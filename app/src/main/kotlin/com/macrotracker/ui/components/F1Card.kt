@@ -61,7 +61,6 @@ private val F1Red      = Color(0xFFE10600)
 private val F1Gold     = Color(0xFFD4AF37)
 private val F1Silver   = Color(0xFFA8B0BC)
 private val F1Bronze   = Color(0xFFB87333)
-private val CardBg     = Color(0xFF070B12)
 private val SprintPink = Color(0xFFE879B8)
 private val FL_Purple  = Color(0xFFA855F7)
 private val RowSurface = Color(0xFF101820)
@@ -476,12 +475,12 @@ fun F1Card(
                             val active = selectedTab == tab
                             val bg by animateColorAsState(
                                 if (active) F1Red else RowSurface,
-                                tween(160),
+                                MacroMotion.colorTween(160),
                                 label = "tabBg",
                             )
                             val fg by animateColorAsState(
                                 if (active) Color.White else TextSecondary,
-                                tween(160),
+                                MacroMotion.colorTween(160),
                                 label = "fg",
                             )
                             Text(
@@ -1313,7 +1312,7 @@ private fun getTrackPath(circuitId: String): List<TrackPoint> = when (circuitId)
 private fun TrackFallbackCanvas(circuitId: String, accentColor: Color, raceName: String) {
     val trackPoints = remember(circuitId) { getTrackPath(circuitId) }
     val drawProgress = remember { Animatable(0f) }
-    LaunchedEffect(circuitId) { drawProgress.snapTo(0f); drawProgress.animateTo(1f, tween(1200, easing = LinearEasing)) }
+    LaunchedEffect(circuitId) { drawProgress.snapTo(0f); drawProgress.animateTo(1f, MacroMotion.drawTween(1200)) }
     val progress = drawProgress.value
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) { drawTrackPath(trackPoints, accentColor, progress, size) }
@@ -1590,8 +1589,8 @@ private fun DriverStandingRow(
         }
         AnimatedVisibility(
             expanded,
-            enter = expandVertically(tween(200)) + fadeIn(),
-            exit = shrinkVertically(tween(150)) + fadeOut(),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
         ) {
             Row(
                 modifier = Modifier
@@ -1710,7 +1709,7 @@ fun ConstructorStandingsList(data: F1Standings) {
         teams.forEachIndexed { i, team ->
             val tc = safeTeamColor(team.teamColor)
             val ratio = (team.points / maxPts).toFloat().coerceIn(0f, 1f)
-            val bar by animateFloatAsState(ratio, tween(500 + i * 40, easing = FastOutSlowInEasing), label = "bar$i")
+            val bar by animateFloatAsState(ratio, MacroMotion.entranceSpring(), label = "bar$i")
             val gap = leader?.let { if (team.position == 1) null else (it.points - team.points).toInt() }
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Row(
@@ -1813,7 +1812,7 @@ fun ChampionshipBattleTab(data: F1Standings) {
                 val active = battleMode == i
                 val fg by animateColorAsState(
                     if (active) TextPrimary else TextSecondary.copy(alpha = 0.7f),
-                    tween(160),
+                    MacroMotion.colorTween(160),
                     label = "bmode$i",
                 )
                 Column(
@@ -1841,8 +1840,7 @@ fun ChampionshipBattleTab(data: F1Standings) {
             targetState = battleMode,
             label = "battleContent",
             transitionSpec = {
-                (fadeIn(tween(180)) + slideInHorizontally(tween(200)) { if (targetState > initialState) it / 10 else -it / 10 })
-                    .togetherWith(fadeOut(tween(120)) + slideOutHorizontally(tween(120)) { if (targetState > initialState) -it / 10 else it / 10 })
+                MacroMotion.subtleHorizontalSwitch(toRight = targetState > initialState)
             }
         ) { mode ->
             when (mode) {
@@ -1867,7 +1865,7 @@ private fun WDCBattleContent(drivers: List<SeasonDriverStanding>, haptics: com.m
             val gap = (d1.points - d2.points).toInt()
             val total = d1.points + d2.points
             val ratio1 = if (total > 0) (d1.points / total).toFloat() else 0.5f
-            val animRatio by animateFloatAsState(ratio1, tween(700, easing = FastOutSlowInEasing), label = "gapbar")
+            val animRatio by animateFloatAsState(ratio1, MacroMotion.entranceSpring(), label = "gapbar")
 
             Column(
                 modifier = Modifier
@@ -1912,7 +1910,7 @@ private fun WDCBattleContent(drivers: List<SeasonDriverStanding>, haptics: com.m
         top5.forEachIndexed { i, d ->
             val tc = safeTeamColor(d.teamColor)
             val ratio = (d.points / maxPts).toFloat().coerceIn(0f, 1f)
-            val bar by animateFloatAsState(ratio, tween(500 + i * 50, easing = FastOutSlowInEasing), label = "wdc$i")
+            val bar by animateFloatAsState(ratio, MacroMotion.entranceSpring(), label = "wdc$i")
             val isSelected = selectedDriver == d.driverAcronym
 
             Column(
@@ -1953,7 +1951,7 @@ private fun WDCBattleContent(drivers: List<SeasonDriverStanding>, haptics: com.m
                     }
                     Text("${d.points.toInt()}", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                AnimatedVisibility(isSelected) {
+                AnimatedVisibility(isSelected, enter = MacroMotion.expandEnter, exit = MacroMotion.expandExit) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp, start = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -2031,7 +2029,7 @@ private fun WCCBattleContent(constructors: List<SeasonConstructorStanding>, hapt
         constructors.take(10).forEachIndexed { i, t ->
             val tc = safeTeamColor(t.teamColor)
             val ratio = (t.points / maxTeamPts).toFloat().coerceIn(0f, 1f)
-            val bar by animateFloatAsState(ratio, tween(400, easing = FastOutSlowInEasing), label = "wcc$i")
+            val bar by animateFloatAsState(ratio, MacroMotion.entranceSpring(), label = "wcc$i")
             val isSelected = selectedTeam == t.constructorName
 
             Row(
@@ -2090,7 +2088,7 @@ private fun TeamDuelsContent(drivers: List<SeasonDriverStanding>, @Suppress("UNU
             val tc = safeTeamColor(d1.teamColor)
             val total = d1.points + d2.points
             val ratio1 = if (total > 0) (d1.points / total).toFloat() else 0.5f
-            val aRatio by animateFloatAsState(ratio1, tween(700, easing = FastOutSlowInEasing), label = "tm_${d1.driverAcronym}")
+            val aRatio by animateFloatAsState(ratio1, MacroMotion.entranceSpring(), label = "tm_${d1.driverAcronym}")
             val ptsDiff = (d1.points - d2.points).toInt()
 
             Column(
@@ -2315,7 +2313,7 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
                         )
                     }
                 }
-                AnimatedVisibility(isExp, enter = expandVertically(tween(200)) + fadeIn(), exit = shrinkVertically(tween(150)) + fadeOut()) {
+                AnimatedVisibility(isExp, enter = MacroMotion.expandEnter, exit = MacroMotion.expandExit) {
                     RaceSessionDetail(
                         race = race,
                         accentColor = TextPrimary,
@@ -2765,7 +2763,7 @@ private fun PodiumDisplay(p1: RaceResult, p2: RaceResult, p3: RaceResult) {
 
 @Composable
 private fun PodiumDriver(result: RaceResult, pos: Int) {
-    val medal = medalColor(pos)!!
+    val medal = medalColor(pos) ?: F1Bronze
     val tc = safeTeamColor(result.teamColor)
     val acronym = result.driverAcronym ?: result.driverName.split(" ").lastOrNull()?.take(3)?.uppercase() ?: "???"
     val headshotSize = if (pos == 1) 60.dp else 48.dp

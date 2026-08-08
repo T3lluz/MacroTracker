@@ -6,10 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import com.macrotracker.ui.theme.MacroMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -777,7 +774,8 @@ fun SettingsScreen(
             text = "🎓 Replay Tutorial",
             onClick = {
                 haptics.click()
-                onboardingViewModel.resetOnboarding()
+                // Keep onboardingCompleted=true so Back from Welcome returns to Settings
+                // instead of leaving the user on Home with incomplete onboarding.
                 onReplayTutorial()
             },
             variant = ButtonVariant.SECONDARY,
@@ -1042,8 +1040,8 @@ private fun ReleaseNotesDropdown(
 
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
         ) {
             Column(
                 modifier = Modifier

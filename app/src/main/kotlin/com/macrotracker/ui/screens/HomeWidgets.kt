@@ -251,7 +251,22 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
                 }
             }
         }
-        HomeHealthState.Unavailable -> Unit
+        HomeHealthState.Unavailable -> {
+            MacroCard {
+                Text(
+                    "Body Stats",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                Text(
+                    "Connect Health Connect in Settings or Health to see steps, heart rate, and sleep here.",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                )
+            }
+        }
     }
 }
 

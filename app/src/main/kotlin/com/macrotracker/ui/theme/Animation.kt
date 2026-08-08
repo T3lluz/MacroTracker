@@ -1,18 +1,22 @@
 package com.macrotracker.ui.theme
 
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 
 /**
@@ -23,6 +27,8 @@ import androidx.compose.animation.togetherWith
  * entrance; individual elements DON'T re-slide / re-scale on top of it.
  * Value-driven animations (progress bars, chart bars) use a smooth
  * spring so they settle cleanly without overshoot.
+ *
+ * Exception: [bouncySpring] is reserved for the bottom nav pill only.
  */
 object MacroMotion {
 
@@ -44,16 +50,24 @@ object MacroMotion {
         stiffness = 350f,
     )
 
-    /** Quick spring for press/release feedback (buttons). */
+    /** Quick spring for press/release feedback (buttons, drag lift, chevrons). */
     fun <T> pressSpring() = spring<T>(
         dampingRatio = 1f,
         stiffness = 600f,
+    )
+
+    /** Critically-damped confirm pulse for primary CTA micro-feedback (add/check). */
+    fun <T> confirmSpring() = spring<T>(
+        dampingRatio = 1f,
+        stiffness = 550f,
     )
 
     // ── Tween durations ──────────────────────────────────────────────
     private const val FADE_IN_MS = 200
     private const val FADE_OUT_MS = 150
     private const val SLIDE_MS = 300
+    private const val COLOR_MS = 160
+    private const val REVEAL_MS = 400
 
     /** Shared fade tween for card entrances and crossfades. */
     fun <T> fadeTween(durationMs: Int = FADE_IN_MS): FiniteAnimationSpec<T> =
@@ -63,6 +77,18 @@ object MacroMotion {
     fun <T> slideTween(durationMs: Int = SLIDE_MS): FiniteAnimationSpec<T> =
         tween(durationMs, easing = FastOutSlowInEasing)
 
+    /** Color / chrome micro-transitions (tabs, pills, CTA fills). */
+    fun <T> colorTween(durationMs: Int = COLOR_MS): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = FastOutSlowInEasing)
+
+    /** Staggered onboarding alpha reveals (no translate — page owns slide). */
+    fun <T> revealTween(durationMs: Int = REVEAL_MS): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = FastOutSlowInEasing)
+
+    /** Linear path/draw progress (circuit map) — named exception to FastOutSlowIn. */
+    fun <T> drawTween(durationMs: Int = 1200): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = LinearEasing)
+
     // ── Tab / content-switch transitions (NavHost top-level tabs) ────
     val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
 
@@ -71,6 +97,28 @@ object MacroMotion {
     /** Crossfade used by home-screen widget state switches (loading → success, etc.). */
     val widgetContentTransition: ContentTransform
         get() = contentEnter togetherWith contentExit
+
+    /** Icon swap on primary CTAs (add ↔ check ↔ remove). */
+    val iconSwapTransition: ContentTransform
+        get() = (fadeIn(fadeTween(150)) + scaleIn(fadeTween(150))) togetherWith
+            fadeOut(fadeTween(100))
+
+    /** Subtle in-card horizontal mode switch (e.g. F1 battle tabs). */
+    fun subtleHorizontalSwitch(toRight: Boolean): ContentTransform {
+        val dir = if (toRight) 1 else -1
+        return (fadeIn(fadeTween(180)) + slideInHorizontally(slideTween(200)) { dir * it / 10 })
+            .togetherWith(
+                fadeOut(fadeTween(120)) + slideOutHorizontally(slideTween(120)) { -dir * it / 10 },
+            )
+    }
+
+    /** Number ticker for live totals (calories / protein on scan result). */
+    fun numberTick(up: Boolean): ContentTransform {
+        val enterDir = if (up) 1 else -1
+        val exitDir = if (up) -1 else 1
+        return (slideInVertically(slideTween()) { enterDir * it } + fadeIn(fadeTween()))
+            .togetherWith(slideOutVertically(slideTween()) { exitDir * it } + fadeOut(fadeTween(FADE_OUT_MS)))
+    }
 
     // ── Expand / collapse transitions (AnimatedVisibility) ───────────
     val expandEnter: EnterTransition =

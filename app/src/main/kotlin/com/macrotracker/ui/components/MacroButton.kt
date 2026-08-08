@@ -1,7 +1,10 @@
 package com.macrotracker.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,9 +13,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
+import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.util.rememberHaptics
@@ -35,20 +37,31 @@ fun MacroButton(
     variant: ButtonVariant = ButtonVariant.PRIMARY,
     enabled: Boolean = true,
 ) {
-    var pressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     val haptics = rememberHaptics()
 
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
+        targetValue = if (pressed) 0.93f else 1f,
         animationSpec = MacroMotion.pressSpring(),
         label = "btnScale",
     )
 
-    val (bgColor, contentColor, borderColor) = when (variant) {
+    val (baseBg, contentColor, borderColor) = when (variant) {
         ButtonVariant.PRIMARY -> Triple(Primary, Color.White, Primary)
         ButtonVariant.SECONDARY -> Triple(Surface, TextPrimary, Border)
         ButtonVariant.DANGER -> Triple(com.macrotracker.ui.theme.Error, Color.White, com.macrotracker.ui.theme.Error)
     }
+
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> baseBg
+            variant == ButtonVariant.PRIMARY && pressed -> PrimaryVariant
+            else -> baseBg
+        },
+        animationSpec = MacroMotion.colorTween(),
+        label = "btnBg",
+    )
 
     Button(
         onClick = {
@@ -56,6 +69,7 @@ fun MacroButton(
             onClick()
         },
         enabled = enabled,
+        interactionSource = interactionSource,
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
@@ -75,4 +89,3 @@ fun MacroButton(
         )
     }
 }
-

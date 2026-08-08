@@ -10,6 +10,9 @@ google-services.json
 *.keystore
 !app/tester.jks
 
+# --- Local toolchains (never commit) ---
+.jdk/
+
 # --- Build outputs ---
 .gradle/
 .gradle-user-home/

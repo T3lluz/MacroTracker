@@ -204,7 +204,7 @@ private fun DragLiftContainer(
 ) {
     val scale by animateFloatAsState(
         targetValue = if (isDragging) 1.03f else 1f,
-        animationSpec = MacroMotion.bouncySpring(),
+        animationSpec = MacroMotion.pressSpring(),
         label = "dragScale",
     )
     val alpha by animateFloatAsState(

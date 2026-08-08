@@ -1,37 +1,6 @@
 package com.macrotracker.data.f1
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-
-@Serializable
-data class OpenF1Driver(
-    @SerialName("driver_number") val driverNumber: Int? = 0,
-    @SerialName("full_name") val fullName: String? = null,
-    @SerialName("headshot_url") val headshotUrl: String? = null,
-    @SerialName("team_colour") val teamColour: String? = "FFFFFF",
-    @SerialName("team_name") val teamName: String? = "Unknown Team",
-    @SerialName("country_code") val countryCode: String? = null,
-    @SerialName("name_acronym") val nameAcronym: String? = null,
-)
-
-@Serializable
-data class OpenF1Session(
-    @SerialName("session_key") val sessionKey: Int? = 0,
-    @SerialName("session_name") val sessionName: String? = null,
-    @SerialName("session_type") val sessionType: String? = null,
-    @SerialName("date_start") val dateStart: String? = null,
-    @SerialName("date_end") val dateEnd: String? = null,
-    @SerialName("year") val year: Int? = 0,
-    @SerialName("meeting_key") val meetingKey: Int? = 0,
-    @SerialName("location") val location: String? = null,
-)
-
-@Serializable
-data class OpenF1Position(
-    @SerialName("driver_number") val driverNumber: Int? = 0,
-    @SerialName("position") val position: Int? = 0,
-    @SerialName("date") val date: String? = null,
-)
 
 @Serializable
 data class SeasonDriverStanding(
