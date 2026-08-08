@@ -32,9 +32,11 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -895,28 +897,28 @@ private fun CompactVideoTilePlaceholder(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(YT_COMPACT_CAPTION_HEIGHT)
-                .padding(horizontal = 6.dp, vertical = 5.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                .heightIn(min = YT_COMPACT_CAPTION_MIN_HEIGHT)
+                .padding(horizontal = 7.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
-                    .height(10.dp)
+                    .height(11.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(YtHairline.copy(alpha = 0.4f)),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.62f)
-                    .height(10.dp)
+                    .fillMaxWidth(0.68f)
+                    .height(11.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(YtHairline.copy(alpha = 0.28f)),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.48f)
-                    .height(8.dp)
+                    .fillMaxWidth(0.78f)
+                    .height(9.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(YtHairline.copy(alpha = 0.22f)),
             )
@@ -992,24 +994,15 @@ private fun CompactVideoTile(
                     Text("NEW", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.Black.copy(alpha = 0.78f))
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-            ) {
-                Text(formatRelativeTime(video.publishedAt), fontSize = 8.sp, color = Color.White)
-            }
         }
-        // Fixed caption block so both tiles always share the same height.
+        // Min-height caption: IntrinsicSize.Max equalizes sibling tiles without clipping text.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(YT_COMPACT_CAPTION_HEIGHT)
-                .padding(horizontal = 6.dp, vertical = 5.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                .heightIn(min = YT_COMPACT_CAPTION_MIN_HEIGHT)
+                .wrapContentHeight(Alignment.Top)
+                .padding(horizontal = 7.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
                 video.title,
@@ -1019,15 +1012,16 @@ private fun CompactVideoTile(
                 minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 14.sp,
+                lineHeight = 15.sp,
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                video.channelTitle,
+                videoMetaLine(video, includeChannel = true),
                 fontSize = 9.sp,
                 color = TextSecondary,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                lineHeight = 12.sp,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -1104,8 +1098,14 @@ private fun CompactChannelAvatar(
 private const val YT_INITIAL_PAGE = 4
 private const val YT_PAGE_SIZE    = 5
 private const val YT_COMPACT_PREVIEW_COUNT = 2
-/** Caption block under collapsed thumbnails (2 title lines + channel). */
-private val YT_COMPACT_CAPTION_HEIGHT = 52.dp
+/**
+ * Min caption block under thumbnails.
+ * Sized for 2 title lines + a YouTube-style meta line (channel · views · time)
+ * so text is never clipped at default font scale.
+ */
+private val YT_COMPACT_CAPTION_MIN_HEIGHT = 68.dp
+/** Grid captions also reserve a second meta line (channel + views/time). */
+private val YT_GRID_CAPTION_MIN_HEIGHT = 82.dp
 
 @Composable
 private fun rememberYoutubeThumbnailRequest(
@@ -1527,7 +1527,6 @@ private fun ShowMoreButton(remaining: Int, onClick: () -> Unit) {
 
 @Composable
 private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
-    val context = LocalContext.current
     val isNew = remember(video.publishedAt) {
         runCatching {
             Instant.parse(video.publishedAt).isAfter(Instant.now().minus(24, ChronoUnit.HOURS))
@@ -1540,29 +1539,28 @@ private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // Thumbnail with play overlay
+        // Thumbnail with play overlay — YouTube list density
         Box(
             modifier = Modifier
-                .width(120.dp)
+                .width(148.dp)
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(YtDark),
         ) {
-            val listThumb = rememberYoutubeThumbnailRequest(video.thumbnailUrl, 360, 202)
+            val listThumb = rememberYoutubeThumbnailRequest(video.thumbnailUrl, 444, 250)
             AsyncImage(
                 model = listThumb,
                 contentDescription = video.title,
                 modifier = Modifier.matchParentSize(),
                 contentScale = ContentScale.Crop,
             )
-            // Gradient overlay at bottom
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))),
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f)))),
             )
-            // Play icon
             Box(
                 modifier = Modifier
                     .size(28.dp)
@@ -1577,36 +1575,46 @@ private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(4.dp)
+                        .padding(5.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(YtRed)
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
                 ) {
-                    Text("NEW", fontSize = 7.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("NEW", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
-            // Time badge
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-            ) {
-                Text(formatRelativeTime(video.publishedAt), fontSize = 9.sp, color = Color.White)
-            }
         }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(video.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,
-                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(YtRed))
-                Spacer(Modifier.width(5.dp))
-                Text(video.channelTitle, fontSize = 11.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(top = 1.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                video.title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp,
+            )
+            if (video.channelTitle.isNotBlank()) {
+                Text(
+                    video.channelTitle,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            Text(
+                videoMetaLine(video, includeChannel = false),
+                fontSize = 11.sp,
+                color = TextSecondary.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -1615,7 +1623,6 @@ private fun VideoCard(video: YoutubeVideo, onClick: () -> Unit) {
 
 @Composable
 private fun HeroVideoCard(video: YoutubeVideo, onClick: () -> Unit) {
-    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1677,43 +1684,30 @@ private fun HeroVideoCard(video: YoutubeVideo, onClick: () -> Unit) {
         ) {
             Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(30.dp))
         }
-        // Title + channel + time pinned to bottom
+        // Title + YouTube-style meta pinned to bottom
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 video.title,
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = 20.sp,
             )
-            Spacer(Modifier.height(5.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(YtRed))
-                Text(
-                    video.channelTitle,
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Text("·", fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f))
-                Text(
-                    formatRelativeTime(video.publishedAt),
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-            }
+            Text(
+                videoMetaLine(video, includeChannel = true),
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.78f),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -1725,13 +1719,13 @@ private fun VideoGrid(
     videos: List<YoutubeVideo>,
     onVideoClick: (YoutubeVideo) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         videos.chunked(2).forEach { rowVideos ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(IntrinsicSize.Max),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 rowVideos.forEach { video ->
                     key(video.videoId) {
@@ -1757,8 +1751,8 @@ private fun VideoGridItem(
     onClick: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val thumbWidthPx = with(density) { 180.dp.roundToPx() }
-    val thumbHeightPx = with(density) { 101.dp.roundToPx() }
+    val thumbWidthPx = with(density) { 220.dp.roundToPx() }
+    val thumbHeightPx = with(density) { 124.dp.roundToPx() }
     val thumbRequest = rememberYoutubeThumbnailRequest(video.thumbnailUrl, thumbWidthPx, thumbHeightPx)
     val isNew = remember(video.publishedAt) {
         runCatching {
@@ -1767,9 +1761,9 @@ private fun VideoGridItem(
     }
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(YtCardBg.copy(alpha = 0.88f))
-            .border(0.5.dp, YtHairline.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+            .border(0.5.dp, YtHairline.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
     ) {
         Box(
@@ -1787,23 +1781,23 @@ private fun VideoGridItem(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f)))),
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.28f)))),
             )
             Box(
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(28.dp)
                     .align(Alignment.Center)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.55f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(16.dp))
             }
             if (isNew) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(5.dp)
+                        .padding(6.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(YtRed)
                         .padding(horizontal = 5.dp, vertical = 2.dp),
@@ -1811,54 +1805,45 @@ private fun VideoGridItem(
                     Text("NEW", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.Black.copy(alpha = 0.78f))
-                    .padding(horizontal = 3.dp, vertical = 1.dp),
-            ) {
-                Text(
-                    formatRelativeTime(video.publishedAt),
-                    fontSize = 8.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
         }
+        // YouTube-style details: title → channel → views · time (no fixed height clipping).
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(YT_COMPACT_CAPTION_HEIGHT)
-                .padding(horizontal = 7.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+                .heightIn(min = YT_GRID_CAPTION_MIN_HEIGHT)
+                .wrapContentHeight(Alignment.Top)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
                 video.title,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = TextPrimary,
                 minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 15.sp,
+                lineHeight = 16.sp,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(YtRed))
+            if (video.channelTitle.isNotBlank()) {
                 Text(
                     video.channelTitle,
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     color = TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
+            Text(
+                videoMetaLine(video, includeChannel = false),
+                fontSize = 10.sp,
+                color = TextSecondary.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -2570,7 +2555,34 @@ private fun ChannelListRow(
 }
 
 
-// ── Time helpers ──────────────────────────────────────────────────────────────
+// ── Meta / time helpers ───────────────────────────────────────────────────────
+
+/** YouTube-style compact counts: 2183 → 2.1K, 24596848 → 24M */
+private fun formatViewCount(views: Long): String {
+    fun oneDecimal(n: Double): String {
+        val rounded = kotlin.math.round(n * 10.0) / 10.0
+        return if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+    }
+    return when {
+        views < 1_000L -> views.toString()
+        views < 1_000_000L -> "${oneDecimal(views / 1_000.0)}K"
+        views < 1_000_000_000L -> "${oneDecimal(views / 1_000_000.0)}M"
+        else -> "${oneDecimal(views / 1_000_000_000.0)}B"
+    }
+}
+
+/**
+ * Builds a YouTube-like secondary line, e.g.
+ * `MrBeast · 24M views · 8d ago` or `24M views · 8d ago`.
+ */
+private fun videoMetaLine(video: YoutubeVideo, includeChannel: Boolean): String {
+    val parts = buildList {
+        if (includeChannel && video.channelTitle.isNotBlank()) add(video.channelTitle)
+        video.viewCount?.takeIf { it >= 0L }?.let { add("${formatViewCount(it)} views") }
+        add(formatRelativeTime(video.publishedAt))
+    }
+    return parts.joinToString(" · ")
+}
 
 private fun formatRelativeTime(iso: String): String = try {
     val instant = Instant.parse(iso)
