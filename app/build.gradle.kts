@@ -23,8 +23,8 @@ android {
         applicationId = "com.macrotracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.1.18"
+        versionCode = 19
+        versionName = "1.1.19"
 
         // Read API keys from local.properties
         val localProperties = Properties()

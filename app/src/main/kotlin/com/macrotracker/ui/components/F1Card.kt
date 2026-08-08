@@ -900,17 +900,7 @@ private fun CompactNextRace(
             if (showTrack && trackUrl != null) {
                 Spacer(Modifier.width(8.dp))
                 val request = remember(trackUrl) {
-                    ImageRequest.Builder(context)
-                        .data(trackUrl)
-                        .size(280, 180)
-                        .crossfade(false)
-                        .setHeader(
-                            "User-Agent",
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        )
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .build()
+                    circuitMapRequest(context, trackUrl, width = 280, height = 180)
                 }
                 Box(
                     modifier = Modifier
@@ -1036,38 +1026,54 @@ private fun CircuitStat(label: String, value: String) {
     }
 }
 
-// ── Track map URL mapping (official 2026 F1 CDN detailed circuits) ────────────
+// ── Track map URL mapping (official 2026 F1 CDN — force PNG for Coil) ─────────
+// Cloudinary `f_auto` content-negotiates AVIF/WebP based on Accept; Coil cannot
+// decode AVIF, which caused canvas fallbacks / inconsistent maps. Always pin f_png
+// and the official asset version ids from formula1.com race pages.
 private fun getCircuitSvgUrl(circuitId: String): String? {
-    val slug = when (circuitId) {
-        "albert_park" -> "melbourne"
-        "shanghai" -> "shanghai"
-        "suzuka" -> "suzuka"
-        "miami" -> "miami"
-        "villeneuve" -> "montreal"
-        "monaco" -> "montecarlo"
-        "catalunya" -> "catalunya"
-        "red_bull_ring" -> "spielberg"
-        "silverstone" -> "silverstone"
-        "spa" -> "spafrancorchamps"
-        "hungaroring" -> "hungaroring"
-        "zandvoort" -> "zandvoort"
-        "monza" -> "monza"
-        "madring" -> "madring"
-        "baku" -> "baku"
-        "sepang" -> "kualalumpur"
-        "marina_bay" -> "singapore"
-        "americas", "austin" -> "austin"
-        "rodriguez" -> "mexicocity"
-        "interlagos" -> "interlagos"
-        "vegas", "las_vegas" -> "lasvegas"
-        "losail" -> "lusail"
-        "yas_marina" -> "yasmarinacircuit"
-        "jeddah" -> "jeddah"
-        "imola" -> "imola"
-        else -> null
-    } ?: return null
-    return "https://media.formula1.com/image/upload/c_fit,h_704/q_auto/v1740000001/common/f1/2026/track/2026track${slug}detailed.webp"
+    val (version, slug) = when (circuitId) {
+        "albert_park" -> "1751632426" to "melbourne"
+        "shanghai" -> "1751632455" to "shanghai"
+        "suzuka" -> "1751632474" to "suzuka"
+        "miami" -> "1751632433" to "miami"
+        "villeneuve" -> "1751632441" to "montreal"
+        "monaco" -> "1751632437" to "montecarlo"
+        "catalunya" -> "1751632398" to "catalunya"
+        "red_bull_ring" -> "1751632470" to "spielberg"
+        "silverstone" -> "1751632458" to "silverstone"
+        "spa" -> "1751632465" to "spafrancorchamps"
+        "hungaroring" -> "1751632402" to "hungaroring"
+        "zandvoort" -> "1751632488" to "zandvoort"
+        "monza" -> "1751632445" to "monza"
+        "madring" -> "1756285390" to "madring"
+        "baku" -> "1751632392" to "baku"
+        "sepang" -> "1785158493" to "kualalumpur"
+        "marina_bay" -> "1751632462" to "singapore"
+        "americas", "austin" -> "1751632388" to "austin"
+        "rodriguez" -> "1751632430" to "mexicocity"
+        "interlagos" -> "1751632409" to "interlagos"
+        "vegas", "las_vegas" -> "1751632417" to "lasvegas"
+        "losail" -> "1751632421" to "lusail"
+        "yas_marina" -> "1751632483" to "yasmarinacircuit"
+        else -> return null
+    }
+    return "https://media.formula1.com/image/upload/f_png,c_fit,w_960/q_auto/v$version/common/f1/2026/track/2026track${slug}detailed.png"
 }
+
+private const val F1_MEDIA_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+private fun circuitMapRequest(context: android.content.Context, url: String, width: Int, height: Int): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(url)
+        .size(width, height)
+        .crossfade(false)
+        .setHeader("User-Agent", F1_MEDIA_UA)
+        // Prefer PNG so Cloudinary does not swap in AVIF via Accept negotiation.
+        .setHeader("Accept", "image/png,image/*;q=0.8,*/*;q=0.5")
+        .memoryCachePolicy(CachePolicy.ENABLED)
+        .diskCachePolicy(CachePolicy.ENABLED)
+        .build()
 
 // ── Track Visualization ───────────────────────────────────────────────────────
 @Composable
@@ -1084,14 +1090,7 @@ private fun TrackVisualization(circuitId: String, accentColor: Color, raceName: 
         Box(modifier = Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF080D14))) {
             if (svgUrl != null) {
                 val request = remember(svgUrl) {
-                    ImageRequest.Builder(context)
-                        .data(svgUrl)
-                        .size(720, 480)
-                        .crossfade(false)
-                        .setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .build()
+                    circuitMapRequest(context, svgUrl, width = 960, height = 540)
                 }
                 SubcomposeAsyncImage(model = request, contentDescription = "$raceName circuit map", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
                     when (painter.state) {
@@ -2058,6 +2057,8 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
                 totalRounds = schedule.size,
                 completedRounds = completed.size,
             )
+            // Next race detail (track + sessions) stays open — no expand required.
+            NextRaceOpenDetail(nextRace)
         }
         if (remaining.isNotEmpty()) {
             SectionHeader("REMAINING (${remaining.size})")
@@ -2160,37 +2161,65 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
                     }
                 }
                 AnimatedVisibility(isExp, enter = expandVertically(tween(200)) + fadeIn(), exit = shrinkVertically(tween(150)) + fadeOut()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 52.dp, end = 4.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(race.circuitName, color = TextSecondary, fontSize = 12.sp)
-                            Text(getLocalTimezone(), color = TextSecondary.copy(alpha = 0.55f), fontSize = 11.sp)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            race.laps?.let { CircuitStat("Laps", "$it") }
-                            race.lapRecord?.let { CircuitStat("Lap rec", it) }
-                            race.lapRecordHolder?.let { CircuitStat("Held by", it.split(" (").first()) }
-                        }
-                        if (!race.circuitId.isNullOrBlank()) {
-                            TrackVisualization(circuitId = race.circuitId, accentColor = if (isNext) F1Red else TextPrimary, raceName = shortGP(race.raceName))
-                        }
-                        race.fp1Date?.let    { SessionRow("FP1",   it, race.fp1Time,        TextSecondary) }
-                        race.fp2Date?.let    { SessionRow("FP2",   it, race.fp2Time,        TextSecondary) }
-                        race.fp3Date?.let    { SessionRow("FP3",   it, race.fp3Time,        TextSecondary) }
-                        race.qualifyingDate?.let { SessionRow("Quali", it, race.qualifyingTime, TextPrimary) }
-                        race.sprintDate?.let     { SessionRow("Sprint", it, race.sprintTime, SprintPink) }
-                        SessionRow("Race", race.raceDate, race.raceTime, if (isNext) F1Red else TextPrimary, bold = true)
-                    }
+                    RaceSessionDetail(
+                        race = race,
+                        accentColor = TextPrimary,
+                        modifier = Modifier.padding(start = 52.dp, end = 4.dp, bottom = 12.dp),
+                    )
                 }
                 if (idx < ordered.lastIndex) {
                     HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 52.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NextRaceOpenDetail(race: RaceScheduleEntry) {
+    RaceSessionDetail(
+        race = race,
+        accentColor = F1Red,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SharpShape)
+            .background(RowSurface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    )
+}
+
+@Composable
+private fun RaceSessionDetail(
+    race: RaceScheduleEntry,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(race.circuitName, color = TextSecondary, fontSize = 12.sp)
+            Text(getLocalTimezone(), color = TextSecondary.copy(alpha = 0.55f), fontSize = 11.sp)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            race.laps?.let { CircuitStat("Laps", "$it") }
+            race.lapRecord?.let { CircuitStat("Lap rec", it) }
+            race.lapRecordHolder?.let { CircuitStat("Held by", it.split(" (").first()) }
+        }
+        if (!race.circuitId.isNullOrBlank()) {
+            TrackVisualization(
+                circuitId = race.circuitId,
+                accentColor = accentColor,
+                raceName = shortGP(race.raceName),
+            )
+        }
+        race.fp1Date?.let { SessionRow("FP1", it, race.fp1Time, TextSecondary) }
+        race.fp2Date?.let { SessionRow("FP2", it, race.fp2Time, TextSecondary) }
+        race.fp3Date?.let { SessionRow("FP3", it, race.fp3Time, TextSecondary) }
+        race.qualifyingDate?.let { SessionRow("Quali", it, race.qualifyingTime, TextPrimary) }
+        race.sprintDate?.let { SessionRow("Sprint", it, race.sprintTime, SprintPink) }
+        SessionRow("Race", race.raceDate, race.raceTime, accentColor, bold = true)
     }
 }
 

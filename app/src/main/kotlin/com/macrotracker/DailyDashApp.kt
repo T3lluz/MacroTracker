@@ -31,6 +31,8 @@ class DailyDashApp : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader {
         // Inject a browser-like User-Agent so the F1 media CDN serves real driver
         // headshots instead of the fallback placeholder image.
+        // Prefer PNG/WebP — never ask for AVIF. Cloudinary `f_auto` otherwise serves
+        // AVIF that Coil cannot decode (broke F1 track maps and similar CDN assets).
         val client = OkHttpClient.Builder()
             .addInterceptor { chain ->
                 val request: Request = chain.request().newBuilder()
@@ -38,6 +40,7 @@ class DailyDashApp : Application(), ImageLoaderFactory {
                         "User-Agent",
                         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                     )
+                    .header("Accept", "image/png,image/webp,image/jpeg,image/*;q=0.8,*/*;q=0.5")
                     .build()
                 chain.proceed(request)
             }
