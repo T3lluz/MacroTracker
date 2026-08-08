@@ -290,7 +290,7 @@ fun HomeScreen(
                     itemKey = { it.id },
                     haptics = haptics,
                     scope = scope,
-                ) { _, config ->
+                ) { _, config, _ ->
                     HomeWidgetItem(
                         config = config,
                         isVisible = config.id in visibleWidgetIds,
