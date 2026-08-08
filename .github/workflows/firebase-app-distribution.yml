@@ -15,6 +15,6 @@ jobs:
       - name: Explain
         run: |
           echo "Firebase App Distribution CI for this repo is deprecated."
-          echo "Use workflow 'Build & Release APK' (tag v* or workflow_dispatch)."
+          echo "Use workflow 'Build & Release APK' (merge to master, tag v*, or workflow_dispatch)."
           echo "The app checks GitHub Releases for updates in-app."
           exit 1
