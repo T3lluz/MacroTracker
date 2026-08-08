@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -66,6 +67,13 @@ private val RowSurface = Color(0xFF101820)
 private val Hairline   = Color(0xFF243044)
 private val LabAmber   = Color(0xFFF0A500)
 private val SharpShape = RoundedCornerShape(6.dp)
+
+/** Left accent rail that is safe inside LazyColumn (no fillMaxHeight under infinite constraints). */
+private fun Modifier.f1LeadingRail(color: Color, thickness: androidx.compose.ui.unit.Dp = 5.dp): Modifier =
+    this.drawBehind {
+        drawRect(color = color, size = Size(thickness.toPx(), size.height))
+    }
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 private fun medalColor(pos: Int) = when (pos) { 1 -> F1Gold; 2 -> F1Silver; 3 -> F1Bronze; else -> null }
@@ -326,7 +334,8 @@ fun F1Card(
     isVisible: Boolean = true,
 ) {
     val haptics = rememberHaptics()
-    var selectedTab by rememberSaveable { mutableStateOf(F1Tab.DRIVERS) }
+    var selectedTabName by rememberSaveable { mutableStateOf(F1Tab.DRIVERS.name) }
+    val selectedTab = F1Tab.entries.find { it.name == selectedTabName } ?: F1Tab.DRIVERS
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     MacroCard(
@@ -461,7 +470,7 @@ fun F1Card(
                                 modifier = Modifier
                                     .clip(SharpShape)
                                     .background(bg)
-                                    .clickable { haptics.tick(); selectedTab = tab }
+                                    .clickable { haptics.tick(); selectedTabName = tab.name }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             )
                         }
@@ -571,7 +580,8 @@ private fun ChampionshipLeaderHero(
         modifier = Modifier
             .fillMaxWidth()
             .clip(SharpShape)
-            .background(RowSurface),
+            .background(RowSurface)
+            .f1LeadingRail(tc),
     ) {
         Box(
             modifier = Modifier
@@ -584,13 +594,6 @@ private fun ChampionshipLeaderHero(
                     ),
                 ),
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .width(5.dp)
-                .fillMaxHeight()
-                .background(tc),
-        )
         Text(
             "01",
             color = tc.copy(alpha = 0.12f),
@@ -598,7 +601,7 @@ private fun ChampionshipLeaderHero(
             fontSize = if (compact) 72.sp else 92.sp,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 4.dp, bottom = (-6).dp),
+                .padding(end = 4.dp),
             letterSpacing = (-2).sp,
         )
 
@@ -1558,7 +1561,8 @@ fun ConstructorStandingsList(data: F1Standings) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(SharpShape)
-                    .background(RowSurface),
+                    .background(RowSurface)
+                    .f1LeadingRail(tc),
             ) {
                 Box(
                     modifier = Modifier
@@ -1570,13 +1574,6 @@ fun ConstructorStandingsList(data: F1Standings) {
                                 1f to Color.Transparent,
                             ),
                         ),
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .width(5.dp)
-                        .fillMaxHeight()
-                        .background(tc),
                 )
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -2427,7 +2424,8 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(SharpShape)
-                    .background(RowSurface),
+                    .background(RowSurface)
+                    .f1LeadingRail(tc),
             ) {
                 Box(
                     modifier = Modifier
@@ -2439,7 +2437,6 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
                             ),
                         ),
                 )
-                Box(modifier = Modifier.align(Alignment.TopStart).width(5.dp).fillMaxHeight().background(tc))
                 Row(
                     modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
