@@ -1,6 +1,5 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,20 +10,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -35,7 +33,7 @@ import com.macrotracker.ui.theme.TextSecondary
 
 /**
  * Lightweight Markdown renderer for GitHub release notes.
- * Supports headings, bold/italic, inline code, links, and bullet/numbered lists.
+ * Supports headings, bold/italic, inline code, markdown links, and bare URLs.
  */
 @Composable
 fun MarkdownText(
@@ -51,7 +49,11 @@ fun MarkdownText(
             when (block) {
                 is MdBlock.Heading -> {
                     Text(
-                        text = buildInlineMarkdown(block.text, color = TextPrimary, linkColor = Primary),
+                        text = buildInlineMarkdown(
+                            text = block.text,
+                            color = TextPrimary,
+                            linkColor = Primary,
+                        ),
                         fontSize = when (block.level) {
                             1 -> (fontSize.value + 6).sp
                             2 -> (fontSize.value + 4).sp
@@ -74,13 +76,13 @@ fun MarkdownText(
                     )
                 }
                 is MdBlock.Bullet -> {
-                    Row(modifier = Modifier.padding(bottom = 4.dp)) {
+                    Row(modifier = Modifier.padding(bottom = 5.dp)) {
                         Text(
                             text = "•",
                             color = color,
                             fontSize = fontSize,
                             lineHeight = lineHeight,
-                            modifier = Modifier.width(14.dp),
+                            modifier = Modifier.width(16.dp),
                         )
                         InlineMarkdownText(
                             text = block.text,
@@ -93,7 +95,7 @@ fun MarkdownText(
                     }
                 }
                 is MdBlock.Numbered -> {
-                    Row(modifier = Modifier.padding(bottom = 4.dp)) {
+                    Row(modifier = Modifier.padding(bottom = 5.dp)) {
                         Text(
                             text = "${block.number}.",
                             color = color,
@@ -126,31 +128,22 @@ private fun InlineMarkdownText(
     lineHeight: TextUnit,
     modifier: Modifier = Modifier,
 ) {
-    val uriHandler = LocalUriHandler.current
     val annotated = remember(text, color, linkColor) {
-        buildInlineMarkdown(text, color = color, linkColor = linkColor)
+        buildInlineMarkdown(
+            text = text,
+            color = color,
+            linkColor = linkColor,
+        )
     }
-    val layoutResult = remember { mutableStateOf<TextLayoutResult?>(null) }
 
     BasicText(
         text = annotated,
-        modifier = modifier.pointerInput(annotated) {
-            detectTapGestures { pos ->
-                val layout = layoutResult.value ?: return@detectTapGestures
-                val offset = layout.getOffsetForPosition(pos)
-                annotated.getStringAnnotations("URL", offset, offset)
-                    .firstOrNull()
-                    ?.let { ann ->
-                        runCatching { uriHandler.openUri(ann.item) }
-                    }
-            }
-        },
+        modifier = modifier,
         style = TextStyle(
             color = color,
             fontSize = fontSize,
             lineHeight = lineHeight,
         ),
-        onTextLayout = { layoutResult.value = it },
     )
 }
 
@@ -212,9 +205,16 @@ private fun buildInlineMarkdown(
     color: Color,
     linkColor: Color,
 ) = buildAnnotatedString {
-    // Patterns: **bold**, *italic*, `code`, [label](url)
+    // Markdown links, bare URLs, **bold**, *italic*, `code`
     val regex = Regex(
-        """(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))""",
+        """(\[[^\]]+\]\([^)]+\)|https?://[^\s<>\)\]]+|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)""",
+    )
+    val linkStyles = TextLinkStyles(
+        style = SpanStyle(
+            color = linkColor,
+            textDecoration = TextDecoration.Underline,
+            fontWeight = FontWeight.Medium,
+        ),
     )
     var cursor = 0
     for (match in regex.findAll(text)) {
@@ -225,6 +225,26 @@ private fun buildInlineMarkdown(
         }
         val token = match.value
         when {
+            token.startsWith("[") && token.contains("](") -> {
+                val label = token.substringAfter("[").substringBefore("]")
+                val url = token.substringAfter("](").removeSuffix(")").trim()
+                // Default LinkAnnotation.Url opens via LocalUriHandler on tap.
+                withLink(LinkAnnotation.Url(url, linkStyles)) {
+                    append(label.ifBlank { url })
+                }
+            }
+            token.startsWith("http://") || token.startsWith("https://") -> {
+                val url = token.trimEnd('.', ',', ';')
+                val label = when {
+                    url.contains("/pull/") -> "PR #${url.substringAfterLast('/')}"
+                    url.contains("/compare/") -> "Changelog"
+                    url.contains("/releases/") -> "Release"
+                    else -> url.removePrefix("https://").removePrefix("http://")
+                }
+                withLink(LinkAnnotation.Url(url, linkStyles)) {
+                    append(label)
+                }
+            }
             token.startsWith("**") && token.endsWith("**") -> {
                 withStyle(SpanStyle(color = color, fontWeight = FontWeight.Bold)) {
                     append(token.removeSurrounding("**"))
@@ -245,21 +265,6 @@ private fun buildInlineMarkdown(
                 ) {
                     append(token.removeSurrounding("`"))
                 }
-            }
-            token.startsWith("[") -> {
-                val label = token.substringAfter("[").substringBefore("]")
-                val url = token.substringAfter("](").removeSuffix(")")
-                val start = length
-                withStyle(
-                    SpanStyle(
-                        color = linkColor,
-                        textDecoration = TextDecoration.Underline,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                ) {
-                    append(label)
-                }
-                addStringAnnotation(tag = "URL", annotation = url, start = start, end = length)
             }
             else -> withStyle(SpanStyle(color = color)) { append(token) }
         }

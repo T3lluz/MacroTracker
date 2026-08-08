@@ -1,0 +1,131 @@
+package com.macrotracker.data.update
+
+/**
+ * Turns GitHub release bodies into concise, readable Markdown for in-app display.
+ *
+ * Strips CI boilerplate, converts bare PR/changelog URLs into labeled links, and
+ * keeps a short bullet list under a single heading.
+ */
+object ReleaseNotesFormatter {
+
+    private val boilerplateLine = Regex(
+        pattern = """(?i)^(dailydash\s+\d.*(build\s+\d+)?|automated tester build.*|tester build.*|installs as an in-app update.*)$""",
+    )
+    private val fullChangelogLine = Regex(
+        pattern = """(?i)^\**full changelog\**:?\s*(https://\S+)\s*$""",
+    )
+    private val prBullet = Regex(
+        pattern = """^\*\s+(.+?)\s+by\s+@\S+\s+in\s+(https://github\.com/\S+/pull/\d+)\s*$""",
+    )
+    private val numberedPrBullet = Regex(
+        pattern = """^\d+\.\s+(.+?)\s+by\s+@\S+\s+in\s+(https://github\.com/\S+/pull/\d+)\s*$""",
+    )
+    private val sectionHeading = Regex("""^#{1,6}\s+(.+)$""")
+    private val bareUrl = Regex("""https?://[^\s<>\)\]]+""")
+
+    fun format(raw: String, htmlUrl: String = ""): String {
+        if (raw.isBlank()) return "Bug fixes and improvements."
+
+        val changes = mutableListOf<String>()
+        var changelogUrl: String? = htmlUrl.takeIf { it.isNotBlank() }
+        var sawWhatsChanged = false
+
+        for (line in raw.replace("\r\n", "\n").lines()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) continue
+            if (boilerplateLine.matches(trimmed)) continue
+
+            val fullMatch = fullChangelogLine.matchEntire(trimmed)
+            if (fullMatch != null) {
+                changelogUrl = fullMatch.groupValues[1]
+                continue
+            }
+
+            val headingMatch = sectionHeading.matchEntire(trimmed)
+            if (headingMatch != null) {
+                val title = headingMatch.groupValues[1].trim()
+                if (title.contains("what's changed", ignoreCase = true) ||
+                    title.contains("what changed", ignoreCase = true) ||
+                    title.contains("what's new", ignoreCase = true)
+                ) {
+                    sawWhatsChanged = true
+                }
+                continue
+            }
+
+            val prMatch = prBullet.matchEntire(trimmed) ?: numberedPrBullet.matchEntire(trimmed)
+            if (prMatch != null) {
+                changes += "- [${cleanTitle(prMatch.groupValues[1])}](${prMatch.groupValues[2]})"
+                continue
+            }
+
+            when {
+                trimmed.startsWith("* ") || trimmed.startsWith("- ") || trimmed.startsWith("+ ") -> {
+                    val item = trimmed.drop(2).trim()
+                    changes += "- ${linkifyBareUrls(item)}"
+                }
+                trimmed.matches(Regex("""^\d+\.\s+.+""")) -> {
+                    val item = trimmed.replace(Regex("""^\d+\.\s+"""), "")
+                    changes += "- ${linkifyBareUrls(item)}"
+                }
+                sawWhatsChanged -> {
+                    // Ignore trailing prose under auto-generated sections.
+                }
+                else -> {
+                    changes += "- ${linkifyBareUrls(trimmed)}"
+                }
+            }
+        }
+
+        val unique = changes
+            .map { it.trim() }
+            .filter { it.length > 3 }
+            .distinct()
+            .take(12)
+
+        if (unique.isEmpty()) {
+            return buildString {
+                append("Bug fixes and improvements.")
+                if (!changelogUrl.isNullOrBlank()) {
+                    append("\n\n[View release on GitHub](")
+                    append(changelogUrl)
+                    append(")")
+                }
+            }
+        }
+
+        return buildString {
+            append("## What's new\n")
+            unique.forEach { append(it).append('\n') }
+            if (!changelogUrl.isNullOrBlank()) {
+                append("\n[View release on GitHub](")
+                append(changelogUrl)
+                append(")")
+            }
+        }.trim()
+    }
+
+    private fun cleanTitle(title: String): String {
+        return title
+            .removePrefix("QA:")
+            .trim()
+            .replace(Regex("""^\[.*?]\s*"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .ifBlank { "Update" }
+    }
+
+    private fun linkifyBareUrls(text: String): String {
+        if (text.contains("](")) return text
+        return bareUrl.replace(text) { match ->
+            val url = match.value.trimEnd('.', ',', ';', ')', ']')
+            val label = when {
+                url.contains("/pull/") -> "PR #${url.substringAfterLast('/')}"
+                url.contains("/compare/") -> "Changelog"
+                url.contains("/releases/") -> "Release"
+                else -> url.removePrefix("https://").removePrefix("http://")
+            }
+            "[$label]($url)"
+        }
+    }
+}

@@ -114,7 +114,7 @@ class AppUpdateRepository @Inject constructor(
             }
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return@withContext null
-            parseLatestRelease(body)
+            parseLatestRelease(body)?.let { formatUpdateInfo(it) }
         }
     }
 
@@ -156,18 +156,27 @@ class AppUpdateRepository @Inject constructor(
             val root = arr.optJSONObject(i) ?: continue
             if (root.optBoolean("draft", false) || root.optBoolean("prerelease", false)) continue
             val info = parseReleaseObject(root) ?: continue
+            val formatted = formatUpdateInfo(info)
             out += AppReleaseNotes(
-                versionName = info.versionName,
-                versionCode = info.versionCode,
-                tagName = info.tagName,
-                releaseNotes = info.releaseNotes,
-                htmlUrl = info.htmlUrl,
+                versionName = formatted.versionName,
+                versionCode = formatted.versionCode,
+                tagName = formatted.tagName,
+                releaseNotes = formatted.releaseNotes,
+                htmlUrl = formatted.htmlUrl,
                 publishedAt = root.optString("published_at").takeIf { it.isNotBlank() },
-                isNewerThanInstalled = info.versionCode > currentVersionCode(),
+                isNewerThanInstalled = formatted.versionCode > currentVersionCode(),
             )
         }
         return out.sortedByDescending { it.versionCode }
     }
+
+    private fun formatUpdateInfo(info: AppUpdateInfo): AppUpdateInfo =
+        info.copy(
+            releaseNotes = ReleaseNotesFormatter.format(
+                raw = info.releaseNotes,
+                htmlUrl = info.htmlUrl,
+            ),
+        )
 
     private fun parseReleaseObject(root: JSONObject): AppUpdateInfo? {
         val tagName = root.optString("tag_name").orEmpty()
@@ -302,6 +311,7 @@ class AppUpdateRepository @Inject constructor(
     private fun installWithPackageInstaller(apkFile: File) {
         val installer = context.packageManager.packageInstaller
         val apkBytes = apkFile.length()
+        logInstallSource()
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL,
         ).apply {
@@ -312,6 +322,8 @@ class AppUpdateRepository @Inject constructor(
             setInstallReason(PackageManager.INSTALL_REASON_USER)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // Request silent commit for same-package self-updates.
+                // Note: Android throttles repeated silent updates (~1h). Within that
+                // window the system falls back to a one-tap confirmation UI.
                 setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -320,10 +332,9 @@ class AppUpdateRepository @Inject constructor(
                 setPackageSource(PackageInstaller.PACKAGE_SOURCE_OTHER)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Keep installer-of-record as DailyDash so later self-updates qualify
+                // for USER_ACTION_NOT_REQUIRED when ownership/installer checks apply.
                 setInstallerPackageName(context.packageName)
-                // Claim update ownership on fresh installs; no-op on updates but
-                // required so a one-time confirmation can transfer ownership to us.
-                setRequestUpdateOwnership(true)
             }
         }
 
@@ -339,13 +350,15 @@ class AppUpdateRepository @Inject constructor(
                 }
 
                 // Activity PendingIntent (not BroadcastReceiver): OEM background
-                // restrictions often block starting the confirmation UI from a receiver.
+                // restrictions often block starting confirmation / relaunch from a receiver.
                 val callback = Intent(context, UpdateInstallActivity::class.java).apply {
                     action = UpdateInstallActivity.ACTION_INSTALL_COMPLETE
+                    // Exclude from recents; relaunch path opens MainActivity on success.
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // Mutable: PackageInstaller fills EXTRA_STATUS / EXTRA_INTENT.
                         PendingIntent.FLAG_MUTABLE
                     } else {
                         0
@@ -357,5 +370,27 @@ class AppUpdateRepository @Inject constructor(
             runCatching { installer.abandonSession(sessionId) }
             throw e
         }
+    }
+
+    private fun logInstallSource() {
+        runCatching {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+            val info = context.packageManager.getInstallSourceInfo(context.packageName)
+            Log.i(
+                TAG,
+                "InstallSource installing=${info.installingPackageName} " +
+                    "initiating=${info.initiatingPackageName} " +
+                    "originating=${info.originatingPackageName}" +
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        " updateOwner=${info.updateOwnerPackageName}"
+                    } else {
+                        ""
+                    },
+            )
+            val canSilent = context.checkSelfPermission(
+                android.Manifest.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION,
+            ) == PackageManager.PERMISSION_GRANTED
+            Log.i(TAG, "UPDATE_PACKAGES_WITHOUT_USER_ACTION granted=$canSilent")
+        }.onFailure { Log.w(TAG, "Could not read install source", it) }
     }
 }
