@@ -64,8 +64,6 @@ object MacroMotion {
         tween(durationMs, easing = FastOutSlowInEasing)
 
     // ── Tab / content-switch transitions (NavHost top-level tabs) ────
-    // Pure crossfade — no slide. Cards are already visible; the page
-    // transition just swaps them without any positional movement.
     val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
 
     val contentExit: ExitTransition = fadeOut(tween(FADE_OUT_MS, easing = FastOutSlowInEasing))
@@ -85,6 +83,7 @@ object MacroMotion {
 
     // ── Native-style slide transitions (Stats, CameraScan, Help) ───────
     // 100% slide for the "active" screen, 30% parallax for the "background" screen.
+    // Also used for predictive back so the gesture slides instead of fading.
     val subScreenEnter: EnterTransition =
         slideInHorizontally(
             animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
@@ -106,10 +105,13 @@ object MacroMotion {
         ) { it }
 
     // ── Directional tab transitions ──────────────────────────────────
-    // Crossfade tabs — sliding entire Home/Health trees caused measurable jank.
-    @Suppress("UNUSED_PARAMETER")
-    fun tabEnter(toRight: Boolean): EnterTransition = contentEnter
+    fun tabEnter(toRight: Boolean): EnterTransition =
+        slideInHorizontally(
+            animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
+        ) { if (toRight) it else -it }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun tabExit(toRight: Boolean): ExitTransition = contentExit
+    fun tabExit(toRight: Boolean): ExitTransition =
+        slideOutHorizontally(
+            animationSpec = tween(SLIDE_MS, easing = FastOutSlowInEasing),
+        ) { if (toRight) -it / 3 else it / 3 }
 }

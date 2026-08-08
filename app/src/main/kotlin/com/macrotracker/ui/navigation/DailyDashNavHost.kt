@@ -69,14 +69,9 @@ fun DailyDashNavHost(
                 else -> MacroMotion.tabExit(getTabDirection(from, to))
             }
         },
-        popEnterTransition = {
-            val from = initialState.destination.route
-            if (isSubScreen(from)) MacroMotion.subScreenPopEnter else MacroMotion.contentEnter
-        },
-        popExitTransition  = {
-            val from = initialState.destination.route
-            if (isSubScreen(from)) MacroMotion.subScreenPopExit else MacroMotion.contentExit
-        },
+        // Predictive back + system back: always slide horizontally (never fade).
+        popEnterTransition = { MacroMotion.subScreenPopEnter },
+        popExitTransition  = { MacroMotion.subScreenPopExit },
     ) {
         // ── Onboarding flow ──────────────────────────────────────────────
         composable(
@@ -127,12 +122,8 @@ fun DailyDashNavHost(
             val onNavigateToHealth = remember(navController) {
                 { navController.navigate(Screen.Health.route) }
             }
-            val onNavigateToStats = remember(navController) {
-                { navController.navigate("stats") }
-            }
             HomeScreen(
                 onNavigateToHealth = onNavigateToHealth,
-                onNavigateToStats = onNavigateToStats,
             )
         }
 

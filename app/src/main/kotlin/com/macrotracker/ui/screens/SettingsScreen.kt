@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Route
@@ -92,6 +93,7 @@ import com.macrotracker.data.update.AppUpdateUiState
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.MarkdownText
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
@@ -105,6 +107,7 @@ import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
+import com.macrotracker.ui.viewmodel.StatsViewModel
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -115,6 +118,7 @@ fun SettingsScreen(
     onReplayTutorial: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
+    statsViewModel: StatsViewModel = hiltViewModel(),
 ) {
     val activity = LocalContext.current as ComponentActivity
     val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
@@ -141,6 +145,10 @@ fun SettingsScreen(
     val distanceEnabled by viewModel.distanceEnabled.collectAsState()
     val floorsClimbedEnabled by viewModel.floorsClimbedEnabled.collectAsState()
     val activeCaloriesEnabled by viewModel.activeCaloriesEnabled.collectAsState()
+
+    val calGoal by statsViewModel.calGoal.collectAsState()
+    val protGoal by statsViewModel.protGoal.collectAsState()
+    var goalsSaved by remember { mutableStateOf(false) }
 
     val activeSavedKey = when (aiProvider) {
         AiProvider.GEMINI -> savedKey
@@ -189,6 +197,7 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refreshConnectionStatus()
+        statsViewModel.loadData()
     }
 
     Column(
@@ -631,6 +640,88 @@ fun SettingsScreen(
             }
         }
 
+        // ── Daily Goals ──────────────────────────────────────────────────
+        Spacer(modifier = Modifier.height(8.dp))
+        MacroCard(delayMs = 175) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 14.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.FitnessCenter,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "Daily Goals",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                    )
+                    Text(
+                        text = "Calorie and protein targets for progress bars",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Calories",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                    MacroTextField(
+                        value = calGoal,
+                        onValueChange = {
+                            goalsSaved = false
+                            statsViewModel.setCalGoal(it)
+                        },
+                        placeholder = "2000",
+                        keyboardType = KeyboardType.Number,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Protein (g)",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                    MacroTextField(
+                        value = protGoal,
+                        onValueChange = {
+                            goalsSaved = false
+                            statsViewModel.setProtGoal(it)
+                        },
+                        placeholder = "150",
+                        keyboardType = KeyboardType.Number,
+                    )
+                }
+            }
+
+            MacroButton(
+                text = if (goalsSaved) "Goals Saved" else "Save Goals",
+                onClick = {
+                    haptics.confirm()
+                    statsViewModel.saveGoals()
+                    goalsSaved = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+            )
+        }
+
         // ── Quick Links ──────────────────────────────────────────────────
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -671,7 +762,7 @@ fun SettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             MacroButton(
-                text = "📊 Stats & Goals",
+                text = "📊 Stats",
                 onClick = onNavigateToStats,
                 modifier = Modifier.weight(1f),
             )

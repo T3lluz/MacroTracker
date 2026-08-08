@@ -68,7 +68,6 @@ fun HomeWidgetItem(
     isVisible: Boolean,
     viewModel: HomeViewModel,
     onNavigateToHealth: () -> Unit,
-    onNavigateToStats: () -> Unit,
     onRequestLocationPermission: () -> Unit,
     onRequestCalendarPermission: () -> Unit,
     hasLocationPermission: () -> Boolean,
@@ -93,10 +92,7 @@ fun HomeWidgetItem(
             isVisible = isVisible,
         )
         "BODY_STATS" -> HomeBodyStatsWidget(viewModel, isVisible = isVisible)
-        "PROGRESS" -> HomeProgressWidget(
-            viewModel = viewModel,
-            onNavigateToStats = onNavigateToStats,
-        )
+        "PROGRESS" -> HomeProgressWidget(viewModel = viewModel)
         "QUICK_ADD" -> HomeQuickAddWidget(
             viewModel = viewModel,
             onNavigateToHealth = onNavigateToHealth,
@@ -260,7 +256,6 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
 @Composable
 private fun HomeProgressWidget(
     viewModel: HomeViewModel,
-    onNavigateToStats: () -> Unit,
 ) {
     val summary by viewModel.summary.collectAsState()
     val logs by viewModel.logs.collectAsState()
@@ -280,18 +275,10 @@ private fun HomeProgressWidget(
                 color = TextPrimary,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                LastUpdatedText(
-                    lastUpdatedAt = logsLastUpdatedAt,
-                    color = TextSecondary,
-                )
-                IconButton(onClick = onNavigateToStats, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Outlined.FitnessCenter, contentDescription = "Stats", tint = Secondary)
-                }
-            }
+            LastUpdatedText(
+                lastUpdatedAt = logsLastUpdatedAt,
+                color = TextSecondary,
+            )
         }
 
         Row(

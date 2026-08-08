@@ -75,7 +75,6 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HomeScreen(
     onNavigateToHealth: () -> Unit,
-    onNavigateToStats: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -267,7 +266,6 @@ fun HomeScreen(
                         isVisible = config.id in visibleWidgetIds,
                         viewModel = viewModel,
                         onNavigateToHealth = onNavigateToHealth,
-                        onNavigateToStats = onNavigateToStats,
                         onRequestLocationPermission = onRequestLocationPermission,
                         onRequestCalendarPermission = onRequestCalendarPermission,
                         hasLocationPermission = hasLocationPermissionFn,

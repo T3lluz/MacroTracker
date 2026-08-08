@@ -142,9 +142,9 @@ private val PAGES = listOf(
         title = "See Your Trends",
         body = "The Health tab charts your last 7, 14 or 30 days of nutrition. Tap any bar to drill into the individual food logs for that day.",
         tips = listOf(
-            "Set daily goals in Stats → Daily Goals",
+            "Set daily goals in Settings → Daily Goals",
             "Green bars = under goal, red = over goal",
-            "Stats screen shows weekly and monthly averages",
+            "Stats screen shows your last 7 days",
         ),
     ),
     TutorialPage(
