@@ -5,8 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -17,6 +19,7 @@ import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -45,6 +48,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,15 +61,18 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -84,16 +92,17 @@ import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.CameraScanViewModel
 import com.macrotracker.ui.viewmodel.LogSummary
 import com.macrotracker.ui.viewmodel.ScanPhase
-import com.macrotracker.ui.util.rememberHaptics
 import java.io.ByteArrayOutputStream
 
 @Composable
@@ -120,12 +129,10 @@ fun CameraScanScreen(
         permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    // Show error toast
     LaunchedEffect(error) {
         error?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
     }
 
-    // Navigate home after food is saved to the database
     LaunchedEffect(loggedEvent) {
         if (loggedEvent) {
             viewModel.consumeLoggedEvent()
@@ -134,44 +141,76 @@ fun CameraScanScreen(
         }
     }
 
-    when {
-        !hasCameraPermission -> PermissionGate(
-            onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-            onGoBack = onNavigateBack,
-        )
-        phase == ScanPhase.CAMERA -> CameraPhase(
-            onPhotoCaptured = { bitmap, base64 ->
-                capturedBitmap = bitmap
-                capturedBase64 = base64
-                viewModel.setPhase(ScanPhase.PREVIEW)
-            },
-            onGoBack = onNavigateBack,
-        )
-        phase == ScanPhase.PREVIEW -> PreviewPhase(
-            bitmap = capturedBitmap,
-            scanning = scanning,
-            onScan = {
-                capturedBase64?.let { viewModel.analyzeImage(it) }
-            },
-            onRetake = {
-                capturedBitmap = null
-                capturedBase64 = null
-                viewModel.setPhase(ScanPhase.CAMERA)
-            },
-        )
-        phase == ScanPhase.RESULT -> ResultPhase(
-            viewModel = viewModel,
-            bitmap = capturedBitmap,
-            onLog = { summary ->
-                viewModel.saveScannedFood(summary)
-            },
-            onScanAgain = {
+    // Phase-aware system / predictive back (don't dump the whole route from preview).
+    BackHandler(enabled = hasCameraPermission) {
+        when (phase) {
+            ScanPhase.PREVIEW -> {
+                if (!scanning) {
+                    capturedBitmap = null
+                    capturedBase64 = null
+                    viewModel.setPhase(ScanPhase.CAMERA)
+                }
+            }
+            ScanPhase.RESULT -> {
                 capturedBitmap = null
                 capturedBase64 = null
                 viewModel.resetForNewScan()
-            },
-            onCancel = onNavigateBack,
-        )
+            }
+            ScanPhase.CAMERA -> onNavigateBack()
+        }
+    }
+
+    AnimatedContent(
+        targetState = when {
+            !hasCameraPermission -> "permission"
+            else -> phase.name
+        },
+        transitionSpec = {
+            (fadeIn(MacroMotion.fadeTween()) + slideInVertically(MacroMotion.slideTween()) { it / 12 })
+                .togetherWith(fadeOut(MacroMotion.fadeTween(150)) + slideOutVertically(MacroMotion.slideTween(150)) { -it / 16 })
+                .using(SizeTransform(clip = false))
+        },
+        label = "cameraPhase",
+    ) { target ->
+        when (target) {
+            "permission" -> PermissionGate(
+                onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onGoBack = onNavigateBack,
+            )
+            ScanPhase.CAMERA.name -> CameraPhase(
+                onPhotoCaptured = { bitmap, base64 ->
+                    capturedBitmap = bitmap
+                    capturedBase64 = base64
+                    viewModel.setPhase(ScanPhase.PREVIEW)
+                },
+                onGoBack = onNavigateBack,
+            )
+            ScanPhase.PREVIEW.name -> PreviewPhase(
+                bitmap = capturedBitmap,
+                scanning = scanning,
+                onScan = {
+                    capturedBase64?.let { viewModel.analyzeImage(it) }
+                },
+                onRetake = {
+                    capturedBitmap = null
+                    capturedBase64 = null
+                    viewModel.setPhase(ScanPhase.CAMERA)
+                },
+            )
+            else -> ResultPhase(
+                viewModel = viewModel,
+                bitmap = capturedBitmap,
+                onLog = { summary ->
+                    viewModel.saveScannedFood(summary)
+                },
+                onScanAgain = {
+                    capturedBitmap = null
+                    capturedBase64 = null
+                    viewModel.resetForNewScan()
+                },
+                onCancel = onNavigateBack,
+            )
+        }
     }
 }
 
@@ -206,6 +245,9 @@ private fun CameraPhase(
     val imageCapture = remember { ImageCapture.Builder().setJpegQuality(45).build() }
     val previewView = remember { PreviewView(context) }
     val haptics = rememberHaptics()
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var torchEnabled by rememberSaveable { mutableStateOf(false) }
+    val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
 
     LaunchedEffect(lifecycleOwner) {
         val cameraProvider = ProcessCameraProvider.awaitInstance(context)
@@ -213,40 +255,94 @@ private fun CameraPhase(
             it.surfaceProvider = previewView.surfaceProvider
         }
         cameraProvider.unbindAll()
-        cameraProvider.bindToLifecycle(
+        camera = cameraProvider.bindToLifecycle(
             lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
         )
+        // Restore torch if the user had it on before a rebinding.
+        if (torchEnabled) {
+            camera?.cameraControl?.enableTorch(true)
+        }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                camera?.cameraControl?.enableTorch(false)
+            } catch (_: Exception) { }
+        }
+    }
+
+    LaunchedEffect(torchEnabled, camera) {
+        val cam = camera ?: return@LaunchedEffect
+        if (cam.cameraInfo.hasFlashUnit()) {
+            try {
+                cam.cameraControl.enableTorch(torchEnabled)
+            } catch (_: Exception) { }
+        }
+    }
+
+    val flashScale by animateFloatAsState(
+        targetValue = if (torchEnabled) 1.08f else 1f,
+        animationSpec = MacroMotion.pressSpring(),
+        label = "flashScale",
+    )
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        // Camera preview
         AndroidView(
             factory = { previewView },
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Overlay
         Column(
             modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            // Top bar
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 40.dp, start = 20.dp, end = 20.dp, bottom = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 40.dp, start = 20.dp, end = 20.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(
                     onClick = onGoBack,
-                    modifier = Modifier.size(40.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape),
                 ) {
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                 }
-                Text("Scan Nutrition Label", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                Spacer(modifier = Modifier.width(40.dp))
+                Text(
+                    "Scan Nutrition Label",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                )
+                IconButton(
+                    onClick = {
+                        if (hasFlash) {
+                            haptics.tick()
+                            torchEnabled = !torchEnabled
+                        }
+                    },
+                    enabled = hasFlash,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .scale(flashScale)
+                        .background(
+                            if (torchEnabled) Primary.copy(alpha = 0.85f)
+                            else Color.Black.copy(alpha = 0.5f),
+                            CircleShape,
+                        ),
+                ) {
+                    Icon(
+                        imageVector = if (torchEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                        contentDescription = if (torchEnabled) "Turn flash off" else "Turn flash on",
+                        tint = if (hasFlash) Color.White else Color.White.copy(alpha = 0.35f),
+                    )
+                }
             }
 
-            // Viewfinder
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
@@ -256,15 +352,19 @@ private fun CameraPhase(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     "Point at the nutrition facts label on the back of the product",
-                    color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, textAlign = TextAlign.Center,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 24.dp),
                 )
             }
 
-            // Shutter button
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp, start = 40.dp, end = 40.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp, start = 40.dp, end = 40.dp),
                 horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
@@ -290,7 +390,7 @@ private fun CameraPhase(
                                     override fun onError(exception: ImageCaptureException) {
                                         // Silently fail - user can retry
                                     }
-                                }
+                                },
                             )
                         },
                     contentAlignment = Alignment.Center,

@@ -1,7 +1,6 @@
 package com.macrotracker.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -22,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.util.LocalTickersPaused
 import kotlinx.coroutines.delay
@@ -46,7 +46,7 @@ fun MacroCard(
         if (!hasAnimated) {
             if (scrollIdle && delayMs > 0) delay(delayMs)
             if (scrollIdle && delayMs > 0) {
-                alpha.animateTo(1f, animationSpec = tween(200))
+                alpha.animateTo(1f, animationSpec = MacroMotion.fadeTween())
             } else {
                 alpha.snapTo(1f)
             }

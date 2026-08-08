@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -44,7 +43,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.theme.Border
@@ -418,17 +416,31 @@ fun WeatherCard(
                                 Column {
                                     Text("${weather.temperature.toInt()}°C", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     Text(weather.description, fontSize = 15.sp, color = Color.White.copy(alpha = 0.85f))
+                                    weather.feelsLike?.let { feels ->
+                                        Text(
+                                            "Feels like ${feels.toInt()}°",
+                                            fontSize = 12.sp,
+                                            color = Color.White.copy(alpha = 0.65f),
+                                            modifier = Modifier.padding(top = 2.dp),
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.weight(1f))
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        painter = painterResource(com.macrotracker.R.drawable.ic_weather_wind),
-                                        contentDescription = "Wind",
-                                        tint = Color.White.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(24.dp)
+                                Column(
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    WeatherMetricChip(
+                                        iconRes = com.macrotracker.R.drawable.ic_weather_wind,
+                                        label = "${weather.windSpeed.toInt()} m/s",
                                     )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text("${weather.windSpeed.toInt()} m/s", fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
+                                    weather.humidity?.let { humidity ->
+                                        WeatherMetricChip(
+                                            iconRes = null,
+                                            emoji = "💧",
+                                            label = "${humidity.toInt()}%",
+                                        )
+                                    }
                                 }
                             }
 
@@ -684,32 +696,10 @@ private fun WeatherExpandedForecast(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(hourlyScroll),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                weather.hourlyForecasts.forEach { hourly ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .width(56.dp)
-                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                    ) {
-                        Text(hourly.time, fontSize = 11.sp, color = Color.White.copy(alpha = 0.65f))
-                        Spacer(Modifier.height(4.dp))
-                        Icon(
-                            painter = painterResource(hourly.iconRes),
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = Color.Unspecified,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "${hourly.temperature.toInt()}°",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
+                weather.hourlyForecasts.take(24).forEach { hourly ->
+                    HourlyForecastTile(hourly = hourly)
                 }
             }
         }
@@ -773,6 +763,84 @@ private fun WeatherExpandedForecast(
             onToggle = onCollapse,
             accentColor = Color.White,
             collapseLabel = "Show less",
+        )
+    }
+}
+
+@Composable
+private fun WeatherMetricChip(
+    label: String,
+    iconRes: Int? = null,
+    emoji: String? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        when {
+            iconRes != null -> Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(14.dp),
+            )
+            emoji != null -> Text(emoji, fontSize = 11.sp)
+        }
+        Text(label, fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f), fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun HourlyForecastTile(hourly: com.macrotracker.data.remote.HourlyForecast) {
+    val precip = hourly.precipitation
+    val showPrecip = precip != null && precip >= 0.1
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(72.dp)
+            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .padding(vertical = 10.dp, horizontal = 6.dp),
+    ) {
+        Text(hourly.time, fontSize = 11.sp, color = Color.White.copy(alpha = 0.65f), fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(6.dp))
+        Icon(
+            painter = painterResource(hourly.iconRes),
+            contentDescription = hourly.description,
+            modifier = Modifier.size(30.dp),
+            tint = Color.Unspecified,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "${hourly.temperature.toInt()}°",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painter = painterResource(com.macrotracker.R.drawable.ic_weather_wind),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.size(10.dp),
+            )
+            Spacer(modifier = Modifier.width(2.dp))
+            Text(
+                "${hourly.windSpeed.toInt()}",
+                fontSize = 10.sp,
+                color = Color.White.copy(alpha = 0.55f),
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            if (showPrecip) String.format(java.util.Locale.US, "%.1f mm", precip)
+            else "—",
+            fontSize = 10.sp,
+            color = if (showPrecip) Color(0xFF90CAF9) else Color.White.copy(alpha = 0.35f),
+            fontWeight = if (showPrecip) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
 }

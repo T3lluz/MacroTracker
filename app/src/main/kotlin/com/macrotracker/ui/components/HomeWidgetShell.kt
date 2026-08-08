@@ -3,7 +3,6 @@ package com.macrotracker.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -40,7 +39,7 @@ fun <T> WidgetStateSwitch(
     Crossfade(
         targetState = targetState,
         modifier = modifier,
-        animationSpec = tween(200),
+        animationSpec = MacroMotion.fadeTween(),
         label = label,
         content = content,
     )

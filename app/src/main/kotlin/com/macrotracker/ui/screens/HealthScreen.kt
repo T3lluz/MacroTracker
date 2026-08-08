@@ -3,12 +3,15 @@ package com.macrotracker.ui.screens
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,29 +29,34 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MonitorHeart
-import androidx.compose.material.icons.filled.ShowChart
-import androidx.compose.material.icons.filled.Toc
 import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Bloodtype
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.Stairs
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -82,6 +90,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.PermissionController
@@ -92,6 +101,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.data.health.DailyHealthStats
+import com.macrotracker.data.local.DailySummary
+import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.HealthConnectCard
 import com.macrotracker.ui.components.MacroButton
@@ -99,7 +110,6 @@ import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroLogItem
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
-import com.macrotracker.ui.components.WidgetConfig
 import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.calculatePercentageChange
 import com.macrotracker.ui.components.draggableWidgetItems
@@ -115,6 +125,7 @@ import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.PrimaryVariant
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.Success
+import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
@@ -159,7 +170,12 @@ fun HealthScreen(
     val context = LocalContext.current
     val summary by healthViewModel.summary.collectAsState()
     val logs by healthViewModel.logs.collectAsState()
-    val weekHistory by healthViewModel.weekHistory.collectAsState()
+    val macroHistory by healthViewModel.macroHistory.collectAsState()
+    val macroRangeDays by healthViewModel.macroRangeDays.collectAsState()
+    val macroMetric by healthViewModel.macroMetric.collectAsState()
+    val macroSelectedDate by healthViewModel.macroSelectedDate.collectAsState()
+    val macroSelectedLogs by healthViewModel.macroSelectedLogs.collectAsState()
+    val macroHistoryLoading by healthViewModel.macroHistoryLoading.collectAsState()
     val healthHistory by healthViewModel.healthHistory.collectAsState()
     val healthWidgetOrder by healthViewModel.healthWidgetOrder.collectAsState()
     val healthConnectState by healthViewModel.healthConnectState.collectAsState()
@@ -191,11 +207,11 @@ fun HealthScreen(
     val defaultHealthWidgets = remember {
         listOf(
             Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
-            Triple("HISTORY", "Weekly Trends", Icons.Default.ShowChart),
+            Triple("HISTORY", "Weekly Trends", Icons.AutoMirrored.Filled.ShowChart),
             Triple("SUMMARY", "Daily Summary", Icons.Default.ViewDay),
             Triple("ADD_ENTRY", "Add Entry", Icons.Default.Add),
-            Triple("WEEK_AT_A_GLANCE", "Food Calories", Icons.Default.History),
-            Triple("RECENT_LOGS", "Recent Logs", Icons.Default.List)
+            Triple("WEEK_AT_A_GLANCE", "Macro Trends", Icons.Outlined.BarChart),
+            Triple("RECENT_LOGS", "Recent Logs", Icons.AutoMirrored.Filled.List)
         )
     }
     val parsedConfigs = remember(healthWidgetOrder) {
@@ -590,65 +606,20 @@ fun HealthScreen(
                         Spacer(modifier = Modifier.height(20.dp))
                     }
                     "WEEK_AT_A_GLANCE" -> {
-                        if (weekHistory.isNotEmpty()) {
-                            MacroCard(delayMs = 200) {
-                                Text(
-                                    "Food Calories",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary,
-                                    modifier = Modifier.padding(bottom = 12.dp),
-                                )
-
-                                val maxCal = weekHistory.maxOf { it.totalCalories }.coerceAtLeast(1)
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(160.dp), // Increased height to prevent clipping
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.Bottom,
-                                ) {
-                                    weekHistory.forEach { day ->
-                                        val heightFraction = day.totalCalories.toFloat() / maxCal
-                                        val targetHeight = (10 + heightFraction * 110).dp
-                                        val isToday = day.date == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                                        val dayLabel = try {
-                                            LocalDate.parse(day.date).dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
-                                        } catch (_: Exception) { "?" }
-
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.weight(1f),
-                                        ) {
-                                            if (day.totalCalories > 0) {
-                                                Text(
-                                                    text = day.totalCalories.toString(),
-                                                    fontSize = 10.sp,
-                                                    color = if (isToday) TextPrimary else TextSecondary,
-                                                    modifier = Modifier.padding(bottom = 4.dp)
-                                                )
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(20.dp)
-                                                    .height(targetHeight)
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(if (isToday) Primary else PrimaryVariant),
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                dayLabel,
-                                                fontSize = 11.sp,
-                                                color = if (isToday) TextPrimary else TextSecondary,
-                                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(20.dp))
-                        }
+                        MacroTrendsSection(
+                            rangeDays = macroRangeDays,
+                            metric = macroMetric,
+                            macroHistory = macroHistory,
+                            selectedDate = macroSelectedDate,
+                            selectedLogs = macroSelectedLogs,
+                            loading = macroHistoryLoading,
+                            haptics = haptics,
+                            onRangeDaysSelected = { healthViewModel.setMacroRangeDays(it) },
+                            onMetricSelected = { healthViewModel.setMacroMetric(it) },
+                            onDateSelected = { healthViewModel.selectMacroDate(it) },
+                            onDeleteLog = { healthViewModel.deleteLog(it) },
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
                     }
                     "RECENT_LOGS" -> {
                         MacroCard(delayMs = 250) {
@@ -773,6 +744,229 @@ private fun PercentageChange(percentage: Double) {
     }
 }
 
+// ── Macro Trends (moved from History tab) ─────────────────────────────
+
+@Composable
+private fun MacroTrendsSection(
+    rangeDays: Int,
+    metric: String,
+    macroHistory: List<DailySummary>,
+    selectedDate: String,
+    selectedLogs: List<MacroLogEntity>,
+    loading: Boolean,
+    haptics: HapticHelper,
+    onRangeDaysSelected: (Int) -> Unit,
+    onMetricSelected: (String) -> Unit,
+    onDateSelected: (String) -> Unit,
+    onDeleteLog: (String) -> Unit,
+) {
+    val dateFormat = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
+    val dates = remember(rangeDays) {
+        (0 until rangeDays).map { i ->
+            LocalDate.now().minusDays((rangeDays - 1 - i).toLong()).format(dateFormat)
+        }
+    }
+    val metricValues = dates.map { date ->
+        val day = macroHistory.find { it.date == date }
+        if (metric == "calories") day?.totalCalories ?: 0 else day?.totalProtein ?: 0
+    }
+    val maxValue = (metricValues.maxOrNull() ?: 1).coerceAtLeast(1)
+    val selectedMacro = macroHistory.find { it.date == selectedDate }
+
+    Column {
+        MacroCard(delayMs = 70) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+                Icon(Icons.Outlined.BarChart, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Macro Trends", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+                listOf(7, 14, 30).forEach { option ->
+                    val isActive = option == rangeDays
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isActive) Primary else Background)
+                            .clickable {
+                                haptics.tick()
+                                onRangeDaysSelected(option)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            "${option}d",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isActive) Color.White else TextSecondary,
+                        )
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+                listOf("calories" to "Calories", "protein" to "Protein").forEach { (key, label) ->
+                    val isActive = metric == key
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isActive) Surface else Background)
+                            .border(1.dp, if (isActive) Primary.copy(alpha = 0.35f) else Border, CircleShape)
+                            .clickable {
+                                haptics.tick()
+                                onMetricSelected(key)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            label,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isActive) TextPrimary else TextSecondary,
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 8.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                dates.forEachIndexed { index, date ->
+                    val value = metricValues[index]
+                    val targetHeight = (14 + (value.toFloat() / maxValue) * 96).dp
+                    val isSelected = date == selectedDate
+                    val dayLabel = try {
+                        LocalDate.parse(date).dayOfWeek.getDisplayName(JavaTextStyle.NARROW, Locale.getDefault())
+                    } catch (_: Exception) { "?" }
+
+                    Column(
+                        modifier = Modifier
+                            .width(28.dp)
+                            .clickable {
+                                haptics.tick()
+                                onDateSelected(date)
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        MacroTrendBar(
+                            targetHeight = targetHeight,
+                            color = if (isSelected) Primary else PrimaryVariant,
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            dayLabel,
+                            fontSize = 11.sp,
+                            color = if (isSelected) TextPrimary else TextSecondary,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+
+            if (loading) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Loading trends…", fontSize = 13.sp, color = TextSecondary)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        MacroCard(delayMs = 100) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+                Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                val displayDate = try {
+                    LocalDate.parse(selectedDate).format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+                } catch (_: Exception) { selectedDate }
+                Text(displayDate, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                MacroDayStatCard("Calories", "${selectedMacro?.totalCalories ?: 0} kcal", Modifier.weight(1f))
+                MacroDayStatCard("Protein", "${selectedMacro?.totalProtein ?: 0}g", Modifier.weight(1f))
+            }
+
+            Text(
+                "Food Logs",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            if (selectedLogs.isEmpty()) {
+                Text(
+                    "No food logs for this day.",
+                    color = TextSecondary,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = 13.sp,
+                )
+            } else {
+                selectedLogs.forEach { log ->
+                    MacroLogItem(
+                        log = log,
+                        onDelete = onDeleteLog,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MacroTrendBar(targetHeight: Dp, color: Color) {
+    val animatedHeight by animateDpAsState(
+        targetValue = targetHeight,
+        animationSpec = MacroMotion.entranceSpring(),
+        label = "macroTrendBar",
+    )
+    Box(
+        modifier = Modifier
+            .width(18.dp)
+            .height(120.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(18.dp)
+                .height(animatedHeight)
+                .clip(RoundedCornerShape(9.dp))
+                .background(color),
+        )
+    }
+}
+
+@Composable
+private fun MacroDayStatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Background),
+        border = BorderStroke(1.dp, Border),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(label, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+            Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+    }
+}
 
 // ── Health History Graph ──────────────────────────────────────────────
 

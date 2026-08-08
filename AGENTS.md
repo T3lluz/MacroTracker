@@ -45,9 +45,9 @@ com.macrotracker/
     AppModule.kt           ← all @Provides (DB, DAO, OkHttpClient, KtorClient);
                               @Binds abstract modules for F1 and YouTube interface → impl
   ui/
-    screens/               ← one file per tab screen (HomeScreen, HealthScreen, AIScreen, HistoryScreen,
-                              SettingsScreen) + sub-screens (StatsScreen, HelpScreen, CameraScanScreen)
-                              + onboarding/ (SplashScreen overlay, WelcomeScreen, PermissionsScreen, TutorialScreen)
+    screens/               ← one file per tab screen (HomeScreen, HealthScreen, AIScreen,
+                             SettingsScreen) + sub-screens (StatsScreen, HelpScreen, CameraScanScreen)
+                             + onboarding/ (SplashScreen overlay, WelcomeScreen, PermissionsScreen, TutorialScreen)
     viewmodel/             ← one @HiltViewModel per screen; UI state as sealed classes via StateFlow;
                               includes OnboardingViewModel (manages onboardingCompleted + splashShown flags);
                               DashboardViewModel (per-metric Health Connect StateFlows with today/yesterday
@@ -55,8 +55,8 @@ com.macrotracker/
                               YouTubeViewModel (YouTube feed + channel search — consumed by YoutubeCard
                               component directly via hiltViewModel(), not from a screen ViewModel);
                               F1UiState.kt (dedicated file for the F1 sealed interface used by HomeViewModel)
-    navigation/            ← Screen.kt (sealed class, 5 bottom-nav tabs) + OnboardingRoutes (const routes)
-                              + DailyDashNavHost.kt
+navigation/            ← Screen.kt (sealed class, 4 bottom-nav tabs) + OnboardingRoutes (const routes)
+                         + DailyDashNavHost.kt
     components/            ← shared Composables (MacroCard, PillNavigationBar, DraggableWidgetColumn,
                               WidgetEditor, WidgetExpandBar, …)
     theme/                 ← Color, Theme, Animation (MacroMotion object — single source for all specs)
@@ -118,6 +118,7 @@ The **Health screen** uses the same draggable pattern with a separate key (`heal
 ```
 "BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
 ```
+`WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
 
 ### App Widgets (Glance)
 All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(context)` (call from the app) or `WidgetRefreshWorker` (periodic WorkManager task, 15-min interval, requires network). F1 widgets share a disk/memory cache through `F1WidgetDataProvider`. Full widget list: `DashboardWidget`, `MacrosWidget`, `HealthWidget`, `WeatherWidget`, `CalendarWidget`, `F1CountdownWidget`, `F1StandingsWidget`, `F1ScheduleWidget`.

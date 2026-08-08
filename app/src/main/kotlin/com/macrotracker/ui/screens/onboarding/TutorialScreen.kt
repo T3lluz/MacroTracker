@@ -138,9 +138,9 @@ private val PAGES = listOf(
     TutorialPage(
         icon = Icons.Outlined.BarChart,
         accentColor = Secondary,
-        badge = "History",
+        badge = "Trends",
         title = "See Your Trends",
-        body = "The History tab charts your last 7, 14 or 30 days of nutrition. Tap any bar to drill into the individual food logs for that day.",
+        body = "The Health tab charts your last 7, 14 or 30 days of nutrition. Tap any bar to drill into the individual food logs for that day.",
         tips = listOf(
             "Set daily goals in Stats → Daily Goals",
             "Green bars = under goal, red = over goal",

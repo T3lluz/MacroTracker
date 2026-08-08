@@ -13,7 +13,6 @@ import com.macrotracker.ui.screens.AIScreen
 import com.macrotracker.ui.screens.CameraScanScreen
 import com.macrotracker.ui.screens.HealthScreen
 import com.macrotracker.ui.screens.HelpScreen
-import com.macrotracker.ui.screens.HistoryScreen
 import com.macrotracker.ui.screens.HomeScreen
 import com.macrotracker.ui.screens.SettingsScreen
 import com.macrotracker.ui.screens.StatsScreen
@@ -36,9 +35,9 @@ fun DailyDashNavHost(
         Screen.Home.route,
         Screen.Health.route,
         Screen.AI.route,
-        Screen.History.route,
-        Screen.Settings.route
+        Screen.Settings.route,
     )
+    val subScreenRoutes = setOf("stats", "help", "widgets", "camera_scan")
 
     fun getTabDirection(initial: String?, target: String?): Boolean {
         val initialIdx = tabOrder.indexOf(initial).takeIf { it != -1 } ?: 0
@@ -46,20 +45,38 @@ fun DailyDashNavHost(
         return targetIdx > initialIdx
     }
 
+    fun isSubScreen(route: String?): Boolean = route != null && route in subScreenRoutes
+
     NavHost(
         navController    = navController,
         startDestination = startDestination,
         modifier         = modifier.background(Background),
         enterTransition  = {
-            val toRight = getTabDirection(initialState.destination.route, targetState.destination.route)
-            MacroMotion.tabEnter(toRight)
+            val from = initialState.destination.route
+            val to = targetState.destination.route
+            when {
+                isSubScreen(to) -> MacroMotion.subScreenEnter
+                isSubScreen(from) -> MacroMotion.subScreenPopEnter
+                else -> MacroMotion.tabEnter(getTabDirection(from, to))
+            }
         },
         exitTransition   = {
-            val toRight = getTabDirection(initialState.destination.route, targetState.destination.route)
-            MacroMotion.tabExit(toRight)
+            val from = initialState.destination.route
+            val to = targetState.destination.route
+            when {
+                isSubScreen(to) -> MacroMotion.subScreenExit
+                isSubScreen(from) -> MacroMotion.subScreenPopExit
+                else -> MacroMotion.tabExit(getTabDirection(from, to))
+            }
         },
-        popEnterTransition = { MacroMotion.subScreenPopEnter },
-        popExitTransition  = { MacroMotion.subScreenPopExit },
+        popEnterTransition = {
+            val from = initialState.destination.route
+            if (isSubScreen(from)) MacroMotion.subScreenPopEnter else MacroMotion.contentEnter
+        },
+        popExitTransition  = {
+            val from = initialState.destination.route
+            if (isSubScreen(from)) MacroMotion.subScreenPopExit else MacroMotion.contentExit
+        },
     ) {
         // ── Onboarding flow ──────────────────────────────────────────────
         composable(
@@ -99,7 +116,7 @@ fun DailyDashNavHost(
                 onFinish = {
                     onOnboardingComplete()
                     navController.navigate(Screen.Home.route) {
-                        popUpTo(OnboardingRoutes.SPLASH) { inclusive = true }
+                        popUpTo(OnboardingRoutes.WELCOME) { inclusive = true }
                     }
                 }
             )
@@ -137,10 +154,6 @@ fun DailyDashNavHost(
                 onNavigateToCameraScan = onNavigateToCameraScan,
                 onNavigateToHome = onNavigateToHome,
             )
-        }
-
-        composable(Screen.History.route) {
-            HistoryScreen()
         }
 
         composable(Screen.Settings.route) {
@@ -207,7 +220,8 @@ fun DailyDashNavHost(
             val onNavigateHome = remember(navController) {
                 {
                     navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Home.route) { inclusive = true }
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                        launchSingleTop = true
                     }
                 }
             }
