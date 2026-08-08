@@ -78,7 +78,9 @@ jobs:
         env:
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          COMMIT_SHA: ${{ steps.version.outputs.commit_sha || github.sha }}
           INPUT_NOTES: ${{ github.event.inputs.release_notes }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/package-release.sh
 
       - name: Publish GitHub Release
@@ -88,7 +90,8 @@ jobs:
           name: ${{ steps.package.outputs.name }}
           body: ${{ steps.package.outputs.notes }}
           files: ${{ steps.package.outputs.apk }}
-          generate_release_notes: true
+          # Notes are composed in package-release.sh (precise bullets + working links).
+          generate_release_notes: false
           target_commitish: ${{ steps.version.outputs.commit_sha || github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

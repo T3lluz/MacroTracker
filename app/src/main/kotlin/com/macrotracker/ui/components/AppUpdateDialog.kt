@@ -111,13 +111,13 @@ fun AppUpdateDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "DailyDash ${info.versionName} (build ${info.versionCode})",
+                    text = "DailyDash ${info.versionName} · build ${info.versionCode}",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Primary,
                 )
                 Text(
-                    text = "You have $currentVersionName · installs as an update, not a reinstall",
+                    text = "Installed $currentVersionName · app restarts after install",
                     fontSize = 12.sp,
                     color = TextSecondary,
                 )
@@ -127,11 +127,11 @@ fun AppUpdateDialog(
                     markdown = info.releaseNotes.ifBlank { "Bug fixes and improvements." },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 200.dp)
+                        .heightIn(max = 220.dp)
                         .verticalScroll(rememberScrollState()),
                     color = TextSecondary,
                     fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    lineHeight = 19.sp,
                 )
 
                 if (downloading) {

@@ -73,6 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -968,9 +969,11 @@ private fun ReleaseNotesDropdown(
     release: AppReleaseNotes,
     isCurrent: Boolean,
 ) {
-    var expanded by remember(release.tagName) { mutableStateOf(false) }
+    var expanded by remember(release.tagName) { mutableStateOf(isCurrent) }
     val haptics = rememberHaptics()
-    val shape = RoundedCornerShape(12.dp)
+    val uriHandler = LocalUriHandler.current
+    val shape = RoundedCornerShape(14.dp)
+    val dateLabel = release.publishedAt?.take(10).orEmpty()
 
     Column(
         modifier = Modifier
@@ -986,14 +989,14 @@ private fun ReleaseNotesDropdown(
                     haptics.click()
                     expanded = !expanded
                 }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "v${release.versionName}",
-                        fontSize = 13.sp,
+                        text = release.versionName,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (release.isNewerThanInstalled) Primary else TextPrimary,
                     )
@@ -1023,10 +1026,13 @@ private fun ReleaseNotesDropdown(
                         )
                     }
                 }
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "build ${release.versionCode}" +
-                        (release.publishedAt?.take(10)?.let { " · $it" } ?: ""),
-                    fontSize = 11.sp,
+                    text = buildString {
+                        append("Build ${release.versionCode}")
+                        if (dateLabel.isNotEmpty()) append(" · $dateLabel")
+                    },
+                    fontSize = 12.sp,
                     color = TextSecondary,
                 )
             }
@@ -1046,18 +1052,45 @@ private fun ReleaseNotesDropdown(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
             ) {
                 HorizontalDivider(
                     color = Border.copy(alpha = 0.45f),
-                    modifier = Modifier.padding(bottom = 10.dp),
+                    modifier = Modifier.padding(bottom = 12.dp),
                 )
                 MarkdownText(
                     markdown = release.releaseNotes.ifBlank { "No release notes." },
                     color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
                 )
+                if (release.htmlUrl.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                haptics.click()
+                                runCatching { uriHandler.openUri(release.htmlUrl) }
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Link,
+                            contentDescription = null,
+                            tint = Primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Open on GitHub",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Primary,
+                        )
+                    }
+                }
             }
         }
     }
