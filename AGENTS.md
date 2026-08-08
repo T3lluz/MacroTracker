@@ -149,3 +149,16 @@ F1 widget theming goes through `F1WidgetColors.kt`: instantiate `F1Clr` for the 
 - `widget/WidgetComponents.kt` — shared Glance composables + `WidgetSizes` grid constants
 - `ui/screens/onboarding/` — multi-step onboarding flow (SplashScreen overlay + 3 nav-routed screens)
 
+## Cursor Cloud specific instructions
+
+Environment is pre-provisioned (Android SDK + JDK are baked into the VM snapshot; the startup update script only warms Gradle deps). Standard build/test commands live in the **Build & API Keys** section above.
+
+- **Android SDK**: installed at `/opt/android-sdk` (API 35 platform, `build-tools;35.0.0`, `platform-tools`, `emulator`, `system-images;android-35;google_apis;x86_64`). `local.properties` is committed with a Windows `sdk.dir`; in this VM it is edited (uncommitted) to `sdk.dir=/opt/android-sdk`. Keep that edit local — do **not** commit it. If a build ever can't find the SDK, re-point `sdk.dir` to `/opt/android-sdk`.
+- **JDK**: only JDK 21 is present. Gradle/AGP build and run fine on it even though the module targets Java 17 — do **not** waste time hunting for a JDK 17. `gradle/gradle-daemon-jvm.properties` requests JetBrains 21 but Gradle transparently uses the system OpenJDK 21.
+- **Lint**: `./gradlew lintDebug` runs to completion but currently **fails on ~17 pre-existing lint errors** in the app source (e.g. `SuspiciousIndentation` in `HealthScreen.kt`). That is the repo's own code state, not an environment problem — don't "fix the environment" over it.
+- **No tests exist**: there is no `src/test` / `src/androidTest` and no test task in CI. "Testing" means building the APK and running it on an emulator.
+- **Emulator — hardware KVM is UNUSABLE here.** `/dev/kvm` exists and `emulator -accel-check` passes, but creating an accelerated vCPU triggers a host kernel BUG (`kernel BUG at arch/x86/kvm/x86.c:702`, `vmx_vcpu_create`) because nested virt is broken in this microVM. You MUST launch with software rendering + **`-no-accel`** (TCG). This works but a cold boot takes ~5–6 min. Example headless launch:
+  `emulator -avd dailydash -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-accel` (the `dailydash` AVD is already created; recreate with `avdmanager create avd -n dailydash -k "system-images;android-35;google_apis;x86_64" -d pixel_6`).
+- **Driving the headless emulator**: interact via `adb` (`install -r`, `shell am start -n com.macrotracker/.MainActivity`, `input tap`, `input text`, `exec-out screencap -p > out.png`). Gotchas: the emulator uses the host hardware keyboard so the **soft keyboard never appears** (good — no layout shift), but **TAB does not move focus between Compose text fields** — tap each field explicitly before `input text`. Run `adb shell settings put global hide_error_dialogs 1` early so the slow-TCG "System UI isn't responding" ANR dialog doesn't overlay the app.
+- **`installDebug` needs a booted emulator/device**; without one it fails at the install step (the build itself still succeeds).
+
