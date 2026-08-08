@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -35,12 +34,12 @@ import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.materials.CupertinoMaterials
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 
 private val NavPillShape = RoundedCornerShape(percent = 50)
 private val NavGlassTint = Color(0xFF141C2C)
-private val NavHairline = Color.White.copy(alpha = 0.16f)
+private val NavHairline = Color.White.copy(alpha = 0.22f)
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -76,35 +75,26 @@ fun PillNavigationBar(
                 .height(64.dp)
                 .onSizeChanged { containerSize = it }
                 .shadow(
-                    elevation = 18.dp,
+                    elevation = 12.dp,
                     shape = NavPillShape,
-                    ambientColor = Color.Black.copy(alpha = 0.45f),
-                    spotColor = Color.Black.copy(alpha = 0.55f),
+                    ambientColor = Color.Black.copy(alpha = 0.28f),
+                    spotColor = Color.Black.copy(alpha = 0.32f),
                 )
                 .clip(NavPillShape)
                 .then(
                     if (hazeState != null) {
                         Modifier.hazeEffect(
                             state = hazeState,
-                            style = HazeMaterials.thin(containerColor = NavGlassTint),
+                            style = CupertinoMaterials.ultraThin(containerColor = NavGlassTint),
                         ) {
-                            blurRadius = 22.dp
-                            noiseFactor = 0.06f
+                            blurRadius = 48.dp
+                            noiseFactor = 0.04f
                         }
                     } else {
-                        Modifier.background(NavGlassTint.copy(alpha = 0.92f))
+                        Modifier.background(NavGlassTint.copy(alpha = 0.55f))
                     },
                 )
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.10f),
-                            Color.White.copy(alpha = 0.03f),
-                            Color.Transparent,
-                        ),
-                    ),
-                )
-                .border(BorderStroke(1.dp, NavHairline), NavPillShape),
+                .border(BorderStroke(0.5.dp, NavHairline), NavPillShape),
         )
 
         if (containerSize.width > 0 && items.isNotEmpty()) {

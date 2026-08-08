@@ -563,26 +563,22 @@ private fun F1CollapsedWidget(data: F1Standings) {
     }
     val trackUrl = remember(next?.circuitId) { next?.circuitId?.let { getCircuitSvgUrl(it) } }
     val context = LocalContext.current
-    val mapWidth = 132.dp
-    val mapHeight = 96.dp
+    val mapWidth = 156.dp
+    val mapHeight = 118.dp
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ── Next race — copy left, larger circuit map right ───────────────
+        // ── Next race — tight copy left, larger circuit map right ─────────
         if (next != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .then(if (trackUrl != null) Modifier.height(mapHeight) else Modifier)
-                        .padding(end = 10.dp),
-                    verticalArrangement = if (trackUrl != null) {
-                        Arrangement.SpaceBetween
-                    } else {
-                        Arrangement.Top
-                    },
+                        .padding(end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -611,11 +607,10 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             )
                         }
                     }
-                    // Track name + countdown share one row so the map can grow
+                    // Keep countdown tucked against the track name
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
                             shortGP(next.raceName),
@@ -625,7 +620,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             letterSpacing = (-0.2).sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f, fill = false),
                         )
                         InlineRaceCountdown(
                             dateStr = next.raceDate,
@@ -640,7 +635,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             countryLabel(next.countryCode).takeIf { it != "—" },
                         ).joinToString(", ").ifBlank { "Round ${next.round}" },
                         color = TextSecondary,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -651,7 +646,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             if (localRaceTime.isNotEmpty()) append("  ·  $localRaceTime")
                         },
                         color = TextSecondary.copy(alpha = 0.85f),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -660,7 +655,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
 
                 if (trackUrl != null) {
                     val request = remember(trackUrl) {
-                        circuitMapRequest(context, trackUrl, width = 420, height = 300)
+                        circuitMapRequest(context, trackUrl, width = 520, height = 380)
                     }
                     Box(
                         modifier = Modifier
@@ -675,7 +670,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             contentDescription = "${shortGP(next.raceName)} circuit",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(8.dp),
+                                .padding(6.dp),
                             contentScale = ContentScale.Fit,
                         ) {
                             when (painter.state) {
@@ -700,19 +695,18 @@ private fun F1CollapsedWidget(data: F1Standings) {
             }
         }
 
-        // ── Standings — headshot rows ─────────────────────────────────────
+        // ── Standings — compact headshot rows ─────────────────────────────
         if (leader != null) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 "Drivers",
                 color = TextSecondary,
-                fontSize = 10.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.2.sp,
             )
-            Spacer(Modifier.height(1.dp))
             top3.forEachIndexed { index, driver ->
                 CollapsedStandingRow(
                     position = driver.position,
@@ -729,7 +723,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                 )
             }
             if (wcc != null) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -737,20 +731,20 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     Box(
                         modifier = Modifier
                             .width(3.dp)
-                            .height(12.dp)
+                            .height(10.dp)
                             .background(safeTeamColor(wcc.teamColor)),
                     )
-                    Spacer(Modifier.width(7.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         "Constructors",
                         color = TextSecondary,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                     )
                     Text(
                         "  ·  ${wcc.constructorName}",
                         color = TextPrimary,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -759,7 +753,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     Text(
                         "${wcc.points.toInt()}",
                         color = TextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
@@ -784,22 +778,22 @@ private fun CollapsedStandingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
+            .padding(vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
                 .width(3.dp)
-                .height(28.dp)
+                .height(22.dp)
                 .background(teamColor),
         )
-        Spacer(Modifier.width(7.dp))
+        Spacer(Modifier.width(6.dp))
         Text(
             "$position",
             color = TextSecondary,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(12.dp),
+            modifier = Modifier.width(11.dp),
         )
         DriverHeadshot(
             url = headshotUrl,
@@ -807,40 +801,40 @@ private fun CollapsedStandingRow(
             driverAcronym = driverAcronym,
             driverNumber = driverNumber,
             teamColor = teamColor,
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(22.dp),
         )
-        Spacer(Modifier.width(7.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                name,
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                team,
-                color = TextSecondary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            name,
+            color = TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Text(
+            " · $team",
+            color = TextSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
         if (gap != null && gap > 0) {
             Text(
                 "−$gap",
                 color = TextSecondary,
-                fontSize = 10.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(end = 6.dp),
+                modifier = Modifier.padding(end = 5.dp),
             )
         }
         Text(
             "$points",
             color = TextPrimary,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
         )
     }
