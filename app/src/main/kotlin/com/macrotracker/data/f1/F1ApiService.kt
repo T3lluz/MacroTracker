@@ -240,8 +240,9 @@ class F1ApiServiceImpl @Inject constructor(
         val standings = fetchStandingsForYear("current")
         if (standings.isNotEmpty()) return standings
 
-        Log.d(TAG, "No data for current season, falling back to 2025")
-        return fetchStandingsForYear("2025")
+        Log.d(TAG, "No data for current season, falling back to previous year")
+        val previousYear = (java.time.Year.now().value - 1).toString()
+        return fetchStandingsForYear(previousYear)
     }
 
     private suspend fun fetchStandingsForYear(year: String): List<SeasonDriverStanding> {
@@ -504,22 +505,24 @@ class F1ApiServiceImpl @Inject constructor(
         "miami"             -> CircuitMeta(57, "1:29.708", "Max Verstappen (2023)")
         "imola"             -> CircuitMeta(63, "1:15.484", "Rubens Barrichello (2004)")
         "monaco"            -> CircuitMeta(78, "1:12.909", "Rubens Barrichello (2004)")
-        "villeneuve"        -> CircuitMeta(70, "1:13.078", "Valtteri Bottas (2016)")
-        "catalunya"         -> CircuitMeta(66, "1:16.330", "Rubens Barrichello (2009)")
+        "villeneuve"        -> CircuitMeta(70, "1:13.078", "Valtteri Bottas (2019)")
+        "catalunya"         -> CircuitMeta(66, "1:16.330", "Max Verstappen (2023)")
         "red_bull_ring"     -> CircuitMeta(71, "1:05.619", "Carlos Sainz (2020)")
         "silverstone"       -> CircuitMeta(52, "1:27.097", "Max Verstappen (2020)")
         "hungaroring"       -> CircuitMeta(70, "1:16.627", "Lewis Hamilton (2020)")
         "spa"               -> CircuitMeta(44, "1:46.286", "Valtteri Bottas (2018)")
         "zandvoort"         -> CircuitMeta(72, "1:11.097", "Lewis Hamilton (2021)")
         "monza"             -> CircuitMeta(53, "1:21.046", "Rubens Barrichello (2004)")
+        "madring"           -> CircuitMeta(null, null, null)
         "baku"              -> CircuitMeta(51, "1:43.009", "Charles Leclerc (2019)")
+        "sepang"            -> CircuitMeta(56, "1:34.080", "Sebastian Vettel (2017)")
         "marina_bay"        -> CircuitMeta(62, "1:35.867", "Lewis Hamilton (2023)")
         "rodriguez"         -> CircuitMeta(71, "1:17.774", "Valtteri Bottas (2021)")
-        "interlagos"        -> CircuitMeta(71, "1:10.540", "Rubens Barrichello (2004)")
-        "las_vegas"         -> CircuitMeta(50, "1:35.490", "Oscar Piastri (2023)")
+        "interlagos"        -> CircuitMeta(71, "1:10.540", "Valtteri Bottas (2018)")
+        "vegas", "las_vegas" -> CircuitMeta(50, "1:35.490", "Oscar Piastri (2023)")
         "losail"            -> CircuitMeta(57, "1:24.319", "Max Verstappen (2023)")
         "yas_marina"        -> CircuitMeta(58, "1:26.103", "Max Verstappen (2021)")
-        "austin"            -> CircuitMeta(56, "1:36.169", "Charles Leclerc (2019)")
+        "americas", "austin" -> CircuitMeta(56, "1:36.169", "Charles Leclerc (2019)")
         else                -> CircuitMeta()
     }
 
@@ -547,6 +550,7 @@ class F1ApiServiceImpl @Inject constructor(
             "qatar" -> "🇶🇦"
             "uae", "abu dhabi" -> "🇦🇪"
             "las vegas" -> "🇺🇸"
+            "malaysia" -> "🇲🇾"
             else -> "🏁"
         }
     }
@@ -580,6 +584,7 @@ class F1ApiServiceImpl @Inject constructor(
             "brazil" -> "br"
             "qatar" -> "qa"
             "uae", "abu dhabi", "united arab emirates" -> "ae"
+            "malaysia" -> "my"
             else -> ""
         }
     }
