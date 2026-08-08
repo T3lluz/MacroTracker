@@ -121,7 +121,7 @@ The **Health screen** uses the same draggable pattern with a separate key (`heal
 `WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
 
 ### App Widgets (Glance)
-All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(context)` (call from the app) or `WidgetRefreshWorker` (periodic WorkManager task, 15-min interval, requires network). F1 widgets share a disk/memory cache through `F1WidgetDataProvider`. Full widget list: `DashboardWidget`, `MacrosWidget`, `HealthWidget`, `WeatherWidget`, `CalendarWidget`, `F1CountdownWidget`, `F1StandingsWidget`, `F1ScheduleWidget`.
+All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(context)` (call from the app) or `WidgetRefreshWorker` (periodic WorkManager task, 30-min interval, requires network). F1 widgets share a disk/memory cache through `F1WidgetDataProvider`. Full widget list: `DashboardWidget`, `MacrosWidget`, `HealthWidget`, `WeatherWidget`, `CalendarWidget`, `F1CountdownWidget`, `F1StandingsWidget`, `F1ScheduleWidget`.
 
 `DashboardWidgetDataProvider` reads Room, Health Connect, weather cache, and calendar directly without Hilt (same no-injection pattern as `F1WidgetDataProvider` — use `EntryPointAccessors` when an interface is needed). `WidgetComponents.kt` houses all shared Glance composables and the `WidgetSizes` grid-constant object (cell formula: `74×n − 2 dp`; min 2×2, max 5×3).
 

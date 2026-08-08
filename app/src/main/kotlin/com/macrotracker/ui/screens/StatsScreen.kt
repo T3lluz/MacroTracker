@@ -25,14 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroProgressBar
-import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.HeaderColor
@@ -40,7 +37,6 @@ import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
-import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.StatsViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -51,9 +47,6 @@ fun StatsScreen(
     viewModel: StatsViewModel = hiltViewModel(),
 ) {
     val history by viewModel.history.collectAsState()
-    val calGoal by viewModel.calGoal.collectAsState()
-    val protGoal by viewModel.protGoal.collectAsState()
-    val haptics = rememberHaptics()
 
     LaunchedEffect(Unit) { viewModel.loadData() }
 
@@ -79,7 +72,7 @@ fun StatsScreen(
                 )
             }
             Text(
-                "Stats & Goals",
+                "Stats",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = HeaderColor,
@@ -89,43 +82,8 @@ fun StatsScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Goals Card
-        MacroCard(delayMs = 100) {
-            Text("Daily Goals", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(bottom = 16.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Calories", color = TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
-                    MacroTextField(
-                        value = calGoal,
-                        onValueChange = { viewModel.setCalGoal(it) },
-                        placeholder = "2000",
-                        keyboardType = KeyboardType.Number,
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Protein (g)", color = TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
-                    MacroTextField(
-                        value = protGoal,
-                        onValueChange = { viewModel.setProtGoal(it) },
-                        placeholder = "150",
-                        keyboardType = KeyboardType.Number,
-                    )
-                }
-            }
-
-            MacroButton(
-                text = "Save Goals",
-                onClick = {
-                    haptics.confirm()
-                    viewModel.saveGoals()
-                },
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
-
         // Last 7 Days Card
-        MacroCard(delayMs = 200) {
+        MacroCard(delayMs = 100) {
             Text("Last 7 Days", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(bottom = 16.dp))
 
             history.forEachIndexed { index, day ->

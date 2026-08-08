@@ -178,6 +178,10 @@ class F1RepositoryImpl @Inject constructor(
                     Log.w(TAG, "All API calls returned empty — keeping existing valid cache to avoid data loss")
                     return@coroutineScope Result.success(cachedStandings!!)
                 }
+                if (resultIsEmpty) {
+                    Log.w(TAG, "All API calls returned empty — not caching empty snapshot")
+                    return@coroutineScope Result.failure(Exception("No F1 data available"))
+                }
 
                 cachedStandings = result
                 lastFetchTime = now

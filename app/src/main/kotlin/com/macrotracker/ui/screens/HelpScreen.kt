@@ -77,7 +77,7 @@ private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.Flag,
         title = "Set Daily Goals",
-        body = "Tap the dumbbell icon on the Home Progress widget, or go to Settings → \"Stats & Goals\". Enter your calorie and protein targets and tap \"Save Goals\". Progress bars turn red when you exceed a goal.",
+        body = "Go to Settings → Daily Goals. Enter your calorie and protein targets and tap \"Save Goals\". Progress bars turn red when you exceed a goal.",
     ),
     HelpStep(
         icon = Icons.Outlined.Delete,
@@ -95,7 +95,7 @@ private val FAQ = listOf(
     ),
     FaqItem(
         question = "Why is my progress bar red?",
-        answer = "The calorie progress bar turns red when your total calories for the day exceed your calorie goal. Set or adjust your goal in Settings → Stats & Goals.",
+        answer = "The calorie progress bar turns red when your total calories for the day exceed your calorie goal. Set or adjust your goal in Settings → Daily Goals.",
     ),
     FaqItem(
         question = "How do I set up an AI API key?",

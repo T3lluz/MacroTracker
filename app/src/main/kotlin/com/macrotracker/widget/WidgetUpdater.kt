@@ -55,7 +55,7 @@ object WidgetUpdater {
      */
     suspend fun forceRefreshDashboardWidgets(context: Context) {
         if (!WidgetStateProvider.hasAnyDashboardWidget(context)) return
-        DashboardWidgetDataProvider.invalidate(context)
+        DashboardWidgetDataProvider.invalidate(context, clearWeatherCaches = true)
         DashboardWidgetDataProvider.refreshNow(context)
         withContext(Dispatchers.Main) {
             updatePlacedDashboardWidgets(context)

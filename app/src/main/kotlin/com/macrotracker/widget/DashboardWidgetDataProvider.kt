@@ -75,6 +75,8 @@ object DashboardWidgetDataProvider {
     @Volatile private var cachedAt: Long = 0L
     @Volatile private var lastWeatherStaleRefreshRequestAt: Long = 0L
     private const val STALE_WEATHER_REFRESH_REQUEST_THROTTLE_MS = 5 * 60 * 1000L
+    /** Disk weather older than this triggers a background refresh request. */
+    private const val WEATHER_DISK_STALE_MS = 45 * 60 * 1000L
 
     /** Singleton Room database — avoids rebuilding on every load call. */
     @Volatile private var dbInstance: MacroDatabase? = null
@@ -90,10 +92,11 @@ object DashboardWidgetDataProvider {
         }
     }
 
-    /** Invalidate in-memory cache so the next [loadData] re-reads local sources. */
-    fun invalidate(context: Context) {
+    /** Invalidate in-memory dashboard cache so the next [loadData] re-reads local sources. */
+    fun invalidate(context: Context, clearWeatherCaches: Boolean = false) {
         cached = null
         cachedAt = 0L
+        if (!clearWeatherCaches) return
         try {
             val entryPoint = context.widgetEntryPoint()
             entryPoint.weatherRepository().clearCache()
@@ -109,7 +112,7 @@ object DashboardWidgetDataProvider {
      * This is a suspend function that loads local data and caches it.
      */
     suspend fun preWarm(context: Context) {
-        invalidate(context)
+        invalidate(context, clearWeatherCaches = true)
         loadData(context)
     }
 
@@ -230,6 +233,7 @@ object DashboardWidgetDataProvider {
                 putString("sunrise", weather.sunrise)
                 putString("sunset", weather.sunset)
                 putString("hourly_forecast", hourlyStr.ifEmpty { null })
+                putLong("fetched_at", System.currentTimeMillis())
             }.apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch live weather in widget refresh: ${e.message}")
@@ -404,6 +408,10 @@ object DashboardWidgetDataProvider {
             val parsedHourly = parseHourlyForecast(hourlyRaw)
             val hourlyForecast = parsedHourly.filterFutureHourlySlots()
             if (parsedHourly.isNotEmpty() && hourlyForecast.size != parsedHourly.size) {
+                requestWeatherRefreshForStaleCache(context)
+            }
+            val fetchedAt = prefs.getLong("fetched_at", 0L)
+            if (fetchedAt > 0L && System.currentTimeMillis() - fetchedAt > WEATHER_DISK_STALE_MS) {
                 requestWeatherRefreshForStaleCache(context)
             }
 
