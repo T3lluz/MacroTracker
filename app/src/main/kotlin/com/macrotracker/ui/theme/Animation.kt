@@ -60,6 +60,10 @@ object MacroMotion {
     fun <T> fadeTween(durationMs: Int = FADE_IN_MS): FiniteAnimationSpec<T> =
         tween(durationMs, easing = FastOutSlowInEasing)
 
+    /** Shared slide tween for phase / content slides. */
+    fun <T> slideTween(durationMs: Int = SLIDE_MS): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = FastOutSlowInEasing)
+
     /** Bottom-nav hide / reveal when scrolling. */
     fun <T> navBarTween(): FiniteAnimationSpec<T> =
         tween(NAV_BAR_MS, easing = FastOutSlowInEasing)

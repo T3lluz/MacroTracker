@@ -2,7 +2,7 @@ package com.macrotracker.ui.screens
 
 import android.app.Activity
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -49,6 +49,7 @@ import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 
 @Composable
@@ -223,8 +224,15 @@ private fun MainScreenScrollScaffold(
     val isMainTabRoute = items.any { it.route == currentRoute }
     val context = LocalContext.current
 
-    BackHandler(enabled = isMainTabRoute) {
-        (context as? Activity)?.finish()
+    // Predictive back on root tabs: collect progress so the system gesture
+    // can animate, then finish only if the gesture completes.
+    PredictiveBackHandler(enabled = isMainTabRoute) { progress ->
+        try {
+            progress.collect { /* system drives the predictive animation */ }
+            (context as? Activity)?.finish()
+        } catch (_: CancellationException) {
+            // Gesture cancelled — stay on the current tab.
+        }
     }
 
     Box(

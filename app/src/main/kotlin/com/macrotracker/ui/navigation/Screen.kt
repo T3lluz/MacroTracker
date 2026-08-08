@@ -16,7 +16,6 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 
 // Onboarding flow — not part of the bottom-nav bar
 object OnboardingRoutes {
-    const val SPLASH = "onboarding_splash"
     const val WELCOME = "onboarding_welcome"
     const val PERMISSIONS = "onboarding_permissions"
     const val TUTORIAL = "onboarding_tutorial"

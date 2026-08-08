@@ -23,8 +23,8 @@ android {
         applicationId = "com.macrotracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 27
-        versionName = "1.1.27"
+        versionCode = 28
+        versionName = "1.1.28"
 
         // Read API keys from local.properties
         val localProperties = Properties()
@@ -132,6 +132,9 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.concurrent.futures)
+    // Real Guava needed so CameraControl.enableTorch()'s ListenableFuture is on the classpath
+    // (listenablefuture:9999 stub alone is not enough for Kotlin to resolve the return type).
+    implementation("com.google.guava:guava:33.3.1-android")
 
     // Health Connect
     implementation(libs.health.connect)

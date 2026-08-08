@@ -4,8 +4,6 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -62,6 +60,7 @@ import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.HeaderColor
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.Surface
@@ -291,7 +290,8 @@ fun WidgetsScreen(
         // ── Info banner if pin not supported ─────────────────────────────
         AnimatedVisibility(
             visible = !pinSupported,
-            enter = fadeIn() + expandVertically(),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
         ) {
             Row(
                 modifier = Modifier
@@ -420,7 +420,8 @@ private fun WidgetSectionHeader(
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 }),
+        enter = MacroMotion.contentEnter + slideInVertically(MacroMotion.slideTween()) { it / 4 },
+        exit = MacroMotion.contentExit,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -493,15 +494,12 @@ private fun WidgetCard(
 
     val scale by animateFloatAsState(
         targetValue = if (visible) 1f else 0.96f,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = 0.7f,
-            stiffness    = 200f,
-        ),
+        animationSpec = MacroMotion.bouncySpring(),
         label = "cardScale",
     )
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = androidx.compose.animation.core.tween(200),
+        animationSpec = MacroMotion.fadeTween(),
         label = "cardAlpha",
     )
 
