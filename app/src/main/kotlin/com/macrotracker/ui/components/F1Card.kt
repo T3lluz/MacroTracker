@@ -555,10 +555,6 @@ private fun F1CollapsedWidget(data: F1Standings) {
     val top3 = remember(data.driverStandings) { data.driverStandings.take(3) }
     val leader = top3.firstOrNull()
     val wcc = data.constructorStandings.firstOrNull()
-    val lastPodium = remember(data.lastRaceResults) {
-        data.lastRaceResults?.filter { it.position in 1..3 }?.sortedBy { it.position }.orEmpty()
-    }
-    val lastFl = data.lastRaceResults?.firstOrNull { it.fastestLap }
     val days = next?.let { daysUntil(it.raceDate) } ?: Long.MAX_VALUE
     val isSoon = days in 0..7
     val accent = if (isSoon) F1Red else TextPrimary
@@ -567,9 +563,11 @@ private fun F1CollapsedWidget(data: F1Standings) {
     }
     val trackUrl = remember(next?.circuitId) { next?.circuitId?.let { getCircuitSvgUrl(it) } }
     val context = LocalContext.current
+    val mapWidth = 132.dp
+    val mapHeight = 96.dp
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ── Next race — copy left, circuit map right ──────────────────────
+        // ── Next race — scaled copy left, larger circuit map right ────────
         if (next != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -578,7 +576,13 @@ private fun F1CollapsedWidget(data: F1Standings) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 8.dp),
+                        .then(if (trackUrl != null) Modifier.height(mapHeight) else Modifier)
+                        .padding(end = 10.dp),
+                    verticalArrangement = if (trackUrl != null) {
+                        Arrangement.SpaceBetween
+                    } else {
+                        Arrangement.Top
+                    },
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -587,21 +591,21 @@ private fun F1CollapsedWidget(data: F1Standings) {
                         Text(
                             "NEXT",
                             color = accent,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp,
+                            letterSpacing = 0.9.sp,
                         )
                         Text(
                             "R${next.round}/${data.schedule.size}",
                             color = TextSecondary,
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                         )
                         if (next.sprintDate != null) {
                             Text(
                                 "SPRINT",
                                 color = SprintPink,
-                                fontSize = 9.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.4.sp,
                             )
@@ -616,20 +620,19 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             },
                             color = accent,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 15.sp,
                         )
                     }
-                    Spacer(Modifier.height(3.dp))
                     Text(
                         shortGP(next.raceName),
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        letterSpacing = (-0.2).sp,
-                        maxLines = 1,
+                        fontSize = 24.sp,
+                        letterSpacing = (-0.3).sp,
+                        lineHeight = 28.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(2.dp))
                     Text(
                         buildString {
                             val place = listOfNotNull(
@@ -642,8 +645,9 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             if (localRaceTime.isNotEmpty()) append("  ·  $localRaceTime")
                         },
                         color = TextSecondary,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
+                        lineHeight = 16.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -651,12 +655,12 @@ private fun F1CollapsedWidget(data: F1Standings) {
 
                 if (trackUrl != null) {
                     val request = remember(trackUrl) {
-                        circuitMapRequest(context, trackUrl, width = 280, height = 180)
+                        circuitMapRequest(context, trackUrl, width = 420, height = 300)
                     }
                     Box(
                         modifier = Modifier
-                            .width(92.dp)
-                            .height(60.dp)
+                            .width(mapWidth)
+                            .height(mapHeight)
                             .clip(SharpShape)
                             .background(Color(0xFF080D14)),
                         contentAlignment = Alignment.Center,
@@ -666,13 +670,13 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             contentDescription = "${shortGP(next.raceName)} circuit",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(5.dp),
+                                .padding(8.dp),
                             contentScale = ContentScale.Fit,
                         ) {
                             when (painter.state) {
                                 is AsyncImagePainter.State.Loading ->
                                     CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
+                                        modifier = Modifier.size(18.dp),
                                         strokeWidth = 1.5.dp,
                                         color = accent.copy(alpha = 0.5f),
                                     )
@@ -680,7 +684,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                                     Text(
                                         "MAP",
                                         color = TextSecondary.copy(alpha = 0.45f),
-                                        fontSize = 9.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                     )
                                 else -> SubcomposeAsyncImageContent()
@@ -756,54 +760,6 @@ private fun F1CollapsedWidget(data: F1Standings) {
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-        }
-
-        // ── Last race — one quiet result line ─────────────────────────────
-        if (lastPodium.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
-            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                buildString {
-                    append("Last")
-                    data.lastRaceName?.let { append("  ·  ${shortGP(it)}") }
-                },
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.2.sp,
-            )
-            Spacer(Modifier.height(5.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                lastPodium.take(3).forEachIndexed { i, r ->
-                    if (i > 0) Spacer(Modifier.width(12.dp))
-                    Text(
-                        "${r.position}",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        r.driverAcronym ?: "—",
-                        color = TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                if (lastFl != null) {
-                    Text(
-                        "FL ${lastFl.driverAcronym ?: "—"}",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
