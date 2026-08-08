@@ -135,11 +135,6 @@ private fun HealthFull(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
     }
 }
 
-// ——— Helpers ——————————————————————————————————————————————————————————————————————————————————————————————————————
-
-private fun fmtStepsHealth(steps: Long): String =
-    if (steps >= 10_000) "${steps / 1000}k" else "%,d".format(steps)
-
 private fun fmtSleep(minutes: Long): String {
     if (minutes <= 0) return "—"
     val h = minutes / 60; val m = minutes % 60

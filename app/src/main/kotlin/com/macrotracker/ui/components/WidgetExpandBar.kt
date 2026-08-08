@@ -57,7 +57,7 @@ fun WidgetExpandBar(
     val chevronRotation = if (scrollIdle) {
         animateFloatAsState(
             targetValue = if (expanded) 180f else 0f,
-            animationSpec = MacroMotion.bouncySpring(),
+            animationSpec = MacroMotion.pressSpring(),
             label = "chevron_rot",
         ).value
     } else if (expanded) {

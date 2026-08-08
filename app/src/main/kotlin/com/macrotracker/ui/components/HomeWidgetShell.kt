@@ -73,7 +73,7 @@ fun WidgetExpandChevron(
     val rotation = if (scrollIdle) {
         animateFloatAsState(
             targetValue = if (expanded) 180f else 0f,
-            animationSpec = MacroMotion.bouncySpring(),
+            animationSpec = MacroMotion.pressSpring(),
             label = "widget_chevron",
         ).value
     } else if (expanded) {

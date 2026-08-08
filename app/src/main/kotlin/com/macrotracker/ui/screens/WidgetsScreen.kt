@@ -494,7 +494,7 @@ private fun WidgetCard(
 
     val scale by animateFloatAsState(
         targetValue = if (visible) 1f else 0.96f,
-        animationSpec = MacroMotion.bouncySpring(),
+        animationSpec = MacroMotion.entranceSpring(),
         label = "cardScale",
     )
     val alpha by animateFloatAsState(

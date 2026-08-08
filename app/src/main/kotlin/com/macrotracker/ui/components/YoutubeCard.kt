@@ -4,17 +4,7 @@ import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
@@ -111,6 +101,7 @@ import com.macrotracker.R
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
@@ -315,12 +306,12 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                             val active = selectedTab == tab
                             val bg by animateColorAsState(
                                 if (active) YtRed else YtSurface,
-                                tween(160),
+                                MacroMotion.colorTween(160),
                                 label = "ytTabBg",
                             )
                             val fg by animateColorAsState(
                                 if (active) Color.White else TextSecondary,
-                                tween(160),
+                                MacroMotion.colorTween(160),
                                 label = "ytTabFg",
                             )
                             val badge = when (tab) {
@@ -1942,11 +1933,11 @@ private fun ChannelPill(
     val context = LocalContext.current
     val bgColor by animateColorAsState(
         targetValue = if (isSelected) YtRed.copy(alpha = 0.15f) else Surface,
-        animationSpec = tween(200), label = "pill_bg",
+        animationSpec = MacroMotion.colorTween(200), label = "pill_bg",
     )
     val borderColor by animateColorAsState(
         targetValue = if (isSelected) YtRed.copy(alpha = 0.6f) else Border.copy(alpha = 0.4f),
-        animationSpec = tween(200), label = "pill_border",
+        animationSpec = MacroMotion.colorTween(200), label = "pill_border",
     )
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -2242,8 +2233,8 @@ private fun SearchTab(
         // ── Live suggestions dropdown ─────────────────────────────────────
         AnimatedVisibility(
             visible = showSuggestions,
-            enter = expandVertically(tween(200)) + fadeIn(tween(180)),
-            exit = shrinkVertically(tween(160)) + fadeOut(tween(120)),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
         ) {
             Column(
                 modifier = Modifier
@@ -2383,11 +2374,11 @@ private fun SuggestionRow(
             isTracked -> Error.copy(alpha = 0.12f)
             else -> YtRed.copy(alpha = 0.12f)
         },
-        animationSpec = tween(300), label = "sug_btn_bg",
+        animationSpec = MacroMotion.colorTween(300), label = "sug_btn_bg",
     )
     val btnScale by animateFloatAsState(
-        targetValue = if (justAdded) 1.15f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (justAdded) 1.06f else 1f,
+        animationSpec = MacroMotion.confirmSpring(),
         label = "sug_btn_scale",
     )
 
@@ -2446,7 +2437,7 @@ private fun SuggestionRow(
                     isTracked -> "remove"
                     else -> "add"
                 },
-                transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(150))) togetherWith fadeOut(tween(100)) },
+                transitionSpec = { MacroMotion.iconSwapTransition },
                 label = "sug_icon",
             ) { state ->
                 Icon(
@@ -2486,11 +2477,11 @@ private fun ChannelListRow(
             isTracked -> Error.copy(alpha = 0.12f)
             else      -> Primary.copy(alpha = 0.12f)
         },
-        animationSpec = tween(300), label = "btn_bg",
+        animationSpec = MacroMotion.colorTween(300), label = "btn_bg",
     )
     val btnScale by animateFloatAsState(
-        targetValue = if (justAdded) 1.15f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (justAdded) 1.06f else 1f,
+        animationSpec = MacroMotion.confirmSpring(),
         label = "btn_scale",
     )
 
@@ -2532,7 +2523,7 @@ private fun ChannelListRow(
                     isTracked -> "remove"
                     else      -> "add"
                 },
-                transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(150))) togetherWith fadeOut(tween(100)) },
+                transitionSpec = { MacroMotion.iconSwapTransition },
                 label = "btn_icon",
             ) { iconState ->
                 Icon(

@@ -546,12 +546,6 @@ private fun CdDivider(label: String, c: F1Clr, sc: WScale) {
 private fun isLive(d: F1WidgetData) =
     d.daysUntil == 0L && d.hoursUntil == 0L && d.minutesUntil == 0L && d.secondsUntil >= 0
 
-private fun fmtHms(h: Long, m: Long, s: Long): String {
-    val hs = h.coerceAtLeast(0).toString().padStart(2, '0')
-    val ms = m.coerceAtLeast(0).toString().padStart(2, '0')
-    return if (s >= 0) "$hs:$ms:${s.toString().padStart(2, '0')}" else "$hs:$ms"
-}
-
 private fun cleanRaceName(n: String) =
     n.removePrefix("Grand Prix of ").removePrefix("Formula 1 ").trim()
 

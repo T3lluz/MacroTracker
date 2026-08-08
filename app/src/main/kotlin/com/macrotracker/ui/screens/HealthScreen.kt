@@ -302,12 +302,29 @@ fun HealthScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        when (healthConnectState) {
+        when (val hc = healthConnectState) {
             is HealthConnectUiState.PermissionRequired -> {
                 HealthConnectCard(
                     onRequestPermission = {
                         hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
                     }
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+            is HealthConnectUiState.NotAvailable -> {
+                HealthConnectCard(
+                    title = "Health Connect Unavailable",
+                    message = "Health Connect isn’t available on this device. Macro tracking still works.",
+                    onRequestPermission = null,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+            is HealthConnectUiState.Error -> {
+                HealthConnectCard(
+                    title = "Health Connect Error",
+                    message = hc.message,
+                    actionLabel = "Retry",
+                    onRequestPermission = { healthViewModel.loadHealthConnect() },
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }

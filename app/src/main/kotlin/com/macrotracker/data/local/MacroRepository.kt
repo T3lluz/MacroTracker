@@ -2,7 +2,6 @@ package com.macrotracker.data.local
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -62,26 +61,6 @@ class MacroRepository @Inject constructor(
         }
     }
 
-    /**
-     * Fetches summaries for a date range in 2 DB round-trips
-     * (was N×2 + 1 before).
-     */
-    suspend fun getDailySummariesBetween(startDate: LocalDate, endDate: LocalDate): List<DailySummary> {
-        val days  = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
-        val dates = (0 until days).map { i -> startDate.plusDays(i.toLong()).format(dateFormat) }
-        val goals     = dao.getGoals() ?: GoalsEntity()
-        val totalsMap = dao.getTotalsForDates(dates).associateBy { it.date }
-        return dates.map { dateStr ->
-            val totals = totalsMap[dateStr]
-            DailySummary(
-                date          = dateStr,
-                totalCalories = totals?.totalCalories ?: 0,
-                totalProtein  = totals?.totalProtein  ?: 0,
-                calorieGoal   = goals.calorieGoal,
-                proteinGoal   = goals.proteinGoal,
-            )
-        }
-    }
 
     suspend fun saveGoals(calories: Int, protein: Int) {
         dao.upsertGoals(GoalsEntity(id = 0, calorieGoal = calories, proteinGoal = protein))
@@ -89,8 +68,4 @@ class MacroRepository @Inject constructor(
 
     suspend fun getGoals(): GoalsEntity = dao.getGoals() ?: GoalsEntity()
 
-    suspend fun clearAllData() {
-        dao.clearAllLogs()
-        dao.clearAllGoals()
-    }
 }

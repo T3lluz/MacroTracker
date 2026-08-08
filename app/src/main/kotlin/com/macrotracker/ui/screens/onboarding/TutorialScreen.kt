@@ -1,9 +1,8 @@
 package com.macrotracker.ui.screens.onboarding
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
+import com.macrotracker.ui.theme.MacroMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -207,7 +206,7 @@ fun TutorialScreen(onFinish: () -> Unit) {
                     val isSelected = index == pagerState.currentPage
                     val dotWidth by animateDpAsState(
                         targetValue = if (isSelected) 24.dp else 8.dp,
-                        animationSpec = tween(250),
+                        animationSpec = MacroMotion.fadeTween(250),
                         label = "dotWidth",
                     )
                     Box(
@@ -264,14 +263,12 @@ fun TutorialScreen(onFinish: () -> Unit) {
 
 @Composable
 private fun TutorialPageContent(page: TutorialPage) {
+    // Fade-only page reveal — avoid stacking translateY on top of nav slide / pager.
     val alpha = remember { Animatable(0f) }
-    val translateY = remember { Animatable(24f) }
 
     LaunchedEffect(page.title) {
         alpha.snapTo(0f)
-        translateY.snapTo(24f)
-        alpha.animateTo(1f, tween(350, easing = FastOutSlowInEasing))
-        translateY.animateTo(0f, tween(350, easing = FastOutSlowInEasing))
+        alpha.animateTo(1f, MacroMotion.revealTween(350))
     }
 
     Column(
@@ -280,7 +277,6 @@ private fun TutorialPageContent(page: TutorialPage) {
             .padding(horizontal = 28.dp)
             .graphicsLayer {
                 this.alpha = alpha.value
-                this.translationY = translateY.value
             },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top,

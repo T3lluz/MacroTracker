@@ -156,17 +156,6 @@ private fun HeroValue(value: String, sub: String, accent: androidx.glance.unit.C
 }
 
 @Composable
-private fun PctPill(progress: Float, accent: androidx.glance.unit.ColorProvider, c: WidgetClr, sc: WScale) {
-    val pctInt = (progress * 100).toInt()
-    Box(
-        GlanceModifier.cornerRadius(999.dp).background(c.pill)
-            .padding(horizontal = sc.spaceSm, vertical = 1.dp),
-    ) {
-        Text("$pctInt%", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = accent))
-    }
-}
-
-@Composable
 private fun InfoPill(text: String, c: WidgetClr, sc: WScale) {
     Box(
         GlanceModifier.cornerRadius(sc.cornerSm).background(c.pill)

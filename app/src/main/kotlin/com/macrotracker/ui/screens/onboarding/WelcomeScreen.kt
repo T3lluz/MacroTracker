@@ -1,8 +1,7 @@
 package com.macrotracker.ui.screens.onboarding
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import com.macrotracker.ui.theme.MacroMotion
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -94,25 +93,25 @@ fun WelcomeScreen(onGetStarted: () -> Unit) {
     val btnY        = remember { Animatable(12f) }
 
     LaunchedEffect(Unit) {
-        // All layers animate in parallel, each with a staggered start delay
+        // Welcome uses EnterTransition.None — child stagger (incl. Y) is intentional.
         launch {
-            logoAlpha.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
-            logoY.animateTo(0f, tween(450, easing = FastOutSlowInEasing))
+            logoAlpha.animateTo(1f, MacroMotion.revealTween(450))
+            logoY.animateTo(0f, MacroMotion.revealTween(450))
         }
         delay(120)
         launch {
-            titleAlpha.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
-            titleY.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
+            titleAlpha.animateTo(1f, MacroMotion.revealTween())
+            titleY.animateTo(0f, MacroMotion.revealTween())
         }
         delay(120)
         launch {
-            featuresAlpha.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
-            featuresY.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
+            featuresAlpha.animateTo(1f, MacroMotion.revealTween())
+            featuresY.animateTo(0f, MacroMotion.revealTween())
         }
         delay(120)
         launch {
-            btnAlpha.animateTo(1f, tween(350, easing = FastOutSlowInEasing))
-            btnY.animateTo(0f, tween(350, easing = FastOutSlowInEasing))
+            btnAlpha.animateTo(1f, MacroMotion.revealTween(350))
+            btnY.animateTo(0f, MacroMotion.revealTween(350))
         }
     }
 

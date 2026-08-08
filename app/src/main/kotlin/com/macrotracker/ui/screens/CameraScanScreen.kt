@@ -1,6 +1,7 @@
 package com.macrotracker.ui.screens
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -117,16 +118,24 @@ fun CameraScanScreen(
     val error by viewModel.error.collectAsState()
     val loggedEvent by viewModel.loggedEvent.collectAsState()
 
-    var hasCameraPermission by remember { mutableStateOf(false) }
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var capturedBase64 by remember { mutableStateOf<String?>(null) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasCameraPermission = granted }
 
     LaunchedEffect(Unit) {
-        permissionLauncher.launch(Manifest.permission.CAMERA)
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
     }
 
     LaunchedEffect(error) {
@@ -145,7 +154,9 @@ fun CameraScanScreen(
     BackHandler(enabled = hasCameraPermission) {
         when (phase) {
             ScanPhase.PREVIEW -> {
-                if (!scanning) {
+                if (scanning) {
+                    viewModel.cancelAnalyze()
+                } else {
                     capturedBitmap = null
                     capturedBase64 = null
                     viewModel.setPhase(ScanPhase.CAMERA)
@@ -163,6 +174,7 @@ fun CameraScanScreen(
     AnimatedContent(
         targetState = when {
             !hasCameraPermission -> "permission"
+            cameraError != null -> "camera_error"
             else -> phase.name
         },
         transitionSpec = {
@@ -177,6 +189,11 @@ fun CameraScanScreen(
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                 onGoBack = onNavigateBack,
             )
+            "camera_error" -> CameraUnavailableGate(
+                message = cameraError ?: "Camera unavailable",
+                onRetry = { cameraError = null },
+                onGoBack = onNavigateBack,
+            )
             ScanPhase.CAMERA.name -> CameraPhase(
                 onPhotoCaptured = { bitmap, base64 ->
                     capturedBitmap = bitmap
@@ -184,6 +201,7 @@ fun CameraScanScreen(
                     viewModel.setPhase(ScanPhase.PREVIEW)
                 },
                 onGoBack = onNavigateBack,
+                onCameraError = { cameraError = it },
             )
             ScanPhase.PREVIEW.name -> PreviewPhase(
                 bitmap = capturedBitmap,
@@ -192,10 +210,12 @@ fun CameraScanScreen(
                     capturedBase64?.let { viewModel.analyzeImage(it) }
                 },
                 onRetake = {
+                    viewModel.cancelAnalyze()
                     capturedBitmap = null
                     capturedBase64 = null
                     viewModel.setPhase(ScanPhase.CAMERA)
                 },
+                onCancelScan = { viewModel.cancelAnalyze() },
             )
             else -> ResultPhase(
                 viewModel = viewModel,
@@ -236,9 +256,30 @@ private fun PermissionGate(onRequestPermission: () -> Unit, onGoBack: () -> Unit
 }
 
 @Composable
+private fun CameraUnavailableGate(
+    message: String,
+    onRetry: () -> Unit,
+    onGoBack: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Camera Unavailable", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary, textAlign = TextAlign.Center)
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(message, fontSize = 15.sp, color = TextSecondary, textAlign = TextAlign.Center)
+        Spacer(modifier = Modifier.height(16.dp))
+        MacroButton(text = "Try Again", onClick = onRetry)
+        MacroButton(text = "Go Back", onClick = onGoBack, variant = ButtonVariant.SECONDARY)
+    }
+}
+
+@Composable
 private fun CameraPhase(
     onPhotoCaptured: (Bitmap, String) -> Unit,
     onGoBack: () -> Unit,
+    onCameraError: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -250,17 +291,21 @@ private fun CameraPhase(
     val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
 
     LaunchedEffect(lifecycleOwner) {
-        val cameraProvider = ProcessCameraProvider.awaitInstance(context)
-        val preview = Preview.Builder().build().also {
-            it.surfaceProvider = previewView.surfaceProvider
-        }
-        cameraProvider.unbindAll()
-        camera = cameraProvider.bindToLifecycle(
-            lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
-        )
-        // Restore torch if the user had it on before a rebinding.
-        if (torchEnabled) {
-            camera?.cameraControl?.enableTorch(true)
+        try {
+            val cameraProvider = ProcessCameraProvider.awaitInstance(context)
+            val preview = Preview.Builder().build().also {
+                it.surfaceProvider = previewView.surfaceProvider
+            }
+            cameraProvider.unbindAll()
+            camera = cameraProvider.bindToLifecycle(
+                lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
+            )
+            // Restore torch if the user had it on before a rebinding.
+            if (torchEnabled) {
+                camera?.cameraControl?.enableTorch(true)
+            }
+        } catch (e: Exception) {
+            onCameraError(e.message ?: "Could not open the camera on this device.")
         }
     }
 
@@ -413,6 +458,7 @@ private fun PreviewPhase(
     scanning: Boolean,
     onScan: () -> Unit,
     onRetake: () -> Unit,
+    onCancelScan: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
         // Image preview
@@ -441,11 +487,13 @@ private fun PreviewPhase(
             )
 
             if (scanning) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                     CircularProgressIndicator(color = Primary, modifier = Modifier.size(40.dp))
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Analysing nutrition label…", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     Text("AI is reading the values for you ✨", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(top = 6.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    MacroButton(text = "Cancel", onClick = onCancelScan, variant = ButtonVariant.SECONDARY)
                 }
             } else {
                 MacroButton(text = "🔍  Scan This Photo", onClick = onScan)
@@ -671,11 +719,8 @@ private fun ResultPhase(
                                 AnimatedContent(
                                     targetState = summary.loggedCalories,
                                     transitionSpec = {
-                                        if (targetState > initialState) {
-                                            (slideInVertically { height -> height } + fadeIn()).togetherWith(slideOutVertically { height -> -height } + fadeOut())
-                                        } else {
-                                            (slideInVertically { height -> -height } + fadeIn()).togetherWith(slideOutVertically { height -> height } + fadeOut())
-                                        }.using(SizeTransform(clip = false))
+                                        MacroMotion.numberTick(up = targetState > initialState)
+                                            .using(SizeTransform(clip = false))
                                     },
                                     label = "caloriesAnimation"
                                 ) { targetCount ->
@@ -688,11 +733,8 @@ private fun ResultPhase(
                                 AnimatedContent(
                                     targetState = summary.loggedProtein,
                                     transitionSpec = {
-                                        if (targetState > initialState) {
-                                            (slideInVertically { height -> height } + fadeIn()).togetherWith(slideOutVertically { height -> -height } + fadeOut())
-                                        } else {
-                                            (slideInVertically { height -> -height } + fadeIn()).togetherWith(slideOutVertically { height -> height } + fadeOut())
-                                        }.using(SizeTransform(clip = false))
+                                        MacroMotion.numberTick(up = targetState > initialState)
+                                            .using(SizeTransform(clip = false))
                                     },
                                     label = "proteinAnimation"
                                 ) { targetCount ->

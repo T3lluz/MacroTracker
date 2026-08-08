@@ -30,8 +30,11 @@ private val HealthConnectAccent = Color(0xFFE53935)
 
 @Composable
 fun HealthConnectCard(
-    onRequestPermission: () -> Unit,
+    onRequestPermission: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    title: String = "Health Connect",
+    message: String = "Connect to Health Connect to sync your health data.",
+    actionLabel: String = "Connect",
 ) {
     MacroCard(delayMs = 125, modifier = modifier) {
         Row(
@@ -43,40 +46,42 @@ fun HealthConnectCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Health Connect",
+                    title,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
                 )
                 Text(
-                    "Connect to Health Connect to sync your health data.",
+                    message,
                     fontSize = 13.sp,
                     color = TextSecondary,
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = onRequestPermission)
-                    .background(HealthConnectAccent.copy(alpha = 0.1f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MonitorHeart,
-                    contentDescription = null,
-                    tint = HealthConnectAccent,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    "Connect",
-                    color = HealthConnectAccent,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
+            if (onRequestPermission != null) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onRequestPermission)
+                        .background(HealthConnectAccent.copy(alpha = 0.1f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MonitorHeart,
+                        contentDescription = null,
+                        tint = HealthConnectAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        actionLabel,
+                        color = HealthConnectAccent,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
             }
         }
     }
