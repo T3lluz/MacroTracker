@@ -1,10 +1,8 @@
 package com.macrotracker.ui.components
 
-import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.core.graphics.toColorInt
-import androidx.core.net.toUri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -118,7 +115,6 @@ private fun secondsUntilRace(dateStr: String, timeStr: String?): Long {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 private enum class F1Tab(val label: String) {
-    NEWS("Feed"),
     DRIVERS("Drivers"),
     TEAMS("Teams"),
     BATTLE("Battle"),
@@ -330,7 +326,7 @@ fun F1Card(
     isVisible: Boolean = true,
 ) {
     val haptics = rememberHaptics()
-    var selectedTab by rememberSaveable { mutableStateOf(F1Tab.NEWS) }
+    var selectedTab by rememberSaveable { mutableStateOf(F1Tab.DRIVERS) }
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     MacroCard(
@@ -494,7 +490,6 @@ fun F1Card(
                             key == -1 || s is F1UiState.Loading -> F1Loading()
                             key == -2 || s is F1UiState.Error   -> F1Error(onRefresh, haptics)
                             s is F1UiState.Success -> when (selectedTab) {
-                                F1Tab.NEWS     -> F1NewsFeed(s.f1Data)
                                 F1Tab.DRIVERS  -> DriverStandingsList(s.f1Data)
                                 F1Tab.TEAMS    -> ConstructorStandingsList(s.f1Data)
                                 F1Tab.BATTLE   -> ChampionshipBattleTab(s.f1Data)
@@ -1247,157 +1242,6 @@ private fun F1Error(onRefresh: () -> Unit, haptics: com.macrotracker.ui.util.Hap
             Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp), tint = F1Red)
             Spacer(Modifier.width(6.dp))
             Text("Retry", color = F1Red, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        }
-    }
-}
-
-// ── News feed ─────────────────────────────────────────────────────────────────
-@Composable
-fun F1NewsFeed(data: F1Standings) {
-    val news = data.news
-    val context = LocalContext.current
-    val haptics = rememberHaptics()
-    if (news.isEmpty()) { EmptyF1State("No recent Formula 1 news."); return }
-    val lead = news.first()
-    val rest = news.drop(1)
-
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // Lead story — oversized editorial block
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(SharpShape)
-                .background(RowSurface)
-                .clickable {
-                    haptics.tick()
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, lead.url.toUri())) } catch (_: Exception) {}
-                },
-        ) {
-            if (!lead.imageUrl.isNullOrBlank()) {
-                val request = remember(lead.imageUrl) {
-                    ImageRequest.Builder(context)
-                        .data(lead.imageUrl)
-                        .size(720, 360)
-                        .crossfade(false)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .build()
-                }
-                SubcomposeAsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                        .background(CardBg),
-                    contentScale = ContentScale.Crop,
-                ) {
-                    when (painter.state) {
-                        is AsyncImagePainter.State.Error,
-                        is AsyncImagePainter.State.Loading -> {
-                            Box(
-                                modifier = Modifier.fillMaxSize().background(CardBg),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Outlined.NewReleases,
-                                    null,
-                                    tint = TextSecondary.copy(alpha = 0.35f),
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            }
-                        }
-                        else -> SubcomposeAsyncImageContent()
-                    }
-                }
-            }
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("LEAD", color = F1Red, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    if (lead.category.isNotBlank()) {
-                        Text(lead.category.uppercase(), color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Text(
-                    lead.title,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 17.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 22.sp,
-                )
-                if (lead.description.isNotBlank()) {
-                    Text(
-                        lead.description,
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 16.sp,
-                    )
-                }
-            }
-        }
-
-        if (data.driverStandings.isNotEmpty()) {
-            val done = data.schedule.count { isPast(it.raceDate) }
-            val left = (data.schedule.size - done).coerceAtLeast(0)
-            CompactFormLabStrip(data, done, left)
-        }
-
-        if (rest.isNotEmpty()) {
-            SectionHeader("PADDOCK WIRE")
-            rest.forEachIndexed { index, article ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            haptics.tick()
-                            try { context.startActivity(Intent(Intent.ACTION_VIEW, article.url.toUri())) } catch (_: Exception) {}
-                        }
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(44.dp)
-                            .background(F1Red.copy(alpha = 0.7f)),
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        if (article.category.isNotBlank()) {
-                            Text(
-                                article.category.uppercase(),
-                                color = TextSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.6.sp,
-                            )
-                            Spacer(Modifier.height(3.dp))
-                        }
-                        Text(
-                            article.title,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            lineHeight = 18.sp,
-                        )
-                    }
-                }
-                if (index < rest.lastIndex) {
-                    HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-                }
-            }
         }
     }
 }
