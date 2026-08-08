@@ -769,66 +769,15 @@ private fun F1CollapsedWidget(data: F1Standings) {
             }
         }
 
-        // ── Championship grid ──────────────────────────────────────────────
+        // ── Championship — leader headshot + top 3 points ─────────────────
         if (leader != null) {
-            val lead = p2?.let { (leader.points - it.points).toInt() } ?: 0
             HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    CollapsedChampCell(
-                        label = "WDC",
-                        labelColor = F1Gold,
-                        primary = leader.driverAcronym,
-                        secondary = "${leader.points.toInt()}",
-                        tertiary = if (lead > 0) "+$lead" else null,
-                        tertiaryColor = LabAmber,
-                        accentBar = leaderTeamColor,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (wcc != null) {
-                        CollapsedChampCell(
-                            label = "WCC",
-                            labelColor = TextSecondary,
-                            primary = wcc.constructorName.split(" ").first().take(9),
-                            secondary = "${wcc.points.toInt()}",
-                            tertiary = null,
-                            tertiaryColor = TextSecondary,
-                            accentBar = safeTeamColor(wcc.teamColor),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-
-                if (p2 != null || p3 != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        for (d in listOfNotNull(p2, p3)) {
-                            val gap = (leader.points - d.points).toInt()
-                            CollapsedChaseCell(
-                                position = d.position,
-                                acronym = d.driverAcronym,
-                                gap = gap,
-                                points = d.points.toInt(),
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        // Keep grid balanced when only P2 exists
-                        if (p2 != null && p3 == null) {
-                            Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
+            CollapsedChampionshipGlance(
+                leader = leader,
+                top3 = listOfNotNull(leader, p2, p3).distinctBy { it.driverAcronym }.take(3),
+                wcc = wcc,
+                leaderTeamColor = leaderTeamColor,
+            )
         }
 
         // ── Last race podium rail ──────────────────────────────────────────
@@ -881,12 +830,14 @@ private fun F1CollapsedWidget(data: F1Standings) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
                     for (r in lastPodium.take(3)) {
                         CollapsedPodiumCell(
                             position = r.position,
                             acronym = r.driverAcronym ?: "—",
                             points = r.points.toInt(),
+                            teamColor = safeTeamColor(r.teamColor),
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -897,110 +848,283 @@ private fun F1CollapsedWidget(data: F1Standings) {
 }
 
 @Composable
-private fun CollapsedChampCell(
-    label: String,
-    labelColor: Color,
-    primary: String,
-    secondary: String,
-    tertiary: String?,
-    tertiaryColor: Color,
-    accentBar: Color,
-    modifier: Modifier = Modifier,
+private fun CollapsedChampionshipGlance(
+    leader: SeasonDriverStanding,
+    top3: List<SeasonDriverStanding>,
+    wcc: SeasonConstructorStanding?,
+    leaderTeamColor: Color,
 ) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(CardBg.copy(alpha = 0.72f))
-            .f1LeadingRail(accentBar, thickness = 3.dp)
-            .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+    val lead = top3.getOrNull(1)?.let { (leader.points - it.points).toInt() } ?: 0
+    val maxPts = (top3.maxOfOrNull { it.points } ?: leader.points).coerceAtLeast(1.0)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.horizontalGradient(
+                    0.00f to leaderTeamColor.copy(alpha = 0.16f),
+                    0.42f to leaderTeamColor.copy(alpha = 0.05f),
+                    1.00f to Color.Transparent,
+                ),
+            ),
     ) {
+        // Soft watermark position mark
         Text(
-            label,
-            color = labelColor,
-            fontSize = 9.sp,
+            "01",
+            color = leaderTeamColor.copy(alpha = 0.10f),
             fontWeight = FontWeight.Black,
-            letterSpacing = 0.8.sp,
+            fontSize = 64.sp,
+            letterSpacing = (-2).sp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 6.dp, top = 0.dp),
         )
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                primary,
-                color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            Text(
-                secondary,
-                color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Black,
-            )
-            if (tertiary != null) {
-                Text(
-                    tertiary,
-                    color = tertiaryColor,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 1.dp),
+            // Leader hero — headshot anchors the glance
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                DriverHeadshot(
+                    url = leader.headshotUrl,
+                    driverName = leader.driverName,
+                    driverAcronym = leader.driverAcronym,
+                    driverNumber = leader.driverNumber,
+                    teamColor = leaderTeamColor,
+                    modifier = Modifier.size(72.dp),
                 )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            "WDC",
+                            color = F1Gold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.0.sp,
+                        )
+                        Text(
+                            "LEADER",
+                            color = leaderTeamColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.8.sp,
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        driverSurname(leader.driverName),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 20.sp,
+                        letterSpacing = (-0.4).sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        listOfNotNull(
+                            leader.constructorName,
+                            leader.driverNumber?.let { "#$it" },
+                        ).joinToString(" · "),
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "${leader.points.toInt()}",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 28.sp,
+                            letterSpacing = (-0.8).sp,
+                        )
+                        Text(
+                            "PTS",
+                            color = TextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(bottom = 5.dp),
+                        )
+                        if (lead > 0) {
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "+$lead",
+                                color = LabAmber,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                            Text(
+                                "LEAD",
+                                color = LabAmber.copy(alpha = 0.75f),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                letterSpacing = 0.4.sp,
+                                modifier = Modifier.padding(bottom = 5.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Top 3 podium strip with proportional point bars
+            if (top3.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    for (d in top3) {
+                        CollapsedTop3Cell(
+                            driver = d,
+                            isLeader = d.position == 1 || d.driverAcronym == leader.driverAcronym,
+                            barFraction = (d.points / maxPts).toFloat().coerceIn(0.12f, 1f),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    // Balance grid if fewer than 3
+                    repeat((3 - top3.size).coerceAtLeast(0)) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+
+            // Slim WCC chip — secondary, doesn't compete with driver podium
+            if (wcc != null) {
+                val wccColor = safeTeamColor(wcc.teamColor)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CardBg.copy(alpha = 0.55f))
+                        .f1LeadingRail(wccColor, thickness = 3.dp)
+                        .padding(start = 10.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "WCC",
+                        color = TextSecondary,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.7.sp,
+                    )
+                    Text(
+                        wcc.constructorName,
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "${wcc.points.toInt()}",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        "PTS",
+                        color = TextSecondary,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CollapsedChaseCell(
-    position: Int,
-    acronym: String,
-    gap: Int,
-    points: Int,
+private fun CollapsedTop3Cell(
+    driver: SeasonDriverStanding,
+    isLeader: Boolean,
+    barFraction: Float,
     modifier: Modifier = Modifier,
 ) {
-    val medal = medalColor(position) ?: TextSecondary
-    Row(
+    val medal = medalColor(driver.position) ?: TextSecondary
+    val teamColor = safeTeamColor(driver.teamColor)
+    val surface = if (isLeader) CardBg.copy(alpha = 0.78f) else CardBg.copy(alpha = 0.48f)
+
+    Column(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(CardBg.copy(alpha = 0.45f))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .clip(RoundedCornerShape(8.dp))
+            .background(surface)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "P${driver.position}",
+                color = medal,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.3.sp,
+            )
+            if (isLeader) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(medal),
+                )
+            }
+        }
         Text(
-            "P$position",
-            color = medal,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Black,
-            modifier = Modifier.width(22.dp),
-        )
-        Text(
-            acronym,
+            driver.driverAcronym,
             color = TextPrimary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f),
+            fontSize = if (isLeader) 14.sp else 13.sp,
+            fontWeight = FontWeight.Black,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            "−$gap",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
+            "${driver.points.toInt()}",
+            color = if (isLeader) TextPrimary else TextSecondary.copy(alpha = 0.95f),
+            fontSize = if (isLeader) 18.sp else 15.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.3).sp,
         )
-        Text(
-            "$points",
-            color = TextSecondary.copy(alpha = 0.7f),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.End,
-            modifier = Modifier.widthIn(min = 28.dp),
-        )
+        // Proportional points bar — makes the strip feel alive
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Hairline.copy(alpha = 0.55f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(barFraction)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(medal, teamColor.copy(alpha = 0.85f)),
+                        ),
+                    ),
+            )
+        }
     }
 }
 
@@ -1009,15 +1133,17 @@ private fun CollapsedPodiumCell(
     position: Int,
     acronym: String,
     points: Int,
+    teamColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val medal = medalColor(position) ?: TextSecondary
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(CardBg.copy(alpha = 0.55f))
-            .padding(horizontal = 8.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .f1LeadingRail(teamColor, thickness = 2.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(
             "P$position",
@@ -1026,26 +1152,20 @@ private fun CollapsedPodiumCell(
             fontWeight = FontWeight.Black,
             letterSpacing = 0.4.sp,
         )
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                acronym,
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            Text(
-                "+$points",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        Text(
+            acronym,
+            color = TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            "+$points",
+            color = TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
