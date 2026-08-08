@@ -1,25 +1,40 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +48,20 @@ import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 
+private val NavBarShape = RoundedCornerShape(28.dp)
+private val IndicatorShape = RoundedCornerShape(22.dp)
+
+/** Frosted-glass fill — translucent layers that read as glass over the dark app surface. */
+private val GlassFill = Brush.verticalGradient(
+    colors = listOf(
+        Color.White.copy(alpha = 0.14f),
+        Color.White.copy(alpha = 0.06f),
+    ),
+)
+private val GlassBase = Color(0xCC141C2C) // ~80% opaque deep navy
+private val GlassBorder = Color.White.copy(alpha = 0.18f)
+private val GlassHighlight = Color.White.copy(alpha = 0.10f)
+
 @Composable
 fun PillNavigationBar(
     items: List<Screen>,
@@ -45,80 +74,98 @@ fun PillNavigationBar(
     val selectedIndex = items.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
-    
-    // Using a State object directly for the index to avoid recompositions during the sliding animation
-    val animatedIndexState = animateFloatAsState(
+
+    val animatedIndex by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
         animationSpec = MacroMotion.bouncySpring(),
-        label = "nav_slide"
+        label = "nav_slide",
     )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 4.dp, start = 20.dp, end = 20.dp)
-            .height(84.dp),
-        contentAlignment = Alignment.BottomCenter
+            .padding(bottom = 14.dp, start = 20.dp, end = 20.dp)
+            .height(64.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        // 1. Static Background Bar
+        // Frosted glass capsule
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(64.dp)
                 .onSizeChanged { containerSize = it }
-                // Lighter background than the app surface + prominent shadow
                 .shadow(
-                    elevation = 16.dp, 
-                    shape = RoundedCornerShape(28.dp),
-                    ambientColor = Color.Black,
-                    spotColor = Color.Black.copy(alpha = 0.5f)
+                    elevation = 20.dp,
+                    shape = NavBarShape,
+                    ambientColor = Color.Black.copy(alpha = 0.45f),
+                    spotColor = Color.Black.copy(alpha = 0.35f),
                 )
-                .clip(RoundedCornerShape(28.dp))
-                .background(Color(0xFF1B2436)) // Distinct slightly lighter dark blue
-                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(28.dp))
-        )
-
-        // 2. Floating Indicator (Pill) - Performance Optimized
-        if (containerSize.width > 0) {
-            val itemWidthPx = containerSize.width.toFloat() / items.size
-            val indicatorSize = 72.dp
-            val indicatorSizePx = with(density) { indicatorSize.toPx() }
-            
+                .clip(NavBarShape)
+                .background(GlassBase)
+                .background(GlassFill)
+                .border(BorderStroke(1.dp, GlassBorder), NavBarShape),
+        ) {
+            // Top edge highlight — sells the glass rim
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                contentAlignment = Alignment.CenterStart
+                    .height(1.dp)
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 18.dp)
+                    .background(GlassHighlight, RoundedCornerShape(50)),
+            )
+        }
+
+        // Sliding selected pill — stays inside the bar (no protruding bubble)
+        if (containerSize.width > 0 && items.isNotEmpty()) {
+            val itemWidthPx = containerSize.width.toFloat() / items.size
+            val indicatorWidth = with(density) { (itemWidthPx - 12.dp.toPx()).coerceAtLeast(48.dp.toPx()) }
+            val indicatorHeight = 48.dp
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.CenterStart,
             ) {
                 Box(
                     modifier = Modifier
                         .graphicsLayer {
-                            // Reading state inside graphicsLayer lambda prevents recomposition of the whole Box
-                            translationX = (animatedIndexState.value * itemWidthPx) + (itemWidthPx / 2) - (indicatorSizePx / 2)
-                            translationY = -14.dp.toPx()
+                            translationX =
+                                (animatedIndex * itemWidthPx) + (itemWidthPx - indicatorWidth) / 2f
                         }
-                        .size(indicatorSize)
-                        .clip(CircleShape)
-                        .background(Primary) // Changed to Primary color
+                        .size(width = with(density) { indicatorWidth.toDp() }, height = indicatorHeight)
+                        .clip(IndicatorShape)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Primary.copy(alpha = 0.95f),
+                                    Primary.copy(alpha = 0.80f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                            IndicatorShape,
+                        ),
                 )
             }
         }
 
-        // 3. Interactive Icons & Labels
+        // Icons & labels
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .height(64.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { index, screen ->
                 val isSelected = index == selectedIndex
-                
-                // Animating selection progress per item
-                val selectionProgressState = animateFloatAsState(
+                val selectionProgress by animateFloatAsState(
                     targetValue = if (isSelected) 1f else 0f,
-                    animationSpec = MacroMotion.bouncySpring(),
-                    label = "selection_fade"
+                    animationSpec = MacroMotion.entranceSpring(),
+                    label = "selection_fade_$index",
                 )
 
                 Box(
@@ -127,27 +174,32 @@ fun PillNavigationBar(
                         .fillMaxHeight()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
-                            indication = null
+                            indication = null,
                         ) {
                             haptics.tick()
                             onItemClick(screen)
                         },
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                         modifier = Modifier.graphicsLayer {
-                            // Use state value inside lambda to avoid recomposing the Column every frame
-                            translationY = -16.dp.toPx() * selectionProgressState.value
-                        }
+                            val s = 1f + 0.06f * selectionProgress
+                            scaleX = s
+                            scaleY = s
+                        },
                     ) {
                         Box(contentAlignment = Alignment.TopEnd) {
                             Icon(
                                 imageVector = screen.icon,
                                 contentDescription = screen.label,
-                                tint = if (isSelected) Color.White else TextSecondary.copy(alpha = 0.7f),
-                                modifier = Modifier.size(24.dp)
+                                tint = lerp(
+                                    TextSecondary.copy(alpha = 0.75f),
+                                    Color.White,
+                                    selectionProgress,
+                                ),
+                                modifier = Modifier.size(22.dp),
                             )
                             if (showSettingsUpdateBadge && screen is Screen.Settings) {
                                 Box(
@@ -158,7 +210,7 @@ fun PillNavigationBar(
                                         .clip(CircleShape)
                                         .background(Error)
                                         .border(
-                                            BorderStroke(1.5.dp, Color(0xFF1B2436)),
+                                            BorderStroke(1.5.dp, GlassBase),
                                             CircleShape,
                                         ),
                                     contentAlignment = Alignment.Center,
@@ -177,13 +229,13 @@ fun PillNavigationBar(
                             text = screen.label,
                             color = Color.White,
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             modifier = Modifier
                                 .padding(top = 2.dp)
                                 .graphicsLayer {
-                                    // Hardware-accelerated alpha transition
-                                    alpha = selectionProgressState.value
-                                }
+                                    alpha = selectionProgress
+                                    translationY = 4.dp.toPx() * (1f - selectionProgress)
+                                },
                         )
                     }
                 }
