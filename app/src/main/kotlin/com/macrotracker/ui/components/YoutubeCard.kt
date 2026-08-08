@@ -24,10 +24,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -510,20 +512,7 @@ private fun YoutubeCollapsedGlance(
             }
         }
         is YouTubeUiState.Loading, YouTubeUiState.Idle -> {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(YtSurface),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(
-                    color = YtRed,
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.5.dp,
-                )
-            }
+            CompactVideoFeedSkeleton()
         }
         is YouTubeUiState.Success -> {
             CompactVideoFeed(
@@ -676,7 +665,9 @@ private fun CompactVideoFeed(
                 )
                 Text("No videos yet", color = TextSecondary, fontSize = 13.sp)
             }
-        } else {
+            return@Column
+        }
+
         if (trackedChannels.isNotEmpty() || newTodayCount > 0) {
             Row(
                 modifier = Modifier
@@ -774,14 +765,18 @@ private fun CompactVideoFeed(
         } else {
             val previewVideos = displayedVideos.take(YT_COMPACT_PREVIEW_COUNT)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 previewVideos.forEach { video ->
                     key(video.videoId) {
                         CompactVideoTile(
                             video = video,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                             onClick = {
                                 haptics.tick()
                                 context.startActivity(
@@ -794,10 +789,138 @@ private fun CompactVideoFeed(
                         )
                     }
                 }
-                if (previewVideos.size == 1) Spacer(Modifier.weight(1f))
+                repeat(YT_COMPACT_PREVIEW_COUNT - previewVideos.size) { index ->
+                    key("yt-empty-slot-$index") {
+                        CompactVideoTilePlaceholder(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                        )
+                    }
+                }
             }
         }
-        } // end videos.isNotEmpty
+    }
+}
+
+@Composable
+private fun CompactVideoFeedSkeleton() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(YtSurface)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(YtCardBg.copy(alpha = 0.9f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(42.dp)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(YtHairline.copy(alpha = 0.55f)),
+                )
+            }
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(YtCardBg.copy(alpha = 0.9f))
+                        .border(1.5.dp, YtHairline.copy(alpha = 0.45f), CircleShape),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(YT_COMPACT_PREVIEW_COUNT) {
+                CompactVideoTilePlaceholder(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    showSpinner = it == 0,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactVideoTilePlaceholder(
+    modifier: Modifier = Modifier,
+    showSpinner: Boolean = false,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(YtCardBg.copy(alpha = 0.88f))
+            .border(0.5.dp, YtHairline.copy(alpha = 0.55f), RoundedCornerShape(10.dp)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(YtDark.copy(alpha = 0.85f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (showSpinner) {
+                CircularProgressIndicator(
+                    color = YtRed.copy(alpha = 0.7f),
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.VideoLibrary,
+                    contentDescription = null,
+                    tint = TextSecondary.copy(alpha = 0.28f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(YT_COMPACT_CAPTION_HEIGHT)
+                .padding(horizontal = 6.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(YtHairline.copy(alpha = 0.4f)),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.62f)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(YtHairline.copy(alpha = 0.28f)),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.48f)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(YtHairline.copy(alpha = 0.22f)),
+            )
+        }
     }
 }
 
@@ -825,13 +948,13 @@ private fun CompactVideoTile(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(YtCardBg.copy(alpha = 0.88f))
+            .border(0.5.dp, YtHairline.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
             .clickable(onClick = onClick),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
                 .background(YtDark),
         ) {
             AsyncImage(
@@ -880,23 +1003,32 @@ private fun CompactVideoTile(
                 Text(formatRelativeTime(video.publishedAt), fontSize = 8.sp, color = Color.White)
             }
         }
-        Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)) {
+        // Fixed caption block so both tiles always share the same height.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(YT_COMPACT_CAPTION_HEIGHT)
+                .padding(horizontal = 6.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
                 video.title,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = TextPrimary,
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = 14.sp,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(2.dp))
             Text(
                 video.channelTitle,
                 fontSize = 9.sp,
                 color = TextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -972,6 +1104,8 @@ private fun CompactChannelAvatar(
 private const val YT_INITIAL_PAGE = 4
 private const val YT_PAGE_SIZE    = 5
 private const val YT_COMPACT_PREVIEW_COUNT = 2
+/** Caption block under collapsed thumbnails (2 title lines + channel). */
+private val YT_COMPACT_CAPTION_HEIGHT = 52.dp
 
 @Composable
 private fun rememberYoutubeThumbnailRequest(
@@ -1594,14 +1728,18 @@ private fun VideoGrid(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         videos.chunked(2).forEach { rowVideos ->
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 rowVideos.forEach { video ->
                     key(video.videoId) {
                         VideoGridItem(
                             video = video,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                             onClick = { onVideoClick(video) },
                         )
                     }
@@ -1631,13 +1769,13 @@ private fun VideoGridItem(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(YtCardBg.copy(alpha = 0.88f))
+            .border(0.5.dp, YtHairline.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
             .clickable(onClick = onClick),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 0.dp, bottomEnd = 0.dp))
                 .background(YtDark),
         ) {
             AsyncImage(
@@ -1689,17 +1827,24 @@ private fun VideoGridItem(
                 )
             }
         }
-        Column(modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(YT_COMPACT_CAPTION_HEIGHT)
+                .padding(horizontal = 7.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             Text(
                 video.title,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = TextPrimary,
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = 15.sp,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(3.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
