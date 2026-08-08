@@ -69,7 +69,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -258,18 +257,20 @@ fun HealthScreen(
 
     val todayFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMM d")) }
 
-    val scope = rememberCoroutineScope()
     val visibleConfigs = remember(parsedConfigs) {
         parsedConfigs.filter { it.isVisible }
     }
+    val listState = rememberLazyListState()
     val dragState = rememberDraggableWidgetListState(
         items = visibleConfigs,
+        lazyListState = listState,
+        itemKey = { it.id },
         onReorder = { reordered ->
             val hidden = parsedConfigs.filter { !it.isVisible }
             healthViewModel.updateHealthWidgetOrder(encodeWidgetConfig(reordered + hidden))
         },
+        haptics = haptics,
     )
-    val listState = rememberLazyListState()
     val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
 
     CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
@@ -329,7 +330,6 @@ fun HealthScreen(
                 state = dragState,
                 itemKey = { it.id },
                 haptics = haptics,
-                scope = scope,
             ) { _, config, _ ->
                     when (config.id) {
                     "BODY_STATS" -> {

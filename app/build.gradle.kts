@@ -156,6 +156,9 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.haze.materials)
 
+    // Hold-and-drag reorder for Home/Health panels + pencil editor
+    implementation(libs.reorderable)
+
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)
 }

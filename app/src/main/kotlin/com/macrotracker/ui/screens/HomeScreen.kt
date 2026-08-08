@@ -204,15 +204,18 @@ fun HomeScreen(
         val visibleConfigs = remember(parsedConfigs) {
             parsedConfigs.filter { it.isVisible }
         }
+
+        val listState = rememberLazyListState()
         val dragState = rememberDraggableWidgetListState(
             items = visibleConfigs,
+            lazyListState = listState,
+            itemKey = { it.id },
             onReorder = { reordered ->
                 val hidden = parsedConfigs.filter { !it.isVisible }
                 viewModel.updateHomeWidgetOrder(encodeWidgetConfig(reordered + hidden))
             },
+            haptics = haptics,
         )
-
-        val listState = rememberLazyListState()
         val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
         val visibleWidgetIds = rememberVisibleHomeWidgetIds(listState)
 
@@ -290,7 +293,6 @@ fun HomeScreen(
                     state = dragState,
                     itemKey = { it.id },
                     haptics = haptics,
-                    scope = scope,
                 ) { _, config, _ ->
                     HomeWidgetItem(
                         config = config,

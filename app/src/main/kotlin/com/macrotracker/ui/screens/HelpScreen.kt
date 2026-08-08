@@ -57,7 +57,7 @@ private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.Rocket,
         title = "Customise Your Home Screen",
-        body = "Tap the pencil icon (top-right of Home) to enter edit mode. Toggle widgets on or off, then close the editor to save. Long-press and drag any widget to reorder them.",
+        body = "Tap the pencil icon (top-right of Home or Health) to enter edit mode. Toggle widgets on or off, then drag ☰ to reorder rows. Outside edit mode, long-press and drag any visible widget to reorder them.",
     ),
     HelpStep(
         icon = Icons.Outlined.CameraAlt,
