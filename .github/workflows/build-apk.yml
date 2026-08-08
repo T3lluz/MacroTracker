@@ -1,252 +1,94 @@
 name: Build & Release APK
 
-# Publishes a tester APK to GitHub Releases when:
-#   - a PR is merged to master (push to master)
-#   - a v* tag is pushed
-#   - the workflow is run manually
-#
-# In-app updates (AppUpdateRepository) require a higher versionCode and the
-# asset name DailyDash-{versionName}-vc{versionCode}.apk. On master merges,
-# versionCode/versionName are auto-bumped when that version was already released.
+# Publishes a tester APK to GitHub Releases on master merges (and manual runs).
+# In-app updates require a higher versionCode and the asset name:
+#   DailyDash-{versionName}-vc{versionCode}.apk
 
 on:
   push:
     branches:
       - master
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: "Optional release tag (e.g. v1.1.3). Leave empty to auto-generate."
-        required: false
-      release_name:
-        description: "Optional release name shown on GitHub Releases."
-        required: false
       release_notes:
-        description: "Release notes shown in-app and on GitHub."
+        description: "Optional release notes shown in-app and on GitHub."
         required: false
 
 permissions:
   contents: write
 
 env:
-  # Larger heap + parallel GC speeds compile/R8 on GitHub runners.
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC -Dfile.encoding=UTF-8"
 
 jobs:
-  build:
+  release:
     name: Build and publish DailyDash APK
     runs-on: ubuntu-latest
     # Skip the follow-up commit that only bumps versionCode/versionName.
     if: >
       github.event_name != 'push' ||
-      github.ref_type == 'tag' ||
-      (
-        github.ref == 'refs/heads/master' &&
-        !contains(github.event.head_commit.message, '[skip ci]')
-      )
+      !contains(github.event.head_commit.message, '[skip ci]')
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Need full history so version-bump commits can push cleanly, and so
-          # softprops can generate release notes from commits since the last tag.
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Java SDK
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "17"
 
-      # Caches Gradle deps, wrapper, and build cache across runs — biggest CI win.
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          cache-read-only: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
+          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
           gradle-home-cache-cleanup: true
 
-      - name: Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # Platforms/build-tools are pulled on first Gradle build; keep them warm.
+      # Only platforms + build-tools are needed for assembleRelease.
       - name: Cache Android SDK packages
         uses: actions/cache@v4
         with:
           path: |
             ${{ env.ANDROID_HOME }}/platforms
             ${{ env.ANDROID_HOME }}/build-tools
-            ${{ env.ANDROID_HOME }}/system-images
-            ${{ env.ANDROID_HOME }}/ndk
-            ${{ env.ANDROID_HOME }}/cmake
-          key: android-sdk-${{ runner.os }}-api35-${{ hashFiles('gradle/libs.versions.toml', 'app/build.gradle.kts') }}
+          key: android-sdk-${{ runner.os }}-api36-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
-            android-sdk-${{ runner.os }}-api35-
+            android-sdk-${{ runner.os }}-api36-
             android-sdk-${{ runner.os }}-
 
-      - name: Ensure unique version on master merge
+      - name: Ensure unique version
         id: version
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
+        run: bash .github/scripts/ensure-unique-version.sh
 
-          git fetch --tags --force origin
-
-          VERSION_NAME=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          VERSION_CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -1 | sed -E 's/[^0-9]//g')
-
-          asset_count() {
-            local code="$1"
-            gh api "repos/${{ github.repository }}/releases?per_page=100" \
-              --jq "[.[].assets[].name | select(test(\"^DailyDash-.*-vc${code}\\\\.apk$\"; \"i\"))] | length"
-          }
-
-          tag_taken() {
-            local name="$1"
-            git rev-parse "refs/tags/v${name}" >/dev/null 2>&1 \
-              || gh release view "v${name}" >/dev/null 2>&1
-          }
-
-          needs_bump=false
-          if tag_taken "$VERSION_NAME"; then
-            needs_bump=true
-          elif [ "$(asset_count "$VERSION_CODE")" -gt 0 ]; then
-            needs_bump=true
-          fi
-
-          if [ "$needs_bump" = true ]; then
-            NEW_CODE=$((VERSION_CODE + 1))
-            if [[ "$VERSION_NAME" =~ ^([0-9]+\.[0-9]+\.)([0-9]+)$ ]]; then
-              NEW_NAME="${BASH_REMATCH[1]}${NEW_CODE}"
-            else
-              NEW_NAME="${VERSION_NAME}"
-            fi
-
-            # Keep bumping until tag and versionCode are free (rapid successive merges).
-            while tag_taken "$NEW_NAME" || [ "$(asset_count "$NEW_CODE")" -gt 0 ]; do
-              NEW_CODE=$((NEW_CODE + 1))
-              if [[ "$VERSION_NAME" =~ ^([0-9]+\.[0-9]+\.)([0-9]+)$ ]]; then
-                NEW_NAME="${BASH_REMATCH[1]}${NEW_CODE}"
-              else
-                NEW_NAME="${VERSION_NAME}-${NEW_CODE}"
-              fi
-            done
-
-            sed -i -E "s/(versionCode\\s*=\\s*)${VERSION_CODE}/\\1${NEW_CODE}/" app/build.gradle.kts
-            sed -i -E "s/(versionName\\s*=\\s*\")${VERSION_NAME}(\")/\\1${NEW_NAME}\\2/" app/build.gradle.kts
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/build.gradle.kts
-            git commit -m "chore: bump version to ${NEW_NAME} (vc${NEW_CODE}) [skip ci]"
-            git push origin HEAD:master
-
-            VERSION_NAME="$NEW_NAME"
-            VERSION_CODE="$NEW_CODE"
-            echo "Auto-bumped version to ${VERSION_NAME} (vc${VERSION_CODE})"
-          else
-            echo "Using existing version ${VERSION_NAME} (vc${VERSION_CODE})"
-          fi
-
-          {
-            echo "version_name=${VERSION_NAME}"
-            echo "version_code=${VERSION_CODE}"
-            echo "commit_sha=$(git rev-parse HEAD)"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build release APK (tester signing, non-debuggable)
+      - name: Build release APK
         run: ./gradlew assembleRelease --build-cache
 
-      - name: Resolve release metadata
-        id: meta
-        run: |
-          set -euo pipefail
-
-          if [ -n "${{ steps.version.outputs.version_name }}" ]; then
-            VERSION_NAME="${{ steps.version.outputs.version_name }}"
-            VERSION_CODE="${{ steps.version.outputs.version_code }}"
-          else
-            VERSION_NAME=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-            VERSION_CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -1 | sed -E 's/[^0-9]//g')
-          fi
-
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG_NAME="${{ github.ref_name }}"
-          elif [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            TAG_NAME="${{ github.event.inputs.release_tag }}"
-          else
-            TAG_NAME="v${VERSION_NAME}"
-          fi
-
-          if [ -n "${{ github.event.inputs.release_name }}" ]; then
-            RELEASE_NAME="${{ github.event.inputs.release_name }}"
-          else
-            RELEASE_NAME="DailyDash ${VERSION_NAME} (build ${VERSION_CODE})"
-          fi
-
-          if [ -n "${{ github.event.inputs.release_notes }}" ]; then
-            NOTES="${{ github.event.inputs.release_notes }}"
-          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            NOTES="$(printf '%s\n' \
-              "DailyDash ${VERSION_NAME} (build ${VERSION_CODE})" \
-              "" \
-              "Automated tester build from merge to master." \
-              "Installs as an in-app update when signed with the shared tester keystore.")"
-          else
-            NOTES="$(printf '%s\n' \
-              "DailyDash ${VERSION_NAME} (build ${VERSION_CODE})" \
-              "" \
-              "Installs as an in-app update when signed with the shared tester keystore.")"
-          fi
-
-          APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          if [ -z "$APK_SRC" ]; then
-            echo "No release APK found" >&2
-            exit 1
-          fi
-
-          # Filename contract parsed by AppUpdateRepository:
-          # DailyDash-{versionName}-vc{versionCode}.apk
-          APK_NAME="DailyDash-${VERSION_NAME}-vc${VERSION_CODE}.apk"
-          cp "$APK_SRC" "$APK_NAME"
-
-          {
-            echo "tag=${TAG_NAME}"
-            echo "name=${RELEASE_NAME}"
-            echo "apk=${APK_NAME}"
-            echo "version_name=${VERSION_NAME}"
-            echo "version_code=${VERSION_CODE}"
-          } >> "$GITHUB_OUTPUT"
-
-          # Multiline notes
-          {
-            echo "notes<<EOF"
-            echo "$NOTES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dailydash-apk
-          path: ${{ steps.meta.outputs.apk }}
+      - name: Package release
+        id: package
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          INPUT_NOTES: ${{ github.event.inputs.release_notes }}
+        run: bash .github/scripts/package-release.sh
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ${{ steps.meta.outputs.name }}
-          body: ${{ steps.meta.outputs.notes }}
-          files: ${{ steps.meta.outputs.apk }}
-          draft: false
-          prerelease: false
+          tag_name: ${{ steps.package.outputs.tag }}
+          name: ${{ steps.package.outputs.name }}
+          body: ${{ steps.package.outputs.notes }}
+          files: ${{ steps.package.outputs.apk }}
           generate_release_notes: true
-          # Prefer the version-bump commit when one was created on master merge.
           target_commitish: ${{ steps.version.outputs.commit_sha || github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
