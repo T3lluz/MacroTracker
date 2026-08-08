@@ -17,6 +17,11 @@ on:
 permissions:
   contents: write
 
+# Serialize master releases so version-bump commits cannot race (Actions #92).
+concurrency:
+  group: dailydash-apk-release
+  cancel-in-progress: false
+
 env:
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC -Dfile.encoding=UTF-8"
 
