@@ -17,7 +17,7 @@ composeCompiler {
 
 android {
     namespace = "com.macrotracker"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.macrotracker"
@@ -151,6 +151,10 @@ dependencies {
     
     // Installed icon library for full-app usage (Weather, UI, etc.)
     implementation(libs.tabler.icons)
+
+    // Frosted-glass blur for the floating pill nav
+    implementation(libs.haze)
+    implementation(libs.haze.materials)
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)

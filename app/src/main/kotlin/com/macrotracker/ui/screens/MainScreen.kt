@@ -4,17 +4,16 @@ import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -35,6 +34,9 @@ import com.macrotracker.ui.screens.onboarding.SplashOverlay
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import kotlin.coroutines.cancellation.CancellationException
 
 @Composable
@@ -171,22 +173,26 @@ private fun MainScreenScaffold(
         }
     }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            MainBottomBar(
-                navController = navController,
-                items = items,
-                showSettingsUpdateBadge = showSettingsUpdateBadge,
-            )
-        },
-    ) { _ ->
+    val hazeState = rememberHazeState()
+
+    // Overlay the frosted pill on top of content so scrolling content
+    // can blur through the bar (hazeSource + hazeEffect).
+    Box(modifier = Modifier.fillMaxSize()) {
         DailyDashNavHost(
             navController = navController,
-            modifier = navHostModifier,
+            modifier = navHostModifier
+                .fillMaxSize()
+                .hazeSource(state = hazeState),
             startDestination = startDestination,
             onboardingCompleted = onboardingCompleted,
             onOnboardingComplete = onOnboardingComplete,
+        )
+        MainBottomBar(
+            navController = navController,
+            items = items,
+            showSettingsUpdateBadge = showSettingsUpdateBadge,
+            hazeState = hazeState,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
 }
@@ -196,6 +202,8 @@ private fun MainBottomBar(
     navController: NavHostController,
     items: List<Screen>,
     showSettingsUpdateBadge: Boolean,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -213,12 +221,13 @@ private fun MainBottomBar(
         }
     }
 
-    Box(modifier = Modifier.navigationBarsPadding()) {
+    Box(modifier = modifier.navigationBarsPadding()) {
         PillNavigationBar(
             items = items,
             currentRoute = currentRoute,
             onItemClick = onItemClick,
             showSettingsUpdateBadge = showSettingsUpdateBadge,
+            hazeState = hazeState,
         )
     }
 }
