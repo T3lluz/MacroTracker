@@ -248,6 +248,7 @@ fun HomeScreen(
         CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
         LazyColumn(
             state = listState,
+            userScrollEnabled = !dragState.isDragActive,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
