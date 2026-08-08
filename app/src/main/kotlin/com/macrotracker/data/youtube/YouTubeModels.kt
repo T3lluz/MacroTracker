@@ -9,6 +9,10 @@ data class YoutubeVideo(
     val channelId: String,
     val publishedAt: String,
     val thumbnailUrl: String,
+    /** View count from RSS `media:statistics`, when available. */
+    val viewCount: Long? = null,
+    /** Approximate like/rating count from RSS `media:starRating`, when available. */
+    val likeCount: Long? = null,
 )
 
 data class YoutubeChannel(
