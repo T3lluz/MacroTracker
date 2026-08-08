@@ -80,7 +80,7 @@ private val PAGES = listOf(
         title = "Your Personal Dashboard",
         body = "DailyDash is more than a macro tracker — it's a customisable home screen for your daily life. Weather, calendar, sport, news and nutrition all in one glanceable view.",
         tips = listOf(
-            "Long-press any widget header to reorder the home screen",
+            "Long-press and drag any home widget to reorder the layout",
             "Toggle widgets on or off in Widget-Settings",
             "Every section updates automatically throughout the day",
         ),

@@ -23,8 +23,8 @@ android {
         applicationId = "com.macrotracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "1.1.33"
+        versionCode = 34
+        versionName = "1.1.34"
 
         // Read API keys from local.properties
         val localProperties = Properties()
@@ -155,6 +155,9 @@ dependencies {
     // Frosted-glass blur for the floating pill nav
     implementation(libs.haze)
     implementation(libs.haze.materials)
+
+    // Hold-and-drag reorder for Home/Health panels + pencil editor
+    implementation(libs.reorderable)
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)

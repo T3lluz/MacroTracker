@@ -24,6 +24,7 @@ ksp = "2.2.10-2.0.2"
 glance = "1.1.1"
 work = "2.10.0"
 haze = "1.7.2"
+reorderable = "3.1.0"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
@@ -71,6 +72,7 @@ work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work"
 tabler-icons = { module = "br.com.devsrsouza.compose.icons:tabler-icons", version = "1.1.1" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 haze-materials = { module = "dev.chrisbanes.haze:haze-materials", version.ref = "haze" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

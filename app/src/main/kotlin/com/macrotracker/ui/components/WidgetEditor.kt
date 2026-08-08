@@ -3,7 +3,6 @@ package com.macrotracker.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -95,7 +94,7 @@ fun WidgetEditor(
             }
         }
         Text(
-            "Toggle visibility · hold ☰ and drag to reorder.",
+            "Toggle visibility · drag ☰ to reorder.",
             fontSize = 14.sp,
             color = TextSecondary,
             modifier = Modifier.padding(bottom = 16.dp),
@@ -105,24 +104,26 @@ fun WidgetEditor(
             items = configs,
             onReorder = onConfigsChanged,
             itemKey = { it.id },
-            dragGestureOnItem = false,
+            handleOnly = true,
             itemSpacing = 8.dp,
-        ) { index, config, dragModifier ->
+        ) { index, config, isDragging, dragHandleModifier ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Background)
+                    .background(
+                        if (isDragging) Primary.copy(alpha = 0.12f) else Background,
+                    )
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     imageVector = Icons.Default.DragHandle,
                     contentDescription = "Drag to reorder",
-                    tint = TextSecondary,
+                    tint = if (isDragging) Primary else TextSecondary,
                     modifier = Modifier
-                        .size(24.dp)
-                        .then(dragModifier),
+                        .size(28.dp)
+                        .then(dragHandleModifier),
                 )
 
                 Spacer(modifier = Modifier.width(12.dp))
