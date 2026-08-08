@@ -91,14 +91,6 @@ class F1RepositoryImpl @Inject constructor(
                         emptyList()
                     }
                 }
-                val newsDeferred = async {
-                    try {
-                        api.getF1News()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error fetching F1 news: ${e.message}")
-                        emptyList()
-                    }
-                }
                 val lastRaceDeferred = async {
                     try {
                         api.getLastRaceResults()
@@ -149,7 +141,6 @@ class F1RepositoryImpl @Inject constructor(
                     else -> emptyList()
                 }
 
-                val news = newsDeferred.await()
                 val lastRacePair = lastRaceDeferred.await()
                 val lastRace = lastRacePair.first
                 val lastRaceName = lastRacePair.second
@@ -166,7 +157,8 @@ class F1RepositoryImpl @Inject constructor(
                 val result = F1Standings(
                     driverStandings = drivers,
                     constructorStandings = constructors,
-                    news = news,
+                    // Feed tab removed — keep empty for disk-cache schema compatibility.
+                    news = emptyList(),
                     lastRaceResults = lastRace.ifEmpty { null },
                     lastQualiResults = lastQuali.ifEmpty { null },
                     schedule = schedule,
