@@ -569,7 +569,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
     val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ── Next race — copy left, circuit map right ──────────────────────
+        // ── Next race — copy left, larger circuit map right ───────────────
         if (next != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -578,7 +578,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 8.dp),
+                        .padding(end = 10.dp),
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -606,57 +606,65 @@ private fun F1CollapsedWidget(data: F1Standings) {
                                 letterSpacing = 0.4.sp,
                             )
                         }
-                        Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // Track name + countdown share one row so the map can grow
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text(
-                            when {
-                                days == 0L -> "Today"
-                                days == 1L -> "1d"
-                                days < 0L -> "—"
-                                else -> "${days}d"
-                            },
-                            color = accent,
+                            shortGP(next.raceName),
+                            color = TextPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 17.sp,
+                            letterSpacing = (-0.2).sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        InlineRaceCountdown(
+                            dateStr = next.raceDate,
+                            timeStr = next.raceTime,
+                            days = days,
+                            accentColor = accent,
                         )
                     }
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        shortGP(next.raceName),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        letterSpacing = (-0.2).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        buildString {
-                            val place = listOfNotNull(
-                                next.locality?.takeIf { it.isNotBlank() },
-                                countryLabel(next.countryCode).takeIf { it != "—" },
-                            ).joinToString(", ")
-                            append(place.ifBlank { "Round ${next.round}" })
-                            append("  ·  ")
-                            append(formatShort(next.raceDate))
-                            if (localRaceTime.isNotEmpty()) append("  ·  $localRaceTime")
-                        },
+                        listOfNotNull(
+                            next.locality?.takeIf { it.isNotBlank() },
+                            countryLabel(next.countryCode).takeIf { it != "—" },
+                        ).joinToString(", ").ifBlank { "Round ${next.round}" },
                         color = TextSecondary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
-                        maxLines = 2,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(1.dp))
+                    Text(
+                        buildString {
+                            append(formatShort(next.raceDate))
+                            if (localRaceTime.isNotEmpty()) append("  ·  $localRaceTime")
+                        },
+                        color = TextSecondary.copy(alpha = 0.85f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
 
                 if (trackUrl != null) {
                     val request = remember(trackUrl) {
-                        circuitMapRequest(context, trackUrl, width = 280, height = 180)
+                        circuitMapRequest(context, trackUrl, width = 360, height = 240)
                     }
                     Box(
                         modifier = Modifier
-                            .width(92.dp)
-                            .height(60.dp)
+                            .width(118.dp)
+                            .height(82.dp)
                             .clip(SharpShape)
                             .background(Color(0xFF080D14)),
                         contentAlignment = Alignment.Center,
@@ -666,13 +674,13 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             contentDescription = "${shortGP(next.raceName)} circuit",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(5.dp),
+                                .padding(6.dp),
                             contentScale = ContentScale.Fit,
                         ) {
                             when (painter.state) {
                                 is AsyncImagePainter.State.Loading ->
                                     CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
+                                        modifier = Modifier.size(16.dp),
                                         strokeWidth = 1.5.dp,
                                         color = accent.copy(alpha = 0.5f),
                                     )
@@ -689,25 +697,21 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     }
                 }
             }
-            if (isSoon) {
-                Spacer(Modifier.height(8.dp))
-                LiveCountdown(next.raceDate, next.raceTime, F1Red)
-            }
         }
 
         // ── Standings — headshot rows ─────────────────────────────────────
         if (leader != null) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 "Drivers",
                 color = TextSecondary,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.2.sp,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(1.dp))
             top3.forEachIndexed { index, driver ->
                 CollapsedStandingRow(
                     position = driver.position,
@@ -724,7 +728,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                 )
             }
             if (wcc != null) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -732,20 +736,20 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     Box(
                         modifier = Modifier
                             .width(3.dp)
-                            .height(14.dp)
+                            .height(12.dp)
                             .background(safeTeamColor(wcc.teamColor)),
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(7.dp))
                     Text(
                         "Constructors",
                         color = TextSecondary,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     )
                     Text(
                         "  ·  ${wcc.constructorName}",
                         color = TextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -754,7 +758,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     Text(
                         "${wcc.points.toInt()}",
                         color = TextPrimary,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
@@ -827,22 +831,22 @@ private fun CollapsedStandingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
+            .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
                 .width(3.dp)
-                .height(32.dp)
+                .height(28.dp)
                 .background(teamColor),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
             "$position",
             color = TextSecondary,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(14.dp),
+            modifier = Modifier.width(12.dp),
         )
         DriverHeadshot(
             url = headshotUrl,
@@ -850,14 +854,14 @@ private fun CollapsedStandingRow(
             driverAcronym = driverAcronym,
             driverNumber = driverNumber,
             teamColor = teamColor,
-            modifier = Modifier.size(34.dp),
+            modifier = Modifier.size(28.dp),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(7.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 name,
                 color = TextPrimary,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -875,15 +879,15 @@ private fun CollapsedStandingRow(
             Text(
                 "−$gap",
                 color = TextSecondary,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = 6.dp),
             )
         }
         Text(
             "$points",
             color = TextPrimary,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -1160,17 +1164,93 @@ private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color)
     }
 }
 
+/** Compact countdown beside the track name in the collapsed F1 widget. */
 @Composable
-private fun CountdownUnit(value: String, unit: String, color: Color) {
-    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-        Text(value, color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        Text(unit, color = TextSecondary, fontSize = 10.sp, modifier = Modifier.padding(bottom = 2.dp))
+private fun InlineRaceCountdown(
+    dateStr: String,
+    timeStr: String?,
+    days: Long,
+    accentColor: Color,
+) {
+    val tickersPaused = LocalTickersPaused.current
+    var secondsLeft by remember(dateStr, timeStr) { mutableLongStateOf(secondsUntilRace(dateStr, timeStr)) }
+
+    LaunchedEffect(dateStr, timeStr, tickersPaused) {
+        if (tickersPaused) return@LaunchedEffect
+        while (secondsLeft > 0) {
+            delay(1000L)
+            secondsLeft = secondsUntilRace(dateStr, timeStr)
+        }
+    }
+
+    val showLive = secondsLeft > 0 && secondsLeft <= 7 * 24 * 3600
+    if (showLive) {
+        val d = secondsLeft / 86400
+        val h = (secondsLeft % 86400) / 3600
+        val m = (secondsLeft % 3600) / 60
+        val s = secondsLeft % 60
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            if (d > 0) {
+                CountdownUnit("${d}", "d", accentColor, compact = true)
+                CountdownSep(compact = true)
+            }
+            CountdownUnit(h.toString().padStart(2, '0'), "h", accentColor, compact = true)
+            CountdownSep(compact = true)
+            CountdownUnit(m.toString().padStart(2, '0'), "m", accentColor, compact = true)
+            CountdownSep(compact = true)
+            CountdownUnit(s.toString().padStart(2, '0'), "s", accentColor, compact = true)
+        }
+    } else {
+        Text(
+            when {
+                days == 0L -> "Today"
+                days == 1L -> "1d"
+                days < 0L -> "—"
+                else -> "${days}d"
+            },
+            color = accentColor,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+        )
     }
 }
 
 @Composable
-private fun CountdownSep() {
-    Text("·", color = TextSecondary.copy(alpha = 0.4f), fontSize = 13.sp)
+private fun CountdownUnit(
+    value: String,
+    unit: String,
+    color: Color,
+    compact: Boolean = false,
+) {
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            value,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (compact) 13.sp else 16.sp,
+        )
+        Text(
+            unit,
+            color = TextSecondary,
+            fontSize = if (compact) 9.sp else 10.sp,
+            modifier = Modifier.padding(bottom = if (compact) 1.dp else 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun CountdownSep(compact: Boolean = false) {
+    Text(
+        "·",
+        color = TextSecondary.copy(alpha = 0.4f),
+        fontSize = if (compact) 11.sp else 13.sp,
+    )
 }
 
 // ── Shared circuit stat ───────────────────────────────────────────────────────
