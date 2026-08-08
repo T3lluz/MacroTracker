@@ -275,6 +275,7 @@ fun HealthScreen(
     CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
     LazyColumn(
         state = listState,
+        userScrollEnabled = !dragState.isDragActive,
         modifier = Modifier
             .fillMaxSize()
             .background(Background),
@@ -329,7 +330,7 @@ fun HealthScreen(
                 itemKey = { it.id },
                 haptics = haptics,
                 scope = scope,
-            ) { _, config ->
+            ) { _, config, _ ->
                     when (config.id) {
                     "BODY_STATS" -> {
                         val isAnyStatEnabled = heartRateState.isEnabled || restingHeartRateState.isEnabled ||

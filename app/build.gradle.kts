@@ -17,14 +17,14 @@ composeCompiler {
 
 android {
     namespace = "com.macrotracker"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.macrotracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "1.1.29"
+        versionCode = 33
+        versionName = "1.1.33"
 
         // Read API keys from local.properties
         val localProperties = Properties()
@@ -151,6 +151,10 @@ dependencies {
     
     // Installed icon library for full-app usage (Weather, UI, etc.)
     implementation(libs.tabler.icons)
+
+    // Frosted-glass blur for the floating pill nav
+    implementation(libs.haze)
+    implementation(libs.haze.materials)
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)

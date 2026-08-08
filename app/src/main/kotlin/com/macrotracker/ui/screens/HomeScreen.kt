@@ -248,6 +248,7 @@ fun HomeScreen(
         CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
         LazyColumn(
             state = listState,
+            userScrollEnabled = !dragState.isDragActive,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
@@ -290,7 +291,7 @@ fun HomeScreen(
                     itemKey = { it.id },
                     haptics = haptics,
                     scope = scope,
-                ) { _, config ->
+                ) { _, config, _ ->
                     HomeWidgetItem(
                         config = config,
                         isVisible = config.id in visibleWidgetIds,

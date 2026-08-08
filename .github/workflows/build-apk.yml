@@ -30,6 +30,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Larger heap + parallel GC speeds compile/R8 on GitHub runners.
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC -Dfile.encoding=UTF-8"
+
 jobs:
   build:
     name: Build and publish DailyDash APK
@@ -58,11 +62,30 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # Caches Gradle deps, wrapper, and build cache across runs — biggest CI win.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
+          gradle-home-cache-cleanup: true
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      # Platforms/build-tools are pulled on first Gradle build; keep them warm.
+      - name: Cache Android SDK packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/platforms
+            ${{ env.ANDROID_HOME }}/build-tools
+            ${{ env.ANDROID_HOME }}/system-images
+            ${{ env.ANDROID_HOME }}/ndk
+            ${{ env.ANDROID_HOME }}/cmake
+          key: android-sdk-${{ runner.os }}-api35-${{ hashFiles('gradle/libs.versions.toml', 'app/build.gradle.kts') }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-api35-
+            android-sdk-${{ runner.os }}-
 
       - name: Ensure unique version on master merge
         id: version
@@ -137,7 +160,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build release APK (tester signing, non-debuggable)
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --build-cache
 
       - name: Resolve release metadata
         id: meta

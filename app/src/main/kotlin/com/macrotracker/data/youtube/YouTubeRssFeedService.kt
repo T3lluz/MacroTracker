@@ -82,6 +82,8 @@ class YouTubeRssFeedService @Inject constructor(
             var title: String? = null
             var channelTitle: String? = null
             var publishedAt: String? = null
+            var viewCount: Long? = null
+            var likeCount: Long? = null
             var inEntry = false
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
@@ -93,6 +95,8 @@ class YouTubeRssFeedService @Inject constructor(
                                 videoId = null
                                 title = null
                                 publishedAt = null
+                                viewCount = null
+                                likeCount = null
                             }
                             "yt:videoId" -> if (inEntry) videoId = parser.nextText()
                             "title" -> {
@@ -101,6 +105,13 @@ class YouTubeRssFeedService @Inject constructor(
                                 else if (!inEntry) channelTitle = text
                             }
                             "published" -> if (inEntry) publishedAt = parser.nextText()
+                            // Namespaces disabled → tags keep their "media:" prefix.
+                            "media:statistics" -> if (inEntry) {
+                                viewCount = parser.getAttributeValue(null, "views")?.toLongOrNull()
+                            }
+                            "media:starRating" -> if (inEntry) {
+                                likeCount = parser.getAttributeValue(null, "count")?.toLongOrNull()
+                            }
                         }
                     }
                     XmlPullParser.END_TAG -> {
@@ -116,7 +127,10 @@ class YouTubeRssFeedService @Inject constructor(
                                         channelTitle = channelTitle ?: "",
                                         channelId = channelId,
                                         publishedAt = pub,
-                                        thumbnailUrl = "https://i.ytimg.com/vi/$vid/mqdefault.jpg",
+                                        // hqdefault matches YouTube's own card density better than mq.
+                                        thumbnailUrl = "https://i.ytimg.com/vi/$vid/hqdefault.jpg",
+                                        viewCount = viewCount,
+                                        likeCount = likeCount,
                                     )
                                 )
                             }

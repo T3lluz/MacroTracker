@@ -3,6 +3,7 @@
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.macrotracker.ui.theme.MacroMotion
@@ -33,6 +35,7 @@ import com.macrotracker.ui.util.rememberHaptics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private const val DRAG_CAP = 32
 
@@ -42,12 +45,24 @@ class DraggableWidgetListState<T>(
 ) {
     val workingList: SnapshotStateList<T> = mutableStateListOf<T>().also { it.addAll(initialItems) }
     var onReorder: (List<T>) -> Unit = {}
+
+    /** Layout index of the item being dragged; stable until drop. */
     var draggingIndex by mutableIntStateOf(-1)
+
+    /** Insertion slot the finger currently targets (may jump multiple rows). */
+    var targetIndex by mutableIntStateOf(-1)
+
     var fingerY by mutableFloatStateOf(0f)
     var grabOffsetY by mutableFloatStateOf(0f)
 
+    /** Live layout metrics (root Y / height). */
     val tops = FloatArray(DRAG_CAP)
     val heights = FloatArray(DRAG_CAP)
+
+    /** Frozen metrics captured at drag start so multi-row jumps stay stable. */
+    val baseTops = FloatArray(DRAG_CAP)
+    val baseHeights = FloatArray(DRAG_CAP)
+
     val settle = Array(DRAG_CAP) { Animatable(0f) }
     val nudgeJobs = arrayOfNulls<Job>(DRAG_CAP)
 
@@ -62,6 +77,26 @@ class DraggableWidgetListState<T>(
 
     fun commitReorder() {
         onReorder(workingList.toList())
+    }
+
+    fun captureBaselines(count: Int) {
+        val n = count.coerceAtMost(DRAG_CAP)
+        for (i in 0 until n) {
+            baseTops[i] = tops[i]
+            baseHeights[i] = heights[i]
+        }
+    }
+
+    /** Stride includes trailing spacing so gaps match Column/LazyColumn rhythm. */
+    fun strideFor(index: Int, count: Int): Float {
+        if (index < 0 || index >= count || index >= DRAG_CAP) return 0f
+        return when {
+            index + 1 < count && index + 1 < DRAG_CAP && baseTops[index + 1] > 0f ->
+                (baseTops[index + 1] - baseTops[index]).coerceAtLeast(baseHeights[index])
+            index > 0 && baseTops[index] > 0f ->
+                (baseTops[index] - baseTops[index - 1]).coerceAtLeast(baseHeights[index])
+            else -> baseHeights[index]
+        }
     }
 }
 
@@ -85,7 +120,8 @@ fun <T> LazyListScope.draggableWidgetItems(
     haptics: HapticHelper,
     scope: CoroutineScope,
     isDraggableItem: (T) -> Boolean = { true },
-    itemContent: @Composable (index: Int, item: T) -> Unit,
+    dragGestureOnItem: Boolean = true,
+    itemContent: @Composable (index: Int, item: T, dragModifier: Modifier) -> Unit,
 ) {
     items(
         count = state.workingList.size,
@@ -99,6 +135,7 @@ fun <T> LazyListScope.draggableWidgetItems(
             haptics = haptics,
             scope = scope,
             canDrag = isDraggableItem(state.workingList[index]),
+            dragGestureOnItem = dragGestureOnItem,
             itemContent = itemContent,
         )
     }
@@ -111,13 +148,18 @@ fun <T> DraggableWidgetColumn(
     modifier: Modifier = Modifier,
     itemKey: (T) -> Any = { it.hashCode() },
     isDraggableItem: (item: T) -> Boolean = { true },
-    itemContent: @Composable (index: Int, item: T) -> Unit,
+    dragGestureOnItem: Boolean = true,
+    itemSpacing: Dp = 0.dp,
+    itemContent: @Composable (index: Int, item: T, dragModifier: Modifier) -> Unit,
 ) {
     val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
     val state = rememberDraggableWidgetListState(items, onReorder)
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(itemSpacing),
+    ) {
         state.workingList.forEachIndexed { index, item ->
             key(itemKey(item)) {
                 DraggableWidgetItem(
@@ -128,6 +170,7 @@ fun <T> DraggableWidgetColumn(
                     haptics = haptics,
                     scope = scope,
                     canDrag = isDraggableItem(item),
+                    dragGestureOnItem = dragGestureOnItem,
                     itemContent = itemContent,
                 )
             }
@@ -138,10 +181,9 @@ fun <T> DraggableWidgetColumn(
 /**
  * Single item composable for both idle and dragging states.
  *
- * Important: do NOT swap between separate Idle/Active trees on drag start —
- * that remounts [pointerInput] and cancels the long-press gesture mid-flight.
- * Also use [positionInRoot] so LazyColumn items (whose local parent Y is ~0)
- * still get correct tiling coordinates.
+ * Slot model: the list order stays frozen while dragging; non-dragged rows
+ * animate open a gap at [DraggableWidgetListState.targetIndex], and the held
+ * row follows the finger. Reorder commits once on drop (supports multi-row jumps).
  */
 @Composable
 private fun <T> DraggableWidgetItem(
@@ -152,10 +194,15 @@ private fun <T> DraggableWidgetItem(
     haptics: HapticHelper,
     scope: CoroutineScope,
     canDrag: Boolean,
-    itemContent: @Composable (index: Int, item: T) -> Unit,
+    dragGestureOnItem: Boolean,
+    itemContent: @Composable (index: Int, item: T, dragModifier: Modifier) -> Unit,
 ) {
     val isDragging = state.isDragActive && index == state.draggingIndex
-    val naturalTop = if (index < DRAG_CAP) state.tops[index] else 0f
+    val naturalTop = if (index < DRAG_CAP) {
+        if (state.isDragActive) state.baseTops[index] else state.tops[index]
+    } else {
+        0f
+    }
     val dragTranslation = if (isDragging) state.fingerY - state.grabOffsetY - naturalTop else 0f
 
     val scale by animateFloatAsState(
@@ -164,15 +211,43 @@ private fun <T> DraggableWidgetItem(
         label = "scale$index",
     )
     val alpha by animateFloatAsState(
-        targetValue = if (isDragging) 0.93f else 1f,
+        targetValue = if (isDragging) 0.94f else 1f,
         animationSpec = MacroMotion.entranceSpring(),
         label = "alpha$index",
     )
     val elev by animateFloatAsState(
-        targetValue = if (isDragging) 12f else 0f,
+        targetValue = if (isDragging) 14f else 0f,
         animationSpec = MacroMotion.entranceSpring(),
         label = "elev$index",
     )
+
+    val dragModifier = if (canDrag) {
+        Modifier.pointerInput(itemKey(item)) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { offset ->
+                    state.captureBaselines(state.workingList.size)
+                    state.draggingIndex = index
+                    state.targetIndex = index
+                    state.fingerY = state.baseTops[index] + offset.y
+                    state.grabOffsetY = offset.y
+                    haptics.gestureStart()
+                },
+                onDrag = { change, amount ->
+                    change.consume()
+                    state.fingerY += amount.y
+                    handleDragMove(state, scope, haptics)
+                },
+                onDragEnd = {
+                    finishDrag(state, scope, haptics)
+                },
+                onDragCancel = {
+                    finishDrag(state, scope, haptics, gestureEnd = false)
+                },
+            )
+        }
+    } else {
+        Modifier
+    }
 
     Box(
         modifier = Modifier
@@ -192,67 +267,45 @@ private fun <T> DraggableWidgetItem(
                 shadowElevation = if (state.isDragActive) elev.dp.toPx() else 0f
             }
             .onGloballyPositioned { coords ->
-                if (index < DRAG_CAP) {
+                if (index < DRAG_CAP && !state.isDragActive) {
                     // Root coords work for both Column and LazyColumn item parents.
                     state.tops[index] = coords.positionInRoot().y
                     state.heights[index] = coords.size.height.toFloat()
                 }
             }
-            .then(
-                if (canDrag) {
-                    Modifier.pointerInput(itemKey(item)) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { offset ->
-                                state.draggingIndex = index
-                                state.fingerY = state.tops[index] + offset.y
-                                state.grabOffsetY = offset.y
-                                haptics.gestureStart()
-                            },
-                            onDrag = { change, amount ->
-                                change.consume()
-                                state.fingerY += amount.y
-                                handleDragMove(state, scope, haptics)
-                            },
-                            onDragEnd = {
-                                finishDrag(state, scope, haptics)
-                            },
-                            onDragCancel = {
-                                finishDrag(state, scope, haptics, gestureEnd = false)
-                            },
-                        )
-                    }
-                } else {
-                    Modifier
-                },
-            ),
+            .then(if (dragGestureOnItem) dragModifier else Modifier),
     ) {
-        itemContent(index, item)
+        itemContent(index, item, if (dragGestureOnItem) Modifier else dragModifier)
     }
 }
 
-private fun finishDrag(
-    state: DraggableWidgetListState<*>,
+private fun <T> finishDrag(
+    state: DraggableWidgetListState<T>,
     scope: CoroutineScope,
     haptics: HapticHelper,
     gestureEnd: Boolean = true,
 ) {
-    val landing = state.draggingIndex
-    for (i in state.workingList.indices) {
-        if (i >= DRAG_CAP) continue
+    val from = state.draggingIndex
+    val to = state.targetIndex
+    val count = state.workingList.size
+
+    // Clear drag identity before mutating the list so no row keeps isDragging
+    // against a shifted index.
+    state.draggingIndex = -1
+    state.targetIndex = -1
+
+    for (i in 0 until count.coerceAtMost(DRAG_CAP)) {
         state.nudgeJobs[i]?.cancel()
         state.nudgeJobs[i] = scope.launch {
-            state.settle[i].animateTo(0f, MacroMotion.bouncySpring())
+            state.settle[i].snapTo(0f)
         }
     }
-    if (landing in 0 until DRAG_CAP) {
-        val currentTranslation = state.fingerY - state.grabOffsetY - state.tops[landing]
-        state.nudgeJobs[landing]?.cancel()
-        state.nudgeJobs[landing] = scope.launch {
-            state.settle[landing].snapTo(currentTranslation)
-            state.settle[landing].animateTo(0f, MacroMotion.bouncySpring())
-        }
+
+    if (from in 0 until count && to in 0 until count && from != to) {
+        val item = state.workingList.removeAt(from)
+        state.workingList.add(to, item)
+        state.commitReorder()
     }
-    state.draggingIndex = -1
     if (gestureEnd) haptics.gestureEnd()
 }
 
@@ -261,62 +314,70 @@ private fun <T> handleDragMove(
     scope: CoroutineScope,
     haptics: HapticHelper,
 ) {
-    val cur = state.draggingIndex
-    if (cur < 0 || cur >= state.workingList.size) return
+    val from = state.draggingIndex
+    val count = state.workingList.size
+    if (from < 0 || from >= count || from >= DRAG_CAP) return
 
     val draggedTop = state.fingerY - state.grabOffsetY
-    val draggedBot = draggedTop + state.heights[cur]
-    val draggedCy = draggedTop + state.heights[cur] / 2f
+    val draggedCy = draggedTop + state.baseHeights[from] / 2f
+    val newTarget = resolveTargetIndex(state, from, count, draggedCy)
 
-    for (i in state.workingList.indices) {
-        if (i == cur || i >= DRAG_CAP) continue
-        val iTop = state.tops[i]
-        val iH = state.heights[i]
-        val iBot = iTop + iH
-
-        val overlap = when {
-            i > cur -> (draggedBot - iTop).coerceIn(0f, iH)
-            else -> (iBot - draggedTop).coerceIn(0f, iH)
-        }
-        val fraction = overlap / iH
-        val nudgeTarget = if (i > cur) -state.heights[cur] * fraction
-        else state.heights[cur] * fraction
-
-        state.nudgeJobs[i]?.cancel()
-        state.nudgeJobs[i] = scope.launch {
-            state.settle[i].animateTo(nudgeTarget, MacroMotion.pressSpring())
-        }
-    }
-
-    val target = state.workingList.indices.firstOrNull { i ->
-        if (i == cur) return@firstOrNull false
-        val h = state.heights[i]
-        val iTop = state.tops[i]
-        val threshold = h * 0.30f
-        (i > cur && draggedCy > iTop + threshold) ||
-            (i < cur && draggedCy < iTop + h - threshold)
-    }
-
-    if (target != null) {
-        val dir = if (target > cur) -1f else 1f
-
-        state.nudgeJobs[target]?.cancel()
-        state.nudgeJobs[target] = scope.launch {
-            state.settle[target].snapTo(dir * state.heights[cur])
-            state.settle[target].animateTo(0f, MacroMotion.bouncySpring())
-        }
-
-        for (i in state.workingList.indices) {
-            if (i == cur || i == target || i >= DRAG_CAP) continue
-            state.nudgeJobs[i]?.cancel()
-            state.nudgeJobs[i] = scope.launch {
-                state.settle[i].animateTo(0f, MacroMotion.bouncySpring())
-            }
-        }
-
-        state.workingList.add(target, state.workingList.removeAt(cur))
-        state.draggingIndex = target
+    if (newTarget != state.targetIndex) {
+        state.targetIndex = newTarget
         haptics.tick()
-        state.commitReorder()
+    }
+
+    val to = state.targetIndex
+    val stride = state.strideFor(from, count)
+
+    for (i in 0 until count.coerceAtMost(DRAG_CAP)) {
+        if (i == from) continue
+        val offset = when {
+            from < to && i in (from + 1)..to -> -stride
+            from > to && i in to until from -> stride
+            else -> 0f
+        }
+        animateSettleTo(state, scope, i, offset)
+    }
+}
+
+private fun resolveTargetIndex(
+    state: DraggableWidgetListState<*>,
+    from: Int,
+    count: Int,
+    draggedCy: Float,
+): Int {
+    var best = from
+    var bestDist = Float.MAX_VALUE
+    for (i in 0 until count.coerceAtMost(DRAG_CAP)) {
+        val mid = state.baseTops[i] + state.baseHeights[i] / 2f
+        val dist = abs(draggedCy - mid)
+        if (dist < bestDist) {
+            bestDist = dist
+            best = i
+        }
+    }
+
+    // Prefer crossing neighbor midpoints so small jitters don't flip slots.
+    if (best == from) return from
+    val fromMid = state.baseTops[from] + state.baseHeights[from] / 2f
+    val bestMid = state.baseTops[best] + state.baseHeights[best] / 2f
+    val crossed =
+        (best > from && draggedCy > (fromMid + bestMid) / 2f) ||
+            (best < from && draggedCy < (fromMid + bestMid) / 2f)
+    return if (crossed) best else from
+}
+
+private fun animateSettleTo(
+    state: DraggableWidgetListState<*>,
+    scope: CoroutineScope,
+    index: Int,
+    target: Float,
+) {
+    val anim = state.settle[index]
+    if (abs(anim.targetValue - target) < 0.5f && abs(anim.value - target) < 0.5f) return
+    state.nudgeJobs[index]?.cancel()
+    state.nudgeJobs[index] = scope.launch {
+        anim.animateTo(target, MacroMotion.entranceSpring())
     }
 }

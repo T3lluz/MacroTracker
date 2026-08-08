@@ -1,3 +1,22 @@
 # Default ignored files
 /shelf/
 /workspace.xml
+/tasks.xml
+/usage.statistics.xml
+/dictionaries
+/caches/
+/libraries/
+/modules.xml
+/navEditor.xml
+/assetWizardSettings.xml
+/deviceManager.xml
+/deploymentTargetSelector.xml
+/androidStudioPreview*
+/copilot*
+/discord.xml
+/appInsightsSettings.xml
+/planningMode.xml
+/migrations.xml
+/markdown.xml
+/AndroidProjectSystem.xml
+/.name
