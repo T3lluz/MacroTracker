@@ -55,9 +55,6 @@ class HealthViewModel @Inject constructor(
     private val _logs = MutableStateFlow<List<MacroLogEntity>>(emptyList())
     val logs: StateFlow<List<MacroLogEntity>> = _logs
 
-    private val _weekHistory = MutableStateFlow<List<DailySummary>>(emptyList())
-    val weekHistory: StateFlow<List<DailySummary>> = _weekHistory
-
     private val _healthConnectState = MutableStateFlow<HealthConnectUiState>(HealthConnectUiState.Loading)
     val healthConnectState: StateFlow<HealthConnectUiState> = _healthConnectState
 
@@ -73,6 +70,25 @@ class HealthViewModel @Inject constructor(
     private val _detailedSleep = MutableStateFlow<List<SleepSessionRecord>>(emptyList())
     val detailedSleep: StateFlow<List<SleepSessionRecord>> = _detailedSleep
 
+    // Macro trends (formerly History tab)
+    private val _macroRangeDays = MutableStateFlow(7)
+    val macroRangeDays: StateFlow<Int> = _macroRangeDays
+
+    private val _macroMetric = MutableStateFlow("calories")
+    val macroMetric: StateFlow<String> = _macroMetric
+
+    private val _macroHistory = MutableStateFlow<List<DailySummary>>(emptyList())
+    val macroHistory: StateFlow<List<DailySummary>> = _macroHistory
+
+    private val _macroSelectedDate = MutableStateFlow(LocalDate.now().format(dateFormat))
+    val macroSelectedDate: StateFlow<String> = _macroSelectedDate
+
+    private val _macroSelectedLogs = MutableStateFlow<List<MacroLogEntity>>(emptyList())
+    val macroSelectedLogs: StateFlow<List<MacroLogEntity>> = _macroSelectedLogs
+
+    private val _macroHistoryLoading = MutableStateFlow(false)
+    val macroHistoryLoading: StateFlow<Boolean> = _macroHistoryLoading
+
     val healthConnectPermissions = HealthConnectRepository.PERMISSIONS
 
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
@@ -85,6 +101,7 @@ class HealthViewModel @Inject constructor(
 
     private var lastResumeLoadMs = 0L
     private var macrosJob: Job? = null
+    private var macroHistoryJob: Job? = null
     private var healthJob: Job? = null
     private var detailJob: Job? = null
 
@@ -133,15 +150,14 @@ class HealthViewModel @Inject constructor(
         }
     }
 
-    /** Week navigation only needs history ranges — skip re-reading today's aggregates. */
+    /** Week navigation only needs Health Connect history — skip re-reading today's macros. */
     private fun reloadWeekOnly() {
         viewModelScope.launch {
-            val (start, end) = getWeekRange()
-            _weekHistory.value = repository.getDailySummariesBetween(start, end)
             if (settingsRepository.masterHealthConnectEnabled.value &&
                 healthConnectRepository.isAvailable() &&
                 healthConnectRepository.hasAllPermissions()
             ) {
+                val (start, end) = getWeekRange()
                 _healthHistory.value = healthConnectRepository.readHistoryStatsBetween(start, end)
             }
         }
@@ -163,8 +179,37 @@ class HealthViewModel @Inject constructor(
         macrosJob = viewModelScope.launch {
             _summary.value = repository.getDailySummary(today)
             _logs.value = repository.getLogsForDate(today)
-            val (start, end) = getWeekRange()
-            _weekHistory.value = repository.getDailySummariesBetween(start, end)
+        }
+        loadMacroHistory()
+    }
+
+    fun loadMacroHistory() {
+        macroHistoryJob?.cancel()
+        macroHistoryJob = viewModelScope.launch {
+            val showLoading = _macroHistory.value.isEmpty()
+            if (showLoading) _macroHistoryLoading.value = true
+            try {
+                _macroHistory.value = repository.getDailySummariesRange(_macroRangeDays.value)
+                _macroSelectedLogs.value = repository.getLogsForDate(_macroSelectedDate.value)
+            } catch (_: Exception) { }
+            _macroHistoryLoading.value = false
+        }
+    }
+
+    fun setMacroRangeDays(days: Int) {
+        if (_macroRangeDays.value == days) return
+        _macroRangeDays.value = days
+        loadMacroHistory()
+    }
+
+    fun setMacroMetric(metric: String) {
+        _macroMetric.value = metric
+    }
+
+    fun selectMacroDate(date: String) {
+        _macroSelectedDate.value = date
+        viewModelScope.launch {
+            _macroSelectedLogs.value = repository.getLogsForDate(date)
         }
     }
 

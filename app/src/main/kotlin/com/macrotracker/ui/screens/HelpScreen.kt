@@ -71,8 +71,8 @@ private val STEPS = listOf(
     ),
     HelpStep(
         icon = Icons.Outlined.BarChart,
-        title = "History Tab",
-        body = "The History tab shows a bar chart of your last 7, 14 or 30 days. Use the range chips (7d / 14d / 30d) and the Calories / Protein toggle to switch views. Tap any bar to see the individual food logs for that day.",
+        title = "Macro Trends on Health",
+        body = "On the Health tab, Macro Trends charts your last 7, 14 or 30 days. Use the range chips (7d / 14d / 30d) and the Calories / Protein toggle to switch views. Tap any bar to see and manage the individual food logs for that day.",
     ),
     HelpStep(
         icon = Icons.Outlined.Flag,

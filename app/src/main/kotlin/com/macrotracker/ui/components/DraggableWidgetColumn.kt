@@ -1,9 +1,7 @@
 ﻿package com.macrotracker.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +27,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
@@ -246,17 +245,17 @@ private fun <T> DraggableWidgetItemActive(
 
     val scale by animateFloatAsState(
         targetValue = if (isDragging) 1.03f else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+        animationSpec = MacroMotion.bouncySpring(),
         label = "scale$index",
     )
     val alpha by animateFloatAsState(
         targetValue = if (isDragging) 0.93f else 1f,
-        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium),
+        animationSpec = MacroMotion.entranceSpring(),
         label = "alpha$index",
     )
     val elev by animateFloatAsState(
         targetValue = if (isDragging) 12f else 0f,
-        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium),
+        animationSpec = MacroMotion.entranceSpring(),
         label = "elev$index",
     )
 
@@ -319,7 +318,7 @@ private fun finishDrag(
         state.nudgeJobs[i] = scope.launch {
             state.settle[i].animateTo(
                 0f,
-                spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+                MacroMotion.bouncySpring(),
             )
         }
     }
@@ -330,7 +329,7 @@ private fun finishDrag(
             state.settle[landing].snapTo(currentTranslation)
             state.settle[landing].animateTo(
                 0f,
-                spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
+                MacroMotion.bouncySpring(),
             )
         }
     }
@@ -368,10 +367,7 @@ private fun <T> handleDragMove(
         state.nudgeJobs[i] = scope.launch {
             state.settle[i].animateTo(
                 nudgeTarget,
-                spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessHigh,
-                ),
+                MacroMotion.pressSpring(),
             )
         }
     }
@@ -393,10 +389,7 @@ private fun <T> handleDragMove(
             state.settle[target].snapTo(dir * state.heights[cur])
             state.settle[target].animateTo(
                 0f,
-                spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
+                MacroMotion.bouncySpring(),
             )
         }
 
@@ -406,7 +399,7 @@ private fun <T> handleDragMove(
             state.nudgeJobs[i] = scope.launch {
                 state.settle[i].animateTo(
                     0f,
-                    spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+                    MacroMotion.bouncySpring(),
                 )
             }
         }

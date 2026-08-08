@@ -4,7 +4,6 @@ import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -46,6 +45,7 @@ import com.macrotracker.ui.navigation.DailyDashNavHost
 import com.macrotracker.ui.navigation.OnboardingRoutes
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.screens.onboarding.SplashOverlay
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
@@ -83,9 +83,9 @@ fun MainScreen(
     val navController = rememberNavController()
     val items = remember(hasAiApiKey) {
         if (hasAiApiKey) {
-            listOf(Screen.Home, Screen.Health, Screen.AI, Screen.History, Screen.Settings)
+            listOf(Screen.Home, Screen.Health, Screen.AI, Screen.Settings)
         } else {
-            listOf(Screen.Home, Screen.Health, Screen.History, Screen.Settings)
+            listOf(Screen.Home, Screen.Health, Screen.Settings)
         }
     }
 
@@ -266,7 +266,7 @@ private fun ScrollAwareBottomBar(
     val targetOffsetPx = if (navBarHidden) -hideDistancePx else 0f
     val animatedOffset by animateFloatAsState(
         targetValue = targetOffsetPx,
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = MacroMotion.navBarTween(),
         label = "nav_bar_offset",
     )
 

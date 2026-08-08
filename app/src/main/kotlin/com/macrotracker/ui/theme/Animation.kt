@@ -3,6 +3,7 @@ package com.macrotracker.ui.theme
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -53,13 +54,22 @@ object MacroMotion {
     private const val FADE_IN_MS = 200
     private const val FADE_OUT_MS = 150
     private const val SLIDE_MS = 300
+    private const val NAV_BAR_MS = 220
+
+    /** Shared fade tween for card entrances and crossfades. */
+    fun <T> fadeTween(durationMs: Int = FADE_IN_MS): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = FastOutSlowInEasing)
+
+    /** Bottom-nav hide / reveal when scrolling. */
+    fun <T> navBarTween(): FiniteAnimationSpec<T> =
+        tween(NAV_BAR_MS, easing = FastOutSlowInEasing)
 
     // ── Tab / content-switch transitions (NavHost top-level tabs) ────
     // Pure crossfade — no slide. Cards are already visible; the page
     // transition just swaps them without any positional movement.
-    val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS))
+    val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
 
-    val contentExit: ExitTransition = fadeOut(tween(FADE_OUT_MS))
+    val contentExit: ExitTransition = fadeOut(tween(FADE_OUT_MS, easing = FastOutSlowInEasing))
 
     /** Crossfade used by home-screen widget state switches (loading → success, etc.). */
     val widgetContentTransition: ContentTransform
@@ -68,11 +78,11 @@ object MacroMotion {
     // ── Expand / collapse transitions (AnimatedVisibility) ───────────
     val expandEnter: EnterTransition =
         expandVertically(tween(SLIDE_MS, easing = FastOutSlowInEasing)) +
-            fadeIn(tween(FADE_IN_MS))
+            fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
 
     val expandExit: ExitTransition =
         shrinkVertically(tween(SLIDE_MS, easing = FastOutSlowInEasing)) +
-            fadeOut(tween(FADE_OUT_MS))
+            fadeOut(tween(FADE_OUT_MS, easing = FastOutSlowInEasing))
 
     // ── Native-style slide transitions (Stats, CameraScan, Help) ───────
     // 100% slide for the "active" screen, 30% parallax for the "background" screen.
@@ -104,6 +114,3 @@ object MacroMotion {
     @Suppress("UNUSED_PARAMETER")
     fun tabExit(toRight: Boolean): ExitTransition = contentExit
 }
-
-
-

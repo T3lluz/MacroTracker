@@ -1,8 +1,6 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
@@ -50,10 +49,7 @@ fun PillNavigationBar(
     // Using a State object directly for the index to avoid recompositions during the sliding animation
     val animatedIndexState = animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
-        animationSpec = spring(
-            dampingRatio = 0.7f, 
-            stiffness = 500f
-        ),
+        animationSpec = MacroMotion.bouncySpring(),
         label = "nav_slide"
     )
 
@@ -121,7 +117,7 @@ fun PillNavigationBar(
                 // Animating selection progress per item
                 val selectionProgressState = animateFloatAsState(
                     targetValue = if (isSelected) 1f else 0f,
-                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                    animationSpec = MacroMotion.bouncySpring(),
                     label = "selection_fade"
                 )
 
