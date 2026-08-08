@@ -78,6 +78,7 @@ class YouTubeViewModel @Inject constructor(
     fun loadLatestVideos(forceRefresh: Boolean = false) {
         if (forceRefresh) youtubeRepository.invalidateCache()
         val tracked = youtubeRepository.getTrackedChannels()
+        _trackedChannels.value = tracked
         if (tracked.isEmpty()) {
             _youtubeState.value = YouTubeUiState.NoChannels
             return
@@ -89,12 +90,19 @@ class YouTubeViewModel @Inject constructor(
             }
             youtubeRepository.getLatestVideosForTrackedChannels()
                 .onSuccess { videos ->
-                    _youtubeState.value = if (videos.isEmpty()) YouTubeUiState.NoChannels
-                    else YouTubeUiState.Success(videos, lastUpdatedAt = Instant.now())
+                    val fetchedAt = youtubeRepository.lastFetchTimeMs
+                        .takeIf { it > 0L }
+                        ?.let(Instant::ofEpochMilli)
+                        ?: Instant.now()
+                    // Empty feed with tracked channels is still Success — not NoChannels.
+                    _youtubeState.value = YouTubeUiState.Success(videos, lastUpdatedAt = fetchedAt)
                 }
                 .onFailure { e ->
                     Log.e(TAG, "Failed to load YouTube videos", e)
-                    _youtubeState.value = YouTubeUiState.Error(e.message ?: "Unknown error")
+                    // Keep showing stale success if we already had videos.
+                    if (current !is YouTubeUiState.Success) {
+                        _youtubeState.value = YouTubeUiState.Error(e.message ?: "Unknown error")
+                    }
                 }
         }
     }
