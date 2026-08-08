@@ -2506,17 +2506,6 @@ fun QualiResultsList(results: List<QualiResult>, raceName: String?) {
 }
 
 @Composable
-private fun QualiGroupHeader(label: String) {
-    Text(
-        label,
-        color = TextSecondary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
-    )
-}
-
-@Composable
 private fun QualiRow(result: QualiResult, bestTime: String?, accentColor: Color) {
     val isPole = result.position == 1
     val tc = safeTeamColor(result.teamColor)
