@@ -625,7 +625,7 @@ private fun ChampionshipLeaderHero(
                     teamColor = tc,
                     modifier = Modifier.size(headSize),
                 )
-                Spacer(modifier.width(12.dp))
+                Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "CHAMPIONSHIP LEADER",
@@ -634,7 +634,7 @@ private fun ChampionshipLeaderHero(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.2.sp,
                     )
-                    Spacer(modifier.height(2.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         driverSurname(leader.driverName),
                         color = TextPrimary,
@@ -655,7 +655,7 @@ private fun ChampionshipLeaderHero(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(modifier.height(6.dp))
+                    Spacer(Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             "${leader.points.toInt()}",
@@ -672,7 +672,7 @@ private fun ChampionshipLeaderHero(
                             modifier = Modifier.padding(bottom = 6.dp),
                         )
                         if (lab.gapToP2 > 0) {
-                            Spacer(modifier.width(6.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text(
                                 "+${lab.gapToP2}",
                                 color = LabAmber,
@@ -766,7 +766,7 @@ private fun CompactNextRace(
                     .height(46.dp)
                     .background(accent),
             )
-            Spacer(modifier.width(10.dp))
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -919,7 +919,7 @@ private fun CompactChasePack(chasers: List<SeasonDriverStanding>, leader: Season
                     teamColor = tc,
                     modifier = Modifier.size(28.dp),
                 )
-                Spacer(modifier.width(8.dp))
+                Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -928,7 +928,7 @@ private fun CompactChasePack(chasers: List<SeasonDriverStanding>, leader: Season
                         Text(driver.driverAcronym, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Text("−$gap", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
-                    Spacer(modifier.height(4.dp))
+                    Spacer(Modifier.height(4.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -944,7 +944,7 @@ private fun CompactChasePack(chasers: List<SeasonDriverStanding>, leader: Season
                         )
                     }
                 }
-                Spacer(modifier.width(8.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     "${driver.points.toInt()}",
                     color = TextPrimary,
@@ -999,13 +999,13 @@ private fun CompactLastRaceRow(data: F1Standings) {
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
                         )
-                        Spacer(modifier.height(2.dp))
+                        Spacer(Modifier.height(2.dp))
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .background(tc),
                         )
-                        Spacer(modifier.height(2.dp))
+                        Spacer(Modifier.height(2.dp))
                         Text(acronym, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -1381,7 +1381,7 @@ fun F1NewsFeed(data: F1Standings) {
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.6.sp,
                             )
-                            Spacer(modifier.height(3.dp))
+                            Spacer(Modifier.height(3.dp))
                         }
                         Text(
                             article.title,
@@ -1583,7 +1583,7 @@ private fun DriverStandingRow(
                     .height(40.dp)
                     .background(tc),
             )
-            Spacer(modifier.width(10.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 "P${driver.position}",
                 color = medalColor(driver.position) ?: TextSecondary,
@@ -1599,7 +1599,7 @@ private fun DriverStandingRow(
                 teamColor = tc,
                 modifier = Modifier.size(42.dp),
             )
-            Spacer(modifier.width(10.dp))
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1663,7 +1663,7 @@ private fun DriverStandingRow(
                     val ratio = (driver.points / leader.points).toFloat().coerceIn(0f, 1f)
                     Column(modifier = Modifier.weight(1f)) {
                         Text("vs leader", color = TextSecondary, fontSize = 10.sp)
-                        Spacer(modifier.height(4.dp))
+                        Spacer(Modifier.height(4.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1786,7 +1786,7 @@ fun ConstructorStandingsList(data: F1Standings) {
                             .height(34.dp)
                             .background(tc),
                     )
-                    Spacer(modifier.width(10.dp))
+                    Spacer(Modifier.width(10.dp))
                     Text(
                         "P${team.position}",
                         color = medalColor(team.position) ?: TextSecondary,
@@ -1799,7 +1799,7 @@ fun ConstructorStandingsList(data: F1Standings) {
                         teamName = team.constructorName,
                         modifier = Modifier.size(width = 40.dp, height = 24.dp),
                     )
-                    Spacer(modifier.width(10.dp))
+                    Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             team.constructorName,
@@ -1830,7 +1830,7 @@ fun ConstructorStandingsList(data: F1Standings) {
                         )
                     }
                 }
-                Spacer(modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
