@@ -3,14 +3,10 @@ package com.macrotracker.ui.screens
 import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.PredictiveBackHandler
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -18,18 +14,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -45,12 +32,10 @@ import com.macrotracker.ui.navigation.DailyDashNavHost
 import com.macrotracker.ui.navigation.OnboardingRoutes
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.screens.onboarding.SplashOverlay
-import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.roundToInt
 
 @Composable
 fun MainScreen(
@@ -119,7 +104,7 @@ fun MainScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        MainScreenScrollScaffold(
+        MainScreenScaffold(
             navController = navController,
             items = items,
             startDestination = startDestination,
@@ -160,7 +145,7 @@ fun MainScreen(
 }
 
 @Composable
-private fun MainScreenScrollScaffold(
+private fun MainScreenScaffold(
     navController: NavHostController,
     items: List<Screen>,
     startDestination: String,
@@ -168,55 +153,6 @@ private fun MainScreenScrollScaffold(
     onOnboardingComplete: () -> Unit,
     showSettingsUpdateBadge: Boolean,
 ) {
-    val density = LocalDensity.current
-    val navBarHeight = 102.dp
-    val navBarHeightPx = with(density) { navBarHeight.toPx() }
-    val navigationBarsPaddingPx = with(density) {
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx()
-    }
-    val totalBottomOffsetPx = navBarHeightPx + navigationBarsPaddingPx
-
-    var navBarHidden by remember { mutableStateOf(false) }
-
-    // Only react to scroll the child actually consumed. Using onPreScroll/available
-    // made top-edge pulls toggle the nav bar and feel like rubber-banding.
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            private var accumulated = 0f
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                val dy = consumed.y
-                if (dy == 0f) {
-                    // Overscroll / unconsumed edge pull — ignore so we don't bounce the bar.
-                    if (available.y != 0f) accumulated = 0f
-                    return Offset.Zero
-                }
-
-                // Reverse direction resets the accumulator so tiny jitters don't flip state.
-                if ((accumulated > 0f && dy < 0f) || (accumulated < 0f && dy > 0f)) {
-                    accumulated = 0f
-                }
-                accumulated += dy
-
-                when {
-                    accumulated <= -12f -> {
-                        navBarHidden = true
-                        accumulated = 0f
-                    }
-                    accumulated >= 12f -> {
-                        navBarHidden = false
-                        accumulated = 0f
-                    }
-                }
-                return Offset.Zero
-            }
-        }
-    }
-
     val navHostModifier = remember { Modifier.statusBarsPadding() }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -235,49 +171,32 @@ private fun MainScreenScrollScaffold(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(nestedScrollConnection),
-    ) {
-        Scaffold(
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            bottomBar = {
-                ScrollAwareBottomBar(
-                    navBarHidden = navBarHidden,
-                    hideDistancePx = totalBottomOffsetPx,
-                    navController = navController,
-                    items = items,
-                    showSettingsUpdateBadge = showSettingsUpdateBadge,
-                )
-            },
-        ) { _ ->
-            DailyDashNavHost(
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            MainBottomBar(
                 navController = navController,
-                modifier = navHostModifier,
-                startDestination = startDestination,
-                onboardingCompleted = onboardingCompleted,
-                onOnboardingComplete = onOnboardingComplete,
+                items = items,
+                showSettingsUpdateBadge = showSettingsUpdateBadge,
             )
-        }
+        },
+    ) { _ ->
+        DailyDashNavHost(
+            navController = navController,
+            modifier = navHostModifier,
+            startDestination = startDestination,
+            onboardingCompleted = onboardingCompleted,
+            onOnboardingComplete = onOnboardingComplete,
+        )
     }
 }
 
 @Composable
-private fun ScrollAwareBottomBar(
-    navBarHidden: Boolean,
-    hideDistancePx: Float,
+private fun MainBottomBar(
     navController: NavHostController,
     items: List<Screen>,
     showSettingsUpdateBadge: Boolean,
 ) {
-    val targetOffsetPx = if (navBarHidden) -hideDistancePx else 0f
-    val animatedOffset by animateFloatAsState(
-        targetValue = targetOffsetPx,
-        animationSpec = MacroMotion.navBarTween(),
-        label = "nav_bar_offset",
-    )
-
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     if (!items.any { it.route == currentRoute }) return
@@ -294,11 +213,7 @@ private fun ScrollAwareBottomBar(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .offset { IntOffset(x = 0, y = -animatedOffset.roundToInt()) }
-            .navigationBarsPadding(),
-    ) {
+    Box(modifier = Modifier.navigationBarsPadding()) {
         PillNavigationBar(
             items = items,
             currentRoute = currentRoute,
