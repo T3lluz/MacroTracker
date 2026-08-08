@@ -39,6 +39,12 @@ class WeatherAiRepository @Inject constructor(
         ) cachedResult else null
     }
 
+    fun clearCache() {
+        cachedResult = null
+        cachedTimestamp = 0L
+        cachedSymbolCode = null
+    }
+
     private val provider: AiProvider
         get() = settings.getAiProvider()
 
@@ -63,11 +69,16 @@ class WeatherAiRepository @Inject constructor(
      *  • A deterministic clothing recommendation built from the weather data
      *    so it **always** appears even if the AI call fails.
      */
-    suspend fun generateWeatherSummary(weather: WeatherInfo): WeatherAiResult? {
+    suspend fun generateWeatherSummary(
+        weather: WeatherInfo,
+        forceRefresh: Boolean = false,
+    ): WeatherAiResult? {
         if (!hasApiKey) return null
 
-        val cached = getCachedResult(weather.symbolCode)
-        if (cached != null) return cached
+        if (!forceRefresh) {
+            val cached = getCachedResult(weather.symbolCode)
+            if (cached != null) return cached
+        }
 
         // Clothing is deterministic — compute it first so it never fails
         val clothing = buildClothingRecommendation(weather)

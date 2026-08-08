@@ -95,7 +95,16 @@ class CalendarRepository @Inject constructor(
     // In-memory cache for calendar events
     private var cachedEvents: List<CalendarEvent>? = null
     private var cacheCalendarIds: Set<Long>? = null
+    private var cacheExtraDays: Int = -1
     private var cacheTimestamp: Long = 0L
+
+    /** Clears the in-memory event cache so the next [readEvents] hits the ContentResolver. */
+    fun clearCache() {
+        cachedEvents = null
+        cacheCalendarIds = null
+        cacheExtraDays = -1
+        cacheTimestamp = 0L
+    }
 
     fun hasPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -162,6 +171,7 @@ class CalendarRepository @Inject constructor(
         val now = System.currentTimeMillis()
         if (cachedEvents != null &&
             cacheCalendarIds == calendarIds &&
+            cacheExtraDays == extraDays &&
             now - cacheTimestamp < CACHE_TTL_MS
         ) {
             return@withContext cachedEvents!!
@@ -249,6 +259,7 @@ class CalendarRepository @Inject constructor(
 
         cachedEvents = events
         cacheCalendarIds = calendarIds
+        cacheExtraDays = extraDays
         cacheTimestamp = System.currentTimeMillis()
         events
     }

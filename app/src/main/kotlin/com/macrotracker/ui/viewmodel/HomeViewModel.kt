@@ -267,10 +267,10 @@ class HomeViewModel @Inject constructor(
                         jobs += async { loadWeatherInternal(hasLocationPermission, forceRefresh = force) }
                     }
                     if ("BODY_STATS" in widgetsToLoad) {
-                        jobs += async { loadHealthConnectInternal(silent = true) }
+                        jobs += async { loadHealthConnectInternal(silent = true, forceRefresh = force) }
                     }
                     if ("CALENDAR" in widgetsToLoad) {
-                        jobs += async { loadCalendarInternal(hasCalendarPermission) }
+                        jobs += async { loadCalendarInternal(hasCalendarPermission, forceRefresh = force) }
                     }
                     if ("F1" in widgetsToLoad) {
                         jobs += async { loadF1DataInternal(forceRefresh = force) }
@@ -328,10 +328,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadHealthConnectInternal(silent: Boolean = false) {
+    private suspend fun loadHealthConnectInternal(silent: Boolean = false, forceRefresh: Boolean = false) {
         if (!settingsRepository.masterHealthConnectEnabled.value || !healthConnectRepository.isAvailable() || !healthConnectRepository.hasAllPermissions()) {
             _healthState.value = HomeHealthState.Unavailable
             return
+        }
+
+        if (forceRefresh) {
+            healthConnectRepository.clearMetricCache()
         }
 
         val current = _healthState.value
@@ -366,7 +370,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadCalendarInternal(hasPermission: Boolean) {
+    private suspend fun loadCalendarInternal(hasPermission: Boolean, forceRefresh: Boolean = false) {
         if (!settingsRepository.calendarEnabled.value) {
             _calendarState.value = CalendarUiState.Unavailable
             return
@@ -376,6 +380,9 @@ class HomeViewModel @Inject constructor(
             return
         }
         try {
+            if (forceRefresh) {
+                calendarRepository.clearCache()
+            }
             val available = calendarRepository.getAvailableCalendars()
             val selected = getSelectedCalendarIds().let {
                 if (it.isEmpty() && available.isNotEmpty()) {
@@ -441,6 +448,7 @@ class HomeViewModel @Inject constructor(
             if (forceRefresh) {
                 weatherRepository.clearCache()
                 locationProvider.clearCache()
+                weatherAiRepository.clearCache()
             }
             val location = locationProvider.getLocation(forceRefresh = forceRefresh)
             if (location == null) {
@@ -451,14 +459,22 @@ class HomeViewModel @Inject constructor(
             }
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
             val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
+            val fetchedAt = weatherRepository.lastFetchTimeMs
+                .takeIf { it > 0L }
+                ?.let(Instant::ofEpochMilli)
+                ?: Instant.now()
 
             val current = _weatherState.value
-            val fetchedAt = Instant.now()
             if (current is WeatherUiState.Success) {
                 _weatherState.value = current.copy(
                     weather = weather,
                     isPrecise = hasPreciseLocation,
                     lastUpdatedAt = fetchedAt,
+                    // Drop stale AI when the user forced a weather refresh.
+                    aiSummary = if (forceRefresh) null else current.aiSummary,
+                    aiClothingRecommendation = if (forceRefresh) null else current.aiClothingRecommendation,
+                    aiSummaryUpdatedAt = if (forceRefresh) null else current.aiSummaryUpdatedAt,
+                    aiSummaryLoading = if (forceRefresh) false else current.aiSummaryLoading,
                 )
             } else {
                 _weatherState.value = WeatherUiState.Success(
@@ -502,7 +518,10 @@ class HomeViewModel @Inject constructor(
         _weatherState.value = current.copy(aiSummaryLoading = true)
         viewModelScope.launch {
             try {
-                val result = weatherAiRepository.generateWeatherSummary(current.weather)
+                val result = weatherAiRepository.generateWeatherSummary(
+                    current.weather,
+                    forceRefresh = force,
+                )
                 // Stamp with the repository's cached time — set inside cacheResult() when Gemini responded
                 val aiGeneratedAt = weatherAiRepository.aiLastFetchTimeMs
                     .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
@@ -551,6 +570,7 @@ class HomeViewModel @Inject constructor(
                 putString("sunrise", weather.sunrise)
                 putString("sunset", weather.sunset)
                 putString("hourly_forecast", hourlyStr.ifEmpty { null })
+                putLong("fetched_at", System.currentTimeMillis())
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to cache weather for widget: ${e.message}")

@@ -61,10 +61,13 @@ class DashboardViewModel @Inject constructor(
         loadData()
     }
 
-    fun loadData() {
+    fun loadData(forceRefresh: Boolean = false) {
         // Cancel any in-flight load before starting a new one — prevents job pile-up
         loadJob?.cancel()
         lastLoadMs = System.currentTimeMillis()
+        if (forceRefresh) {
+            healthConnectRepository.clearMetricCache()
+        }
 
         loadJob = viewModelScope.launch {
             // Read the master toggle + per-metric settings once (not a continuous collect)

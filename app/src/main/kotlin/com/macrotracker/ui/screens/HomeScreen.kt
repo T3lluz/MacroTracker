@@ -68,6 +68,7 @@ import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.viewmodel.HomeViewModel
+import com.macrotracker.ui.viewmodel.YouTubeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -76,6 +77,7 @@ import java.time.format.DateTimeFormatter
 fun HomeScreen(
     onNavigateToHealth: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
+    youtubeViewModel: YouTubeViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -117,7 +119,7 @@ fun HomeScreen(
     ) { permissions ->
         val granted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
             permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        viewModel.loadWeather(granted)
+        viewModel.loadWeather(granted, forceRefresh = true)
         if (granted) {
             viewModel.setMasterWeatherEnabled(true)
         }
@@ -130,20 +132,6 @@ fun HomeScreen(
         if (granted) {
             viewModel.setMasterCalendarEnabled(true)
         }
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                scope.launch {
-                    delay(HOME_RESUME_DEFER_MS)
-                    viewModel.loadData()
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val todayFormatted = remember {
@@ -162,15 +150,54 @@ fun HomeScreen(
         parseWidgetConfig(homeWidgetOrder, defaultHomeWidgets)
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, parsedConfigs) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch {
+                    delay(HOME_RESUME_DEFER_MS)
+                    viewModel.loadData()
+                    val visibleIds = parsedConfigs.filter { it.isVisible }.map { it.id }.toSet()
+                    viewModel.refreshAll(
+                        hasLocationPermission = hasLocationPermission(),
+                        hasCalendarPermission = hasCalendarPermission(),
+                        force = false,
+                        widgetIds = visibleIds,
+                    )
+                    if ("YOUTUBE" in visibleIds) {
+                        youtubeViewModel.loadLatestVideos(forceRefresh = false)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Occasional weather refresh while Home is open (respects in-repo TTL via force).
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20 * 60 * 1000L)
+            val weatherVisible = parsedConfigs.any { it.id == "WEATHER" && it.isVisible }
+            if (weatherVisible && hasLocationPermission()) {
+                viewModel.loadWeather(hasPermission = true, forceRefresh = true)
+            }
+        }
+    }
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = {
+            val visibleIds = parsedConfigs.filter { it.isVisible }.map { it.id }.toSet()
             viewModel.refreshAll(
                 hasLocationPermission = hasLocationPermission(),
                 hasCalendarPermission = hasCalendarPermission(),
                 force = true,
-                widgetIds = parsedConfigs.filter { it.isVisible }.map { it.id }.toSet(),
+                widgetIds = visibleIds,
             )
+            if ("YOUTUBE" in visibleIds) {
+                youtubeViewModel.loadLatestVideos(forceRefresh = true)
+            }
         },
         modifier = Modifier.fillMaxSize().background(Background),
     ) {
@@ -197,6 +224,9 @@ fun HomeScreen(
                     hasCalendarPermission = hasCalendarPermission(),
                     widgetIds = visibleWidgetIds,
                 )
+                if ("YOUTUBE" in visibleWidgetIds) {
+                    youtubeViewModel.loadLatestVideos(forceRefresh = false)
+                }
             }
         }
 

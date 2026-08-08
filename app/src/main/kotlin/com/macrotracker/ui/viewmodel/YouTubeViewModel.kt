@@ -99,8 +99,10 @@ class YouTubeViewModel @Inject constructor(
                 }
                 .onFailure { e ->
                     Log.e(TAG, "Failed to load YouTube videos", e)
-                    // Keep showing stale success if we already had videos.
-                    if (current !is YouTubeUiState.Success) {
+                    // Restore prior success (force refresh sets Loading first) or show Error.
+                    if (current is YouTubeUiState.Success) {
+                        _youtubeState.value = current
+                    } else {
                         _youtubeState.value = YouTubeUiState.Error(e.message ?: "Unknown error")
                     }
                 }

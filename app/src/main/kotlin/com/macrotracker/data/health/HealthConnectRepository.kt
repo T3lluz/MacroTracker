@@ -99,6 +99,11 @@ class HealthConnectRepository @Inject constructor(
         metricCache[key] = System.currentTimeMillis() to value
     }
 
+    /** Clears per-metric IPC cache so the next reads hit Health Connect. */
+    fun clearMetricCache() {
+        metricCache.clear()
+    }
+
 
     suspend fun hasAllPermissions(): Boolean {
         val hc = client ?: return false

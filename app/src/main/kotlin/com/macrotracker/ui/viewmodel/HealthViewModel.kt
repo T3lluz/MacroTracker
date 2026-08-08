@@ -271,6 +271,9 @@ class HealthViewModel @Inject constructor(
             }
 
             val current = _healthConnectState.value
+            if (!silent) {
+                healthConnectRepository.clearMetricCache()
+            }
             if (!silent || current !is HealthConnectUiState.Success) {
                 _healthConnectState.value = HealthConnectUiState.Loading
             } else {
@@ -284,7 +287,7 @@ class HealthViewModel @Inject constructor(
                     val historyDeferred = async { healthConnectRepository.readHistoryStatsBetween(start, end) }
                     val stats = statsDeferred.await()
                     if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
-                        _healthConnectState.value = current.copy(isRefreshing = false, stats = stats)
+                        _healthConnectState.value = current.copy(isRefreshing = false)
                     } else {
                         _healthConnectState.value = HealthConnectUiState.Success(stats)
                     }
