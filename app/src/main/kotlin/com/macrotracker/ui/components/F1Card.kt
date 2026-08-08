@@ -358,11 +358,11 @@ fun F1Card(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "FORMULA 1",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
+                        "Formula 1",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
                         color = TextPrimary,
-                        letterSpacing = 0.6.sp,
+                        letterSpacing = 0.1.sp,
                     )
                     val successData = (state as? F1UiState.Success)?.f1Data
                     val seasonYear = successData?.schedule?.firstOrNull()?.raceDate
@@ -376,20 +376,19 @@ fun F1Card(
                             val days = daysUntil(nextRace.raceDate)
                             val name = shortGP(nextRace.raceName)
                             when {
-                                days == 0L -> "NEXT · $name · TODAY"
-                                days in 1..7 -> "NEXT · $name · ${days}D"
-                                else -> "NEXT · $name"
+                                days == 0L -> "Next · $name · today"
+                                days in 1..7 -> "Next · $name · ${days}d"
+                                else -> "Next · $name"
                             }
                         }
-                        expanded -> "$seasonYear · HUB"
+                        expanded -> "$seasonYear season"
                         else -> seasonYear
                     }
                     Text(
                         headerSub,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = TextSecondary,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.4.sp,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -486,11 +485,10 @@ fun F1Card(
                                 label = "fg",
                             )
                             Text(
-                                tab.label.uppercase(),
+                                tab.label,
                                 color = fg,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 11.sp,
-                                letterSpacing = 0.8.sp,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
                                 modifier = Modifier
                                     .clip(SharpShape)
                                     .background(bg)
@@ -548,15 +546,15 @@ fun F1Card(
 }
 
 // ── Collapsed compact widget ──────────────────────────────────────────────────
+// Editorial / scoreboard layout (Sofascore + ESPN F1 race-strip cues):
+// one surface, hairline dividers, team-color rails, no nested cards / washes.
 @Composable
 private fun F1CollapsedWidget(data: F1Standings) {
     val next = remember(data.schedule) {
         data.schedule.filter { !isPast(it.raceDate) }.minByOrNull { daysUntil(it.raceDate) }
     }
-    val completedRounds = remember(data.schedule) { data.schedule.count { isPast(it.raceDate) } }
-    val leader = data.driverStandings.firstOrNull()
-    val p2 = data.driverStandings.getOrNull(1)
-    val p3 = data.driverStandings.getOrNull(2)
+    val top3 = remember(data.driverStandings) { data.driverStandings.take(3) }
+    val leader = top3.firstOrNull()
     val wcc = data.constructorStandings.firstOrNull()
     val lastPodium = remember(data.lastRaceResults) {
         data.lastRaceResults?.filter { it.position in 1..3 }?.sortedBy { it.position }.orEmpty()
@@ -564,471 +562,131 @@ private fun F1CollapsedWidget(data: F1Standings) {
     val lastFl = data.lastRaceResults?.firstOrNull { it.fastestLap }
     val days = next?.let { daysUntil(it.raceDate) } ?: Long.MAX_VALUE
     val isSoon = days in 0..7
-    val accent = if (isSoon) F1Red else TextPrimary
-    val trackUrl = remember(next?.circuitId) { next?.circuitId?.let { getCircuitSvgUrl(it) } }
-    val context = LocalContext.current
     val localRaceTime = remember(next?.raceDate, next?.raceTime) {
         next?.let { formatLocalTime(it.raceDate, it.raceTime) }.orEmpty()
     }
-    val leaderTeamColor = remember(leader?.teamColor) {
-        leader?.teamColor?.let { safeTeamColor(it) } ?: F1Gold
-    }
-    val glanceShape = RoundedCornerShape(12.dp)
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(glanceShape)
-            .background(RowSurface),
-    ) {
-        // ── Next race hero — track map as atmosphere, race name as lead ───
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ── Next race — typography lead, no track-map collage ─────────────
         if (next != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 118.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
             ) {
-                // Track map plane (full-bleed under copy)
-                if (trackUrl != null) {
-                    val request = remember(trackUrl) {
-                        circuitMapRequest(context, trackUrl, width = 960, height = 480)
-                    }
-                    SubcomposeAsyncImage(
-                        model = request,
-                        contentDescription = "${shortGP(next.raceName)} circuit",
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxWidth(0.72f)
-                            .fillMaxHeight()
-                            .padding(top = 8.dp, end = 4.dp, bottom = 4.dp)
-                            .graphicsLayer { alpha = 0.42f },
-                        contentScale = ContentScale.Fit,
-                        alignment = Alignment.CenterEnd,
-                    ) {
-                        when (painter.state) {
-                            is AsyncImagePainter.State.Success -> SubcomposeAsyncImageContent()
-                            else -> Spacer(Modifier.fillMaxSize())
-                        }
-                    }
-                }
-
-                // Depth: left opaque → clear mid, plus bottom fade + red wash when soon
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.horizontalGradient(
-                                0.00f to RowSurface,
-                                0.38f to RowSurface.copy(alpha = 0.92f),
-                                0.70f to RowSurface.copy(alpha = 0.35f),
-                                1.00f to Color.Transparent,
-                            ),
-                        ),
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0.00f to Color.Transparent,
-                                0.55f to Color.Transparent,
-                                1.00f to RowSurface.copy(alpha = 0.88f),
-                            ),
-                        ),
-                )
-                if (isSoon) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(
-                                Brush.horizontalGradient(
-                                    0.00f to F1Red.copy(alpha = 0.14f),
-                                    0.48f to F1Red.copy(alpha = 0.04f),
-                                    1.00f to Color.Transparent,
-                                ),
-                            ),
-                    )
-                }
-
-                // Accent rail
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .width(3.dp)
-                        .fillMaxHeight()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(accent, accent.copy(alpha = 0.25f)),
-                            ),
-                        ),
-                )
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                "NEXT",
-                                color = accent,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.2.sp,
-                            )
-                            Text(
-                                "R${next.round}/${data.schedule.size}",
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            if (next.sprintDate != null) {
-                                Text(
-                                    "SPRINT",
-                                    color = SprintPink,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 0.6.sp,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(SprintPink.copy(alpha = 0.14f))
-                                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                                )
-                            }
-                        }
-                        // Countdown as compact badge — secondary to race name
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                when {
-                                    days == 0L -> "TODAY"
-                                    days < 0L -> "—"
-                                    days == 1L -> "1 DAY"
-                                    else -> "$days DAYS"
-                                },
-                                color = accent,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 12.sp,
-                                letterSpacing = 0.4.sp,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(accent.copy(alpha = if (isSoon) 0.16f else 0.08f))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
-                            Text(
-                                "RD $completedRounds/${data.schedule.size}",
-                                color = TextSecondary.copy(alpha = 0.75f),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.3.sp,
-                                modifier = Modifier.padding(top = 3.dp, end = 2.dp),
-                            )
-                        }
-                    }
-
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         shortGP(next.raceName),
                         color = TextPrimary,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 24.sp,
-                        letterSpacing = (-0.6).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-
-                    Text(
-                        buildString {
-                            val place = listOfNotNull(
-                                countryLabel(next.countryCode).takeIf { it != "—" },
-                                next.locality,
-                            ).joinToString(" · ")
-                            append(place)
-                            if (place.isNotBlank()) append(" · ")
-                            append(formatShort(next.raceDate))
-                            if (localRaceTime.isNotEmpty()) append(" · $localRaceTime")
-                        },
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-
-                    if (isSoon) {
-                        LiveCountdown(next.raceDate, next.raceTime, accent)
-                    }
-                }
-            }
-        }
-
-        // ── Championship — leader headshot + top 3 points ─────────────────
-        if (leader != null) {
-            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            CollapsedChampionshipGlance(
-                leader = leader,
-                top3 = listOfNotNull(leader, p2, p3).distinctBy { it.driverAcronym }.take(3),
-                wcc = wcc,
-                leaderTeamColor = leaderTeamColor,
-            )
-        }
-
-        // ── Last race podium rail ──────────────────────────────────────────
-        if (lastPodium.isNotEmpty()) {
-            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        "LAST",
-                        color = TextSecondary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.8.sp,
-                    )
-                    data.lastRaceName?.let {
-                        Text(
-                            shortGP(it),
-                            color = TextPrimary.copy(alpha = 0.85f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    if (lastFl != null) {
-                        Text(
-                            "FL ${lastFl.driverAcronym ?: "—"}",
-                            color = FL_Purple,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.3.sp,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(FL_Purple.copy(alpha = 0.12f))
-                                .padding(horizontal = 6.dp, vertical = 3.dp),
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    for (r in lastPodium.take(3)) {
-                        CollapsedPodiumCell(
-                            position = r.position,
-                            acronym = r.driverAcronym ?: "—",
-                            points = r.points.toInt(),
-                            teamColor = safeTeamColor(r.teamColor),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CollapsedChampionshipGlance(
-    leader: SeasonDriverStanding,
-    top3: List<SeasonDriverStanding>,
-    wcc: SeasonConstructorStanding?,
-    leaderTeamColor: Color,
-) {
-    val lead = top3.getOrNull(1)?.let { (leader.points - it.points).toInt() } ?: 0
-    val maxPts = (top3.maxOfOrNull { it.points } ?: leader.points).coerceAtLeast(1.0)
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                Brush.horizontalGradient(
-                    0.00f to leaderTeamColor.copy(alpha = 0.16f),
-                    0.42f to leaderTeamColor.copy(alpha = 0.05f),
-                    1.00f to Color.Transparent,
-                ),
-            ),
-    ) {
-        // Soft watermark position mark
-        Text(
-            "01",
-            color = leaderTeamColor.copy(alpha = 0.10f),
-            fontWeight = FontWeight.Black,
-            fontSize = 64.sp,
-            letterSpacing = (-2).sp,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 6.dp, top = 0.dp),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // Leader hero — headshot anchors the glance
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                DriverHeadshot(
-                    url = leader.headshotUrl,
-                    driverName = leader.driverName,
-                    driverAcronym = leader.driverAcronym,
-                    driverNumber = leader.driverNumber,
-                    teamColor = leaderTeamColor,
-                    modifier = Modifier.size(72.dp),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            "WDC",
-                            color = F1Gold,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.0.sp,
-                        )
-                        Text(
-                            "LEADER",
-                            color = leaderTeamColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.8.sp,
-                        )
-                    }
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        driverSurname(leader.driverName),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 20.sp,
-                        letterSpacing = (-0.4).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        listOfNotNull(
-                            leader.constructorName,
-                            leader.driverNumber?.let { "#$it" },
-                        ).joinToString(" · "),
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        letterSpacing = (-0.3).sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            "${leader.points.toInt()}",
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 28.sp,
-                            letterSpacing = (-0.8).sp,
-                        )
-                        Text(
-                            "PTS",
-                            color = TextSecondary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(bottom = 5.dp),
-                        )
-                        if (lead > 0) {
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "+$lead",
-                                color = LabAmber,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(bottom = 4.dp),
-                            )
-                            Text(
-                                "LEAD",
-                                color = LabAmber.copy(alpha = 0.75f),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp,
-                                letterSpacing = 0.4.sp,
-                                modifier = Modifier.padding(bottom = 5.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Top 3 podium strip with proportional point bars
-            if (top3.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    for (d in top3) {
-                        CollapsedTop3Cell(
-                            driver = d,
-                            isLeader = d.position == 1 || d.driverAcronym == leader.driverAcronym,
-                            barFraction = (d.points / maxPts).toFloat().coerceIn(0.12f, 1f),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    // Balance grid if fewer than 3
-                    repeat((3 - top3.size).coerceAtLeast(0)) {
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-
-            // Slim WCC chip — secondary, doesn't compete with driver podium
-            if (wcc != null) {
-                val wccColor = safeTeamColor(wcc.teamColor)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(CardBg.copy(alpha = 0.55f))
-                        .f1LeadingRail(wccColor, thickness = 3.dp)
-                        .padding(start = 10.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
                     Text(
-                        "WCC",
+                        buildString {
+                            val place = listOfNotNull(
+                                next.locality?.takeIf { it.isNotBlank() },
+                                countryLabel(next.countryCode).takeIf { it != "—" },
+                            ).joinToString(", ")
+                            append(place.ifBlank { "Round ${next.round}" })
+                            append("  ·  ")
+                            append(formatShort(next.raceDate))
+                            if (localRaceTime.isNotEmpty()) append("  ·  $localRaceTime")
+                        },
                         color = TextSecondary,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.7.sp,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (next.sprintDate != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Sprint weekend",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        when {
+                            days == 0L -> "Today"
+                            days == 1L -> "1 day"
+                            days < 0L -> "—"
+                            else -> "${days}d"
+                        },
+                        color = if (isSoon) F1Red else TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
                     )
                     Text(
-                        wcc.constructorName,
+                        "R${next.round}/${data.schedule.size}",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            if (isSoon) {
+                Spacer(Modifier.height(10.dp))
+                LiveCountdown(next.raceDate, next.raceTime, F1Red)
+            }
+        }
+
+        // ── Standings — flat Sofascore-style rows ─────────────────────────
+        if (leader != null) {
+            Spacer(Modifier.height(14.dp))
+            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Drivers",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            top3.forEachIndexed { index, driver ->
+                CollapsedStandingRow(
+                    position = driver.position,
+                    name = driverSurname(driver.driverName).lowercase()
+                        .replaceFirstChar { it.titlecase() },
+                    team = driver.constructorName,
+                    points = driver.points.toInt(),
+                    gap = if (index == 0) null else (leader.points - driver.points).toInt(),
+                    teamColor = safeTeamColor(driver.teamColor),
+                )
+            }
+            if (wcc != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(14.dp)
+                            .background(safeTeamColor(wcc.teamColor)),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "Constructors",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "  ·  ${wcc.constructorName}",
                         color = TextPrimary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -1037,13 +695,55 @@ private fun CollapsedChampionshipGlance(
                         "${wcc.points.toInt()}",
                         color = TextPrimary,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Black,
-                    )
-                    Text(
-                        "PTS",
-                        color = TextSecondary,
-                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+
+        // ── Last race — one quiet result line ─────────────────────────────
+        if (lastPodium.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                buildString {
+                    append("Last")
+                    data.lastRaceName?.let { append("  ·  ${shortGP(it)}") }
+                },
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                lastPodium.take(3).forEachIndexed { i, r ->
+                    if (i > 0) Spacer(Modifier.width(14.dp))
+                    Text(
+                        "${r.position}",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        r.driverAcronym ?: "—",
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                if (lastFl != null) {
+                    Text(
+                        "FL ${lastFl.driverAcronym ?: "—"}",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
@@ -1052,119 +752,66 @@ private fun CollapsedChampionshipGlance(
 }
 
 @Composable
-private fun CollapsedTop3Cell(
-    driver: SeasonDriverStanding,
-    isLeader: Boolean,
-    barFraction: Float,
-    modifier: Modifier = Modifier,
+private fun CollapsedStandingRow(
+    position: Int,
+    name: String,
+    team: String,
+    points: Int,
+    gap: Int?,
+    teamColor: Color,
 ) {
-    val medal = medalColor(driver.position) ?: TextSecondary
-    val teamColor = safeTeamColor(driver.teamColor)
-    val surface = if (isLeader) CardBg.copy(alpha = 0.78f) else CardBg.copy(alpha = 0.48f)
-
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(surface)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                "P${driver.position}",
-                color = medal,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 0.3.sp,
-            )
-            if (isLeader) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(medal),
-                )
-            }
-        }
-        Text(
-            driver.driverAcronym,
-            color = TextPrimary,
-            fontSize = if (isLeader) 14.sp else 13.sp,
-            fontWeight = FontWeight.Black,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            "${driver.points.toInt()}",
-            color = if (isLeader) TextPrimary else TextSecondary.copy(alpha = 0.95f),
-            fontSize = if (isLeader) 18.sp else 15.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = (-0.3).sp,
-        )
-        // Proportional points bar — makes the strip feel alive
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Hairline.copy(alpha = 0.55f)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(barFraction)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(medal, teamColor.copy(alpha = 0.85f)),
-                        ),
-                    ),
+                .width(3.dp)
+                .height(28.dp)
+                .background(teamColor),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "$position",
+            color = TextSecondary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(18.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                name,
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                team,
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-    }
-}
-
-@Composable
-private fun CollapsedPodiumCell(
-    position: Int,
-    acronym: String,
-    points: Int,
-    teamColor: Color,
-    modifier: Modifier = Modifier,
-) {
-    val medal = medalColor(position) ?: TextSecondary
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(CardBg.copy(alpha = 0.55f))
-            .f1LeadingRail(teamColor, thickness = 2.dp)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
+        if (gap != null && gap > 0) {
+            Text(
+                "−$gap",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(end = 10.dp),
+            )
+        }
         Text(
-            "P$position",
-            color = medal,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 0.4.sp,
-        )
-        Text(
-            acronym,
+            "$points",
             color = TextPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Black,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            "+$points",
-            color = TextSecondary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -1175,170 +822,82 @@ private fun ChampionshipLeaderHero(
     chase: SeasonDriverStanding?,
     racesDone: Int,
     racesLeft: Int,
-    compact: Boolean,
+    @Suppress("UNUSED_PARAMETER") compact: Boolean,
 ) {
     val tc = safeTeamColor(leader.teamColor)
     val lab = remember(leader, chase, racesDone, racesLeft) {
         computeDriverFormLab(leader, chase, racesDone, racesLeft)
     }
-    val headSize = if (compact) 88.dp else 112.dp
 
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(SharpShape)
-            .background(RowSurface)
-            .f1LeadingRail(tc),
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to tc.copy(alpha = 0.28f),
-                        0.42f to tc.copy(alpha = 0.08f),
-                        1f to Color.Transparent,
-                    ),
-                ),
+                .width(3.dp)
+                .height(56.dp)
+                .background(tc),
         )
-        Text(
-            "01",
-            color = tc.copy(alpha = 0.12f),
-            fontWeight = FontWeight.Black,
-            fontSize = if (compact) 72.sp else 92.sp,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 4.dp),
-            letterSpacing = (-2).sp,
+        Spacer(Modifier.width(12.dp))
+        DriverHeadshot(
+            url = leader.headshotUrl,
+            driverName = leader.driverName,
+            driverAcronym = leader.driverAcronym,
+            driverNumber = leader.driverNumber,
+            teamColor = tc,
+            modifier = Modifier.size(56.dp),
         )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DriverHeadshot(
-                    url = leader.headshotUrl,
-                    driverName = leader.driverName,
-                    driverAcronym = leader.driverAcronym,
-                    driverNumber = leader.driverNumber,
-                    teamColor = tc,
-                    modifier = Modifier.size(headSize),
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                driverSurname(leader.driverName).lowercase().replaceFirstChar { it.titlecase() },
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOfNotNull(
+                    leader.constructorName,
+                    "${leader.wins} wins",
+                    if (lab.gapToP2 > 0) "+${lab.gapToP2} lead" else null,
+                ).joinToString("  ·  "),
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (racesDone > 0) {
+                Text(
+                    lab.clinchHint,
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "CHAMPIONSHIP LEADER",
-                        color = tc,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.2.sp,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        driverSurname(leader.driverName),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Black,
-                        fontSize = if (compact) 22.sp else 26.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        letterSpacing = (-0.5).sp,
-                    )
-                    Text(
-                        listOfNotNull(
-                            leader.driverAcronym,
-                            leader.driverNumber?.let { "#$it" },
-                            leader.constructorName,
-                        ).joinToString(" · "),
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            "${leader.points.toInt()}",
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Black,
-                            fontSize = if (compact) 34.sp else 40.sp,
-                            letterSpacing = (-1).sp,
-                        )
-                        Text(
-                            "PTS",
-                            color = TextSecondary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 6.dp),
-                        )
-                        if (lab.gapToP2 > 0) {
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "+${lab.gapToP2}",
-                                color = LabAmber,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 16.sp,
-                                modifier = Modifier.padding(bottom = 5.dp),
-                            )
-                            Text(
-                                "LEAD",
-                                color = LabAmber.copy(alpha = 0.75f),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(bottom = 7.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                LeaderStatBlock("WINS", "${leader.wins}", F1Gold, Modifier.weight(1f))
-                LeaderStatBlock("PODIUMS", "${leader.podiums}", F1Bronze, Modifier.weight(1f))
-                LeaderStatBlock("FL", "${leader.fastestLaps}", FL_Purple, Modifier.weight(1f))
-                LeaderStatBlock("PPR", String.format("%.1f", lab.ptsPerRace), tc, Modifier.weight(1f))
-            }
-
-            if (!compact) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(SharpShape)
-                        .background(CardBg.copy(alpha = 0.55f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text("FORM", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
-                        Text(lab.momentumLabel, color = LabAmber, fontWeight = FontWeight.Black, fontSize = 13.sp)
-                    }
-                    Text(lab.momentumDetail, color = TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(lab.clinchHint, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                }
             }
         }
-    }
-}
-
-@Composable
-private fun LeaderStatBlock(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(SharpShape)
-            .background(CardBg.copy(alpha = 0.65f))
-            .padding(horizontal = 8.dp, vertical = 7.dp),
-    ) {
-        Text(label, color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
-        Text(value, color = accent, fontWeight = FontWeight.Black, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                "${leader.points.toInt()}",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+            )
+            Text(
+                "pts",
+                color = TextSecondary,
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+            )
+        }
     }
 }
 
@@ -1749,10 +1308,10 @@ fun DriverStandingsList(data: F1Standings) {
             )
         }
 
-        FormLabResearchPanel(data, racesDone, racesLeft)
+        SeasonSnapshot(data, racesDone, racesLeft)
 
         if (chasePack.isNotEmpty()) {
-            SectionHeader("THE CHASE")
+            SectionHeader("Chase")
             chasePack.forEachIndexed { index, driver ->
                 DriverStandingRow(
                     driver = driver,
@@ -1770,7 +1329,7 @@ fun DriverStandingsList(data: F1Standings) {
         }
 
         if (midfield.isNotEmpty()) {
-            SectionHeader("MIDFIELD")
+            SectionHeader("Midfield")
             midfield.forEachIndexed { index, driver ->
                 DriverStandingRow(
                     driver = driver,
@@ -1788,7 +1347,7 @@ fun DriverStandingsList(data: F1Standings) {
         }
 
         if (backfield.isNotEmpty()) {
-            SectionHeader("BACK OF GRID")
+            SectionHeader("Back of grid")
             backfield.forEachIndexed { index, driver ->
                 DriverStandingRow(
                     driver = driver,
@@ -1808,70 +1367,37 @@ fun DriverStandingsList(data: F1Standings) {
 }
 
 @Composable
-private fun FormLabResearchPanel(data: F1Standings, racesDone: Int, racesLeft: Int) {
+private fun SeasonSnapshot(data: F1Standings, racesDone: Int, racesLeft: Int) {
     val leader = data.driverStandings.firstOrNull() ?: return
     val chase = data.driverStandings.getOrNull(1)
-    val lab = remember(leader, chase, racesDone, racesLeft) {
-        computeDriverFormLab(leader, chase, racesDone, racesLeft)
-    }
     val mostWins = data.driverStandings.maxByOrNull { it.wins }
-    val mostPodiums = data.driverStandings.maxByOrNull { it.podiums }
     val mostFl = data.driverStandings.maxByOrNull { it.fastestLaps }
+    val gap = chase?.let { (leader.points - it.points).toInt() } ?: 0
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(SharpShape)
-            .background(RowSurface)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("FORM LAB", color = LabAmber, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
-            Text("LIVE DERIVED", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            LeaderStatBlock("WIN%", "${lab.winRate}%", LabAmber, Modifier.weight(1f))
-            LeaderStatBlock("POD%", "${lab.podiumRate}%", F1Bronze, Modifier.weight(1f))
-            LeaderStatBlock("PPR", String.format("%.1f", lab.ptsPerRace), TextPrimary, Modifier.weight(1f))
-            LeaderStatBlock("LEFT", "$racesLeft", F1Red, Modifier.weight(1f))
-        }
-        Text(lab.clinchHint, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        Text(lab.momentumLabel + " · " + lab.momentumDetail, color = TextSecondary, fontSize = 12.sp)
+    Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("MOST WINS", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "${mostWins?.driverAcronym ?: "—"} · ${mostWins?.wins ?: 0}",
-                    color = F1Gold,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 13.sp,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("MOST PODIUMS", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "${mostPodiums?.driverAcronym ?: "—"} · ${mostPodiums?.podiums ?: 0}",
-                    color = F1Bronze,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 13.sp,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("MOST FL", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "${mostFl?.driverAcronym ?: "—"} · ${mostFl?.fastestLaps ?: 0}",
-                    color = FL_Purple,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 13.sp,
-                )
-            }
-        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            buildString {
+                append("$racesDone raced")
+                if (racesLeft > 0) append("  ·  $racesLeft left")
+                if (gap > 0) append("  ·  +$gap lead")
+            },
+            color = TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            buildString {
+                append("Wins ${mostWins?.driverAcronym ?: "—"} ${mostWins?.wins ?: 0}")
+                append("  ·  ")
+                append("FL ${mostFl?.driverAcronym ?: "—"} ${mostFl?.fastestLaps ?: 0}")
+            },
+            color = TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
@@ -2177,7 +1703,7 @@ fun ChampionshipBattleTab(data: F1Standings) {
     val racesLeft = (data.schedule.size - racesDone).coerceAtLeast(0)
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        FormLabResearchPanel(data, racesDone, racesLeft)
+        SeasonSnapshot(data, racesDone, racesLeft)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -2544,19 +2070,23 @@ private fun TeamDuelsContent(drivers: List<SeasonDriverStanding>, @Suppress("UNU
 
 @Composable
 private fun SectionHeader(title: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
+    Text(
+        title,
+        color = TextSecondary,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.2.sp,
+        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun LeaderStatBlock(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(vertical = 2.dp),
     ) {
-        Box(modifier = Modifier.width(14.dp).height(3.dp).background(F1Red))
-        Text(
-            title.uppercase(),
-            color = TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 1.1.sp,
-        )
+        Text(label, color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        Text(value, color = accent, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
