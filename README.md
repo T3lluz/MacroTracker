@@ -45,7 +45,7 @@ YOUTUBE_API_KEY=
 
 ## Releases
 
-Every merge to `master` (and every `v*` tag) runs **Build & Release APK**:
+Every merge to `master` runs **Build & Release APK**:
 
 1. Auto-bumps `versionCode` / `versionName` if that build was already published  
 2. Builds a minified release APK signed with the shared tester keystore  
@@ -53,7 +53,7 @@ Every merge to `master` (and every `v*` tag) runs **Build & Release APK**:
 
 Install once from Releases; later builds update in-app when the version code is higher.
 
-Manual run: Actions → **Build & Release APK** → Run workflow.
+Manual run: Actions → **Build & Release APK** → Run workflow (optional release notes).
 
 ---
 
@@ -79,7 +79,7 @@ Agent-oriented architecture notes live in [`AGENTS.md`](AGENTS.md).
 | Release APK (tester-signed) | `./gradlew assembleRelease` |
 | Install debug | `./gradlew installDebug` |
 
-Gradle already enables parallel builds, the build cache, and configuration cache (`gradle.properties`). CI also caches the Gradle home and Android SDK packages so release builds stay fast after the first warm run.
+Gradle already enables parallel builds, the build cache, and configuration cache (`gradle.properties`). CI caches Gradle home plus Android SDK platforms/build-tools so release builds stay fast after the first warm run.
 
 ---
 
