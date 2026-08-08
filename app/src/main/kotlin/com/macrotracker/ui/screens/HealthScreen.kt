@@ -275,6 +275,7 @@ fun HealthScreen(
     CompositionLocalProvider(LocalTickersPaused provides tickersPaused) {
     LazyColumn(
         state = listState,
+        userScrollEnabled = !dragState.isDragActive,
         modifier = Modifier
             .fillMaxSize()
             .background(Background),

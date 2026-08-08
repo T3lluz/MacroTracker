@@ -1,0 +1,9 @@
+## Copy to local.properties and fill in values.
+## local.properties is gitignored — never commit real keys.
+
+sdk.dir=/path/to/Android/Sdk
+
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+OPENROUTER_API_KEY=
+YOUTUBE_API_KEY=
