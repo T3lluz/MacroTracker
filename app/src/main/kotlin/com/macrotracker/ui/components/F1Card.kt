@@ -583,138 +583,186 @@ private fun F1CollapsedWidget(data: F1Standings) {
     }
     val trackUrl = remember(next?.circuitId) { next?.circuitId?.let { getCircuitSvgUrl(it) } }
     val context = LocalContext.current
-    val mapWidth = 148.dp
-    val mapHeight = 112.dp
+    val countdownLabel = when {
+        days == 0L -> null to "Today"
+        days == 1L -> "1" to "d"
+        days < 0L -> null to "—"
+        else -> "$days" to "d"
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ── Next race — copy left, circuit map right ──────────────────────
+        // ── Next race — faded circuit map as background, countdown far right ─
         if (next != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = if (trackUrl != null) 124.dp else 0.dp)
+                    .clip(SharpShape),
             ) {
+                if (trackUrl != null) {
+                    val request = remember(trackUrl) {
+                        circuitMapRequest(context, trackUrl, width = 960, height = 540)
+                    }
+                    SubcomposeAsyncImage(
+                        model = request,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .graphicsLayer { alpha = 0.28f },
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.CenterEnd,
+                    ) {
+                        when (painter.state) {
+                            is AsyncImagePainter.State.Success -> SubcomposeAsyncImageContent()
+                            else -> Unit
+                        }
+                    }
+                    // Keep race copy readable; let more of the map show under the countdown.
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    0.0f to Color(0xFF111827).copy(alpha = 0.88f),
+                                    0.42f to Color(0xFF111827).copy(alpha = 0.55f),
+                                    0.72f to Color(0xFF111827).copy(alpha = 0.18f),
+                                    1.0f to Color.Transparent,
+                                ),
+                            ),
+                    )
+                }
+
                 Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .then(if (trackUrl != null) Modifier.height(mapHeight) else Modifier)
-                        .padding(end = 10.dp),
-                    verticalArrangement = if (trackUrl != null) {
-                        Arrangement.SpaceBetween
-                    } else {
-                        Arrangement.spacedBy(3.dp)
-                    },
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 8.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Text(
-                            "NEXT",
-                            color = accent,
-                            style = F1MetaTextStyle,
-                        )
-                        Text(
-                            "R${next.round}/${data.schedule.size}",
-                            color = TextSecondary,
-                            style = F1MetaTextStyle.copy(fontWeight = FontWeight.SemiBold),
-                        )
-                        if (next.sprintDate != null) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    "NEXT",
+                                    color = accent,
+                                    style = F1MetaTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                                Text(
+                                    "R${next.round}/${data.schedule.size}",
+                                    color = TextSecondary,
+                                    style = F1MetaTextStyle.copy(fontWeight = FontWeight.SemiBold),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                                if (next.sprintDate != null) {
+                                    Text(
+                                        "SPRINT",
+                                        color = SprintPink,
+                                        style = F1MetaTextStyle,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
+                            }
                             Text(
-                                "SPRINT",
-                                color = SprintPink,
-                                style = F1MetaTextStyle,
+                                shortGP(next.raceName),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                letterSpacing = (-0.4).sp,
+                                lineHeight = 26.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                listOfNotNull(
+                                    next.locality?.takeIf { it.isNotBlank() },
+                                    countryLabel(next.countryCode).takeIf { it != "—" },
+                                ).joinToString(", ").ifBlank { "Round ${next.round}" },
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                buildString {
+                                    append(formatShort(next.raceDate))
+                                    if (localRaceTime.isNotEmpty()) append(" · $localRaceTime")
+                                },
+                                color = TextSecondary.copy(alpha = 0.9f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            when {
-                                days == 0L -> "Today"
-                                days == 1L -> "1d"
-                                days < 0L -> "—"
-                                else -> "${days}d"
-                            },
-                            color = accent,
-                            style = F1MetaTextStyle,
-                        )
-                    }
-                    Text(
-                        shortGP(next.raceName),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        letterSpacing = (-0.3).sp,
-                        lineHeight = 24.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        listOfNotNull(
-                            next.locality?.takeIf { it.isNotBlank() },
-                            countryLabel(next.countryCode).takeIf { it != "—" },
-                        ).joinToString(", ").ifBlank { "Round ${next.round}" },
-                        color = TextSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        buildString {
-                            append(formatShort(next.raceDate))
-                            if (localRaceTime.isNotEmpty()) append(" · $localRaceTime")
-                        },
-                        color = TextSecondary.copy(alpha = 0.9f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
 
-                if (trackUrl != null) {
-                    val request = remember(trackUrl) {
-                        circuitMapRequest(context, trackUrl, width = 520, height = 380)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .width(mapWidth)
-                            .height(mapHeight)
-                            .clip(SharpShape)
-                            .background(Color(0xFF080D14)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        SubcomposeAsyncImage(
-                            model = request,
-                            contentDescription = "${shortGP(next.raceName)} circuit",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(8.dp),
-                            contentScale = ContentScale.Fit,
+                        // Far-right countdown — large, clean, over the map
+                        val (countValue, countUnit) = countdownLabel
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.Center,
                         ) {
-                            when (painter.state) {
-                                is AsyncImagePainter.State.Loading ->
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 1.5.dp,
-                                        color = accent.copy(alpha = 0.5f),
-                                    )
-                                is AsyncImagePainter.State.Error ->
+                            if (countValue != null) {
+                                Row(
+                                    verticalAlignment = Alignment.Bottom,
+                                    horizontalArrangement = Arrangement.spacedBy(1.dp),
+                                ) {
                                     Text(
-                                        "MAP",
-                                        color = TextSecondary.copy(alpha = 0.45f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        countValue,
+                                        color = accent,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 40.sp,
+                                        letterSpacing = (-1.2).sp,
+                                        lineHeight = 40.sp,
+                                        style = TextStyle(
+                                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                        ),
                                     )
-                                else -> SubcomposeAsyncImageContent()
+                                    Text(
+                                        countUnit,
+                                        color = accent.copy(alpha = 0.85f),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        modifier = Modifier.padding(bottom = 6.dp),
+                                        style = TextStyle(
+                                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                        ),
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    countUnit,
+                                    color = accent,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 22.sp,
+                                    letterSpacing = (-0.3).sp,
+                                    style = TextStyle(
+                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                    ),
+                                )
                             }
                         }
                     }
+
+                    if (isSoon) {
+                        Spacer(Modifier.height(10.dp))
+                        LiveCountdown(next.raceDate, next.raceTime, F1Red)
+                    }
                 }
-            }
-            if (isSoon) {
-                Spacer(Modifier.height(8.dp))
-                LiveCountdown(next.raceDate, next.raceTime, F1Red)
             }
         }
 
