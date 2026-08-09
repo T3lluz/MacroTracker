@@ -74,11 +74,23 @@ private val Hairline   = Color(0xFF243044)
 private val LabAmber   = Color(0xFFF0A500)
 private val SharpShape = RoundedCornerShape(6.dp)
 
-/** Shared meta chip style so NEXT / round / SPRINT / countdown share one baseline. */
+/** Shared meta chip style so NEXT / round / SPRINT share one baseline. */
 private val F1MetaTextStyle = TextStyle(
     fontSize = 11.sp,
     fontWeight = FontWeight.Bold,
     letterSpacing = 0.5.sp,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(
+        alignment = LineHeightStyle.Alignment.Center,
+        trim = LineHeightStyle.Trim.Both,
+    ),
+)
+
+/** Large countdown for the collapsed next-race glance. */
+private val F1CountdownHeroStyle = TextStyle(
+    fontSize = 52.sp,
+    fontWeight = FontWeight.Black,
+    letterSpacing = (-1.5).sp,
     platformStyle = PlatformTextStyle(includeFontPadding = false),
     lineHeightStyle = LineHeightStyle(
         alignment = LineHeightStyle.Alignment.Center,
@@ -710,11 +722,11 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             )
                         }
 
-                        // Far-right countdown — large, clean, over the map
+                        // Far-right countdown — hero type over the map
                         val (countValue, countUnit) = countdownLabel
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.Center,
+                        Box(
+                            modifier = Modifier.widthIn(min = 52.dp),
+                            contentAlignment = Alignment.CenterEnd,
                         ) {
                             if (countValue != null) {
                                 Row(
@@ -724,20 +736,19 @@ private fun F1CollapsedWidget(data: F1Standings) {
                                     Text(
                                         countValue,
                                         color = accent,
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 40.sp,
-                                        letterSpacing = (-1.2).sp,
-                                        lineHeight = 40.sp,
-                                        style = TextStyle(
-                                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                        style = F1CountdownHeroStyle.copy(
+                                            fontSize = if (countValue.length > 2) 36.sp else 44.sp,
+                                            letterSpacing = (-1.2).sp,
                                         ),
+                                        maxLines = 1,
+                                        softWrap = false,
                                     )
                                     Text(
                                         countUnit,
                                         color = accent.copy(alpha = 0.85f),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp,
-                                        modifier = Modifier.padding(bottom = 6.dp),
+                                        modifier = Modifier.padding(bottom = 8.dp),
                                         style = TextStyle(
                                             platformStyle = PlatformTextStyle(includeFontPadding = false),
                                         ),
@@ -747,12 +758,9 @@ private fun F1CollapsedWidget(data: F1Standings) {
                                 Text(
                                     countUnit,
                                     color = accent,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 22.sp,
-                                    letterSpacing = (-0.3).sp,
-                                    style = TextStyle(
-                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                                    ),
+                                    style = F1CountdownHeroStyle.copy(fontSize = 22.sp, letterSpacing = (-0.3).sp),
+                                    maxLines = 1,
+                                    softWrap = false,
                                 )
                             }
                         }
