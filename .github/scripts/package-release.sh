@@ -81,6 +81,13 @@ build_release_notes() {
   }
 }
 
+# Shallow CI checkouts omit tags; notes need the previous v* tag (and git-log
+# fallback needs enough history to walk prev..HEAD).
+git fetch --tags --force origin >/dev/null 2>&1 || true
+if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
+  git fetch --deepen=80 origin >/dev/null 2>&1 || true
+fi
+
 NOTES="$(build_release_notes)"
 
 if [ ! -f "$APK_SRC" ]; then

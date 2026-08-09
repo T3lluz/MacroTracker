@@ -3,6 +3,13 @@ name: Build & Release APK
 # Publishes a tester APK to GitHub Releases on master merges (and manual runs).
 # In-app updates require a higher versionCode and the asset name:
 #   DailyDash-{versionName}-vc{versionCode}.apk
+#
+# Speed notes (measured ~7m warm runs):
+# - ubuntu-latest already ships ANDROID_HOME + platforms (android-36) + build-tools.
+#   Skip android-actions/setup-android and Actions SDK caches (restore alone was ~65s;
+#   cold cache upload was ~4m and bought nothing over the preinstalled SDK).
+# - Mirror nowinandroid / CatchUp: checkout → JDK → setup-gradle → assembleRelease.
+# - Disable Gradle home cache cleanup (~30s post step) for this small single-module app.
 
 on:
   push:
@@ -38,7 +45,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # Shallow clone; scripts fetch tags / origin/master as needed.
+          fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK 17
@@ -51,22 +59,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/master' }}
-          gradle-home-cache-cleanup: true
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      # Only platforms + build-tools are needed for assembleRelease.
-      - name: Cache Android SDK packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.ANDROID_HOME }}/platforms
-            ${{ env.ANDROID_HOME }}/build-tools
-          key: android-sdk-${{ runner.os }}-api36-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: |
-            android-sdk-${{ runner.os }}-api36-
-            android-sdk-${{ runner.os }}-
+          # Cleanup is ~30s/run and not worth it for a single-module app.
+          cache-cleanup: never
 
       - name: Ensure unique version
         id: version

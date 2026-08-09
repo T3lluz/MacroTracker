@@ -79,7 +79,7 @@ Agent-oriented architecture notes live in [`AGENTS.md`](AGENTS.md).
 | Release APK (tester-signed) | `./gradlew assembleRelease` |
 | Install debug | `./gradlew installDebug` |
 
-Gradle already enables parallel builds, the build cache, and configuration cache (`gradle.properties`). CI caches Gradle home plus Android SDK platforms/build-tools so release builds stay fast after the first warm run.
+Gradle already enables parallel builds, the build cache, and configuration cache (`gradle.properties`). CI caches Gradle home via `gradle/actions/setup-gradle` and relies on the preinstalled Android SDK on `ubuntu-latest` (no separate SDK setup/cache steps).
 
 ---
 
