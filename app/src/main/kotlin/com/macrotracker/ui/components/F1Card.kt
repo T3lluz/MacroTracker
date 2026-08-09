@@ -74,11 +74,23 @@ private val Hairline   = Color(0xFF243044)
 private val LabAmber   = Color(0xFFF0A500)
 private val SharpShape = RoundedCornerShape(6.dp)
 
-/** Shared meta chip style so NEXT / round / SPRINT / countdown share one baseline. */
+/** Shared meta chip style so NEXT / round / SPRINT share one baseline. */
 private val F1MetaTextStyle = TextStyle(
     fontSize = 11.sp,
     fontWeight = FontWeight.Bold,
     letterSpacing = 0.5.sp,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(
+        alignment = LineHeightStyle.Alignment.Center,
+        trim = LineHeightStyle.Trim.Both,
+    ),
+)
+
+/** Large countdown between race copy and circuit map — fills the 4-line block height. */
+private val F1CountdownHeroStyle = TextStyle(
+    fontSize = 52.sp,
+    fontWeight = FontWeight.Black,
+    letterSpacing = (-1.5).sp,
     platformStyle = PlatformTextStyle(includeFontPadding = false),
     lineHeightStyle = LineHeightStyle(
         alignment = LineHeightStyle.Alignment.Center,
@@ -583,26 +595,30 @@ private fun F1CollapsedWidget(data: F1Standings) {
     }
     val trackUrl = remember(next?.circuitId) { next?.circuitId?.let { getCircuitSvgUrl(it) } }
     val context = LocalContext.current
-    val mapWidth = 148.dp
+    val mapWidth = 132.dp
     val mapHeight = 112.dp
+    val countdownLabel = when {
+        days == 0L -> "Today"
+        days == 1L -> "1d"
+        days < 0L -> "—"
+        else -> "${days}d"
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ── Next race — copy left, circuit map right ──────────────────────
+        // ── Next race — copy left, hero countdown, circuit map as backdrop ─
         if (next != null) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(mapHeight),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .then(if (trackUrl != null) Modifier.height(mapHeight) else Modifier)
-                        .padding(end = 10.dp),
-                    verticalArrangement = if (trackUrl != null) {
-                        Arrangement.SpaceBetween
-                    } else {
-                        Arrangement.spacedBy(3.dp)
-                    },
+                        .fillMaxHeight()
+                        .padding(end = 4.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -626,17 +642,6 @@ private fun F1CollapsedWidget(data: F1Standings) {
                                 style = F1MetaTextStyle,
                             )
                         }
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            when {
-                                days == 0L -> "Today"
-                                days == 1L -> "1d"
-                                days < 0L -> "—"
-                                else -> "${days}d"
-                            },
-                            color = accent,
-                            style = F1MetaTextStyle,
-                        )
                     }
                     Text(
                         shortGP(next.raceName),
@@ -672,16 +677,37 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     )
                 }
 
+                // Hero countdown — same visual height as the 4-line race block
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .padding(horizontal = 4.dp)
+                        .widthIn(min = 52.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        countdownLabel,
+                        color = accent,
+                        style = if (countdownLabel.length > 3) {
+                            F1CountdownHeroStyle.copy(fontSize = 28.sp, letterSpacing = (-0.6).sp)
+                        } else {
+                            F1CountdownHeroStyle
+                        },
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+
                 if (trackUrl != null) {
                     val request = remember(trackUrl) {
                         circuitMapRequest(context, trackUrl, width = 520, height = 380)
                     }
+                    // Track drawn on the card surface — no inset panel / box chrome
                     Box(
                         modifier = Modifier
                             .width(mapWidth)
-                            .height(mapHeight)
-                            .clip(SharpShape)
-                            .background(Color(0xFF080D14)),
+                            .fillMaxHeight(),
                         contentAlignment = Alignment.Center,
                     ) {
                         SubcomposeAsyncImage(
@@ -689,7 +715,7 @@ private fun F1CollapsedWidget(data: F1Standings) {
                             contentDescription = "${shortGP(next.raceName)} circuit",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(8.dp),
+                                .graphicsLayer { alpha = 0.92f },
                             contentScale = ContentScale.Fit,
                         ) {
                             when (painter.state) {
