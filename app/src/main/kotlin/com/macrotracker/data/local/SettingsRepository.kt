@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.core.content.edit
 import com.macrotracker.data.remote.AiProvider
 import com.macrotracker.data.remote.OpenRouterModels
+import com.macrotracker.data.remote.TempUnit
+import com.macrotracker.data.remote.WindUnit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +46,16 @@ class SettingsRepository @Inject constructor(
 
     private val _weatherEnabled = MutableStateFlow(prefs.getBoolean("weather_enabled", true))
     val weatherEnabled: StateFlow<Boolean> = _weatherEnabled
+
+    private val _tempUnit = MutableStateFlow(
+        TempUnit.fromStorage(prefs.getString(KEY_TEMP_UNIT, TempUnit.CELSIUS.storageValue)),
+    )
+    val tempUnit: StateFlow<TempUnit> = _tempUnit
+
+    private val _windUnit = MutableStateFlow(
+        WindUnit.fromStorage(prefs.getString(KEY_WIND_UNIT, WindUnit.MS.storageValue)),
+    )
+    val windUnit: StateFlow<WindUnit> = _windUnit
 
     private val _calendarEnabled = MutableStateFlow(prefs.getBoolean("calendar_enabled", true))
     val calendarEnabled: StateFlow<Boolean> = _calendarEnabled
@@ -162,6 +174,16 @@ class SettingsRepository @Inject constructor(
         _weatherEnabled.value = enabled
     }
 
+    fun setTempUnit(unit: TempUnit) {
+        prefs.edit { putString(KEY_TEMP_UNIT, unit.storageValue) }
+        _tempUnit.value = unit
+    }
+
+    fun setWindUnit(unit: WindUnit) {
+        prefs.edit { putString(KEY_WIND_UNIT, unit.storageValue) }
+        _windUnit.value = unit
+    }
+
     fun setCalendarEnabled(enabled: Boolean) {
         prefs.edit { putBoolean("calendar_enabled", enabled) }
         _calendarEnabled.value = enabled
@@ -188,5 +210,7 @@ class SettingsRepository @Inject constructor(
         const val KEY_OPENROUTER_API_KEY = "openrouter_api_key"
         const val KEY_OPENROUTER_MODEL = "openrouter_model"
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        const val KEY_TEMP_UNIT = "temp_unit"
+        const val KEY_WIND_UNIT = "wind_unit"
     }
 }

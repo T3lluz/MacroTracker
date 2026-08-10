@@ -1,0 +1,478 @@
+package com.macrotracker.ui.screens.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.macrotracker.data.remote.AiApiClient
+import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.OpenRouterModels
+import com.macrotracker.ui.components.ButtonVariant
+import com.macrotracker.ui.components.MacroButton
+import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.Primary
+import com.macrotracker.ui.theme.Success
+import com.macrotracker.ui.theme.TextPrimary
+import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.ui.viewmodel.SettingsViewModel
+
+@Composable
+fun AiSettingsScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val savedKey by viewModel.geminiApiKey.collectAsState()
+    val savedOpenAiKey by viewModel.openAiApiKey.collectAsState()
+    val savedOpenRouterKey by viewModel.openRouterApiKey.collectAsState()
+    val openRouterModelId by viewModel.openRouterModelId.collectAsState()
+    val aiProvider by viewModel.aiProvider.collectAsState()
+
+    val activeSavedKey = when (aiProvider) {
+        AiProvider.GEMINI -> savedKey
+        AiProvider.OPENAI -> savedOpenAiKey
+        AiProvider.OPENROUTER -> savedOpenRouterKey
+    }
+    var draftKey by remember(aiProvider, activeSavedKey) { mutableStateOf(activeSavedKey) }
+    var keyVisible by remember { mutableStateOf(false) }
+    var keySaved by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+
+    val isDirty = draftKey.trim() != activeSavedKey
+    val hasKey = activeSavedKey.isNotBlank()
+    val keyFormatOk = AiApiClient.looksLikeValidKey(aiProvider, draftKey)
+    val keyFeedback: String? = when {
+        draftKey.isNotBlank() && !keyFormatOk -> when (aiProvider) {
+            AiProvider.GEMINI -> "Doesn't look like a Gemini key (should start with AIza…)"
+            AiProvider.OPENAI -> "Doesn't look like an OpenAI key (should start with sk-…)"
+            AiProvider.OPENROUTER -> "Doesn't look like an OpenRouter key (should start with sk-or-…)"
+        }
+        else -> null
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 120.dp),
+    ) {
+        SettingsSubScreenHeader(
+            title = "AI",
+            subtitle = "Provider, API keys, and models",
+            onNavigateBack = onNavigateBack,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MacroCard(delayMs = 50) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Key,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = "  Provider",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                )
+                if (hasKey) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = "Key saved",
+                        tint = Success,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Choose Gemini, OpenAI, or OpenRouter for food estimates, label scanning, and weather tips.",
+                fontSize = 13.sp,
+                color = TextSecondary,
+                lineHeight = 18.sp,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            AiProviderToggle(
+                selected = aiProvider,
+                onSelect = { provider ->
+                    haptics.tick()
+                    viewModel.setAiProvider(provider)
+                    keySaved = false
+                },
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = "${aiProvider.displayName} API Key",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = AiApiClient.keyHint(aiProvider),
+                fontSize = 12.sp,
+                color = TextSecondary,
+                lineHeight = 16.sp,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = draftKey,
+                onValueChange = {
+                    draftKey = it
+                    keySaved = false
+                },
+                placeholder = {
+                    Text(
+                        AiApiClient.keyPlaceholder(aiProvider),
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = {
+                        haptics.tick()
+                        keyVisible = !keyVisible
+                    }) {
+                        Icon(
+                            imageVector = if (keyVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = if (keyVisible) "Hide key" else "Show key",
+                            tint = TextSecondary,
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Background,
+                    unfocusedContainerColor = Background,
+                    focusedBorderColor = if (!keyFormatOk) Error else Primary,
+                    unfocusedBorderColor = if (!keyFormatOk) Error else Border,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    cursorColor = Primary,
+                ),
+            )
+
+            if (keyFeedback != null) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = keyFeedback,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                MacroButton(
+                    text = if (keySaved) "Saved ✓" else "Save Key",
+                    onClick = {
+                        haptics.confirm()
+                        viewModel.saveApiKey(aiProvider, draftKey)
+                        keySaved = true
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = isDirty || !hasKey,
+                )
+                if (hasKey) {
+                    MacroButton(
+                        text = "Clear",
+                        onClick = {
+                            haptics.reject()
+                            draftKey = ""
+                            viewModel.saveApiKey(aiProvider, "")
+                            keySaved = false
+                        },
+                        modifier = Modifier.weight(1f),
+                        variant = ButtonVariant.SECONDARY,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        MacroCard(delayMs = 100) {
+            Text(
+                text = if (aiProvider == AiProvider.OPENROUTER) "OpenRouter Model" else "AI Model",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (aiProvider == AiProvider.OPENROUTER) {
+                Text(
+                    text = "Pick a cheap vision-capable model. Prices are OpenRouter list rates (USD per 1M tokens) and may change. DailyDash calls are short, so even paid models stay fractions of a cent.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OpenRouterModelSelector(
+                    selectedId = openRouterModelId,
+                    onSelect = { modelId ->
+                        haptics.tick()
+                        viewModel.setOpenRouterModelId(modelId)
+                    },
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Background, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text(
+                            text = AiApiClient.modelLabel(aiProvider),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = when (aiProvider) {
+                                AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
+                                AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
+                                AiProvider.OPENROUTER -> ""
+                            },
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                        )
+                    }
+                    Text(
+                        text = if (hasKey) "Active" else "No Key",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (hasKey) Success else Error,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiProviderToggle(
+    selected: AiProvider,
+    onSelect: (AiProvider) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Background, RoundedCornerShape(12.dp))
+            .border(1.dp, Border.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AiProvider.entries.forEach { provider ->
+            val isSelected = provider == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (isSelected) Primary else Color.Transparent)
+                    .clickable { onSelect(provider) }
+                    .padding(vertical = 10.dp, horizontal = 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = provider.displayName,
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) Color.White else TextSecondary,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OpenRouterModelSelector(
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = remember(selectedId) {
+        OpenRouterModels.options.firstOrNull { it.id == selectedId }
+            ?: OpenRouterModels.options.first()
+    }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = selected.displayName,
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+            label = { Text("Model") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            supportingText = {
+                Text(
+                    buildString {
+                        append(selected.priceLabel)
+                        append(" · ")
+                        append(selected.approxRequestCostLabel)
+                        if (selected.supportsVision) append(" · Vision")
+                        if (selected.recommended) append(" · Best value")
+                    },
+                )
+            },
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Background,
+                unfocusedContainerColor = Background,
+                focusedBorderColor = Primary,
+                unfocusedBorderColor = Border,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedLabelColor = Primary,
+                unfocusedLabelColor = TextSecondary,
+                focusedSupportingTextColor = TextSecondary,
+                unfocusedSupportingTextColor = TextSecondary,
+                cursorColor = Primary,
+            ),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            OpenRouterModels.options.forEach { model ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = model.displayName,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                )
+                                if (model.recommended) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Best value",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Primary,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${model.priceLabel} · ${model.approxRequestCostLabel}",
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                            )
+                            Text(
+                                text = model.blurb,
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                lineHeight = 14.sp,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelect(model.id)
+                        expanded = false
+                    },
+                    trailingIcon = if (model.id == selectedId) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = Primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+}

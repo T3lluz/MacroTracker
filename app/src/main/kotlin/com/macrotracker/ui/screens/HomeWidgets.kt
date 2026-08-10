@@ -124,16 +124,18 @@ private fun HomeWeatherWidget(
     hasLocationPermission: () -> Boolean,
 ) {
     val weatherState by viewModel.weatherState.collectAsState()
+    val tempUnit by viewModel.tempUnit.collectAsState()
+    val windUnit by viewModel.windUnit.collectAsState()
     val hasPermission = rememberUpdatedState(hasLocationPermission)
     val onRetry = remember(viewModel) {
         { viewModel.loadWeather(hasPermission.value(), forceRefresh = true) }
     }
-    val onExpand = remember(viewModel) { { viewModel.loadWeatherAiSummary() } }
     WeatherCard(
         state = weatherState,
+        tempUnit = tempUnit,
+        windUnit = windUnit,
         onRequestPermission = onRequestPermission,
         onRetry = onRetry,
-        onExpand = onExpand,
         onRequestPreciseLocation = onRequestPermission,
     )
 }

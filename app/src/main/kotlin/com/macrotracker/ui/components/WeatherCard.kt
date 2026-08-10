@@ -7,9 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,9 +18,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Checkroom
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.LocationOn
@@ -49,10 +52,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.R
+import com.macrotracker.data.remote.ClothingAdvice
 import com.macrotracker.data.remote.DailyForecast
 import com.macrotracker.data.remote.DayPeriodForecast
 import com.macrotracker.data.remote.HourlyForecast
+import com.macrotracker.data.remote.TempUnit
 import com.macrotracker.data.remote.WeatherInfo
+import com.macrotracker.data.remote.WeatherUnits
+import com.macrotracker.data.remote.WindUnit
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
@@ -266,7 +273,8 @@ fun WeatherCard(
     state: WeatherUiState,
     onRequestPermission: () -> Unit,
     onRetry: () -> Unit,
-    onExpand: () -> Unit = {},
+    tempUnit: TempUnit = TempUnit.CELSIUS,
+    windUnit: WindUnit = WindUnit.MS,
     onRequestPreciseLocation: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -373,12 +381,7 @@ fun WeatherCard(
                                         onClick = {
                                             val wasExpanded = expanded
                                             expanded = !expanded
-                                            if (!wasExpanded) {
-                                                haptics.toggleOn()
-                                                onExpand()
-                                            } else {
-                                                haptics.toggleOff()
-                                            }
+                                            if (!wasExpanded) haptics.toggleOn() else haptics.toggleOff()
                                         },
                                         accentColor = Color.White,
                                     )
@@ -423,11 +426,16 @@ fun WeatherCard(
                                 )
                                 Spacer(Modifier.width(16.dp))
                                 Column {
-                                    Text("${weather.temperature.toInt()}°C", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text(
+                                        WeatherUnits.formatTemp(weather.temperature, tempUnit),
+                                        fontSize = 36.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    )
                                     Text(weather.description, fontSize = 15.sp, color = Color.White.copy(alpha = 0.85f))
                                     weather.feelsLike?.let { feels ->
                                         Text(
-                                            "Feels like ${feels.toInt()}°",
+                                            "Feels like ${WeatherUnits.formatTempValue(feels, tempUnit)}",
                                             fontSize = 12.sp,
                                             color = Color.White.copy(alpha = 0.65f),
                                             modifier = Modifier.padding(top = 2.dp),
@@ -437,7 +445,7 @@ fun WeatherCard(
                                 Spacer(modifier = Modifier.weight(1f))
                                 WeatherMetricChip(
                                     iconRes = R.drawable.ic_weather_wind,
-                                    label = "${weather.windSpeed.toInt()} m/s",
+                                    label = WeatherUnits.formatWind(weather.windSpeed, windUnit),
                                 )
                             }
 
@@ -446,13 +454,15 @@ fun WeatherCard(
                                     successState = successState,
                                     weather = weather,
                                     accent = accent,
+                                    tempUnit = tempUnit,
+                                    windUnit = windUnit,
                                     onCollapse = { expanded = false; haptics.toggleOff() },
                                 )
                             }
                             if (!expanded) {
                                 WidgetExpandFooter(
                                     expanded = false,
-                                    onToggle = { expanded = true; onExpand() },
+                                    onToggle = { expanded = true; haptics.toggleOn() },
                                     accentColor = Color.White,
                                     expandLabel = "Forecast",
                                 )
@@ -595,6 +605,8 @@ private fun WeatherExpandedForecast(
     successState: WeatherUiState.Success,
     weather: WeatherInfo,
     accent: Color,
+    tempUnit: TempUnit,
+    windUnit: WindUnit,
     onCollapse: () -> Unit,
 ) {
     val hourlyScroll = rememberScrollState()
@@ -602,87 +614,13 @@ private fun WeatherExpandedForecast(
     val haptics = rememberHaptics()
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        val showAi = successState.aiSummaryLoading || successState.aiSummary != null
-        if (showAi) {
+        successState.clothingAdvice?.let { advice ->
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                    .padding(10.dp),
-            ) {
-                Icon(
-                    Icons.Outlined.AutoAwesome,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                if (successState.aiSummaryLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        color = accent,
-                        strokeWidth = 2.dp,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "Generating summary…",
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.6f),
-                    )
-                } else if (successState.aiSummary != null) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = successState.aiSummary,
-                            fontSize = 13.sp,
-                            color = Color.White.copy(alpha = 0.85f),
-                            lineHeight = 19.sp,
-                        )
-                        if (successState.aiSummaryUpdatedAt != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            LastUpdatedText(
-                                lastUpdatedAt = successState.aiSummaryUpdatedAt,
-                                color = Color.White,
-                                modifier = Modifier.align(Alignment.End),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!successState.aiSummaryLoading && !successState.aiClothingRecommendation.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                verticalAlignment = Alignment.Top,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-                    .padding(10.dp),
-            ) {
-                Text("👔", fontSize = 14.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "What to wear",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = accent,
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = successState.aiClothingRecommendation,
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.85f),
-                        lineHeight = 19.sp,
-                    )
-                }
-            }
+            WhatToWearCard(advice = advice, accent = accent)
         }
 
         Spacer(modifier = Modifier.height(14.dp))
-        WeatherDetailsGrid(weather = weather)
+        WeatherDetailsGrid(weather = weather, windUnit = windUnit)
 
         if (weather.hourlyForecasts.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -702,7 +640,7 @@ private fun WeatherExpandedForecast(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 weather.hourlyForecasts.take(24).forEach { hourly ->
-                    HourlyForecastTile(hourly = hourly)
+                    HourlyForecastTile(hourly = hourly, tempUnit = tempUnit, windUnit = windUnit)
                 }
             }
         }
@@ -716,17 +654,11 @@ private fun WeatherExpandedForecast(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
-            Text(
-                "Tap a day for Morning · Afternoon · Evening details",
-                fontSize = 11.sp,
-                color = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.padding(bottom = 10.dp),
             )
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 weather.dailyForecasts.forEach { daily ->
                     val key = daily.dateFull
@@ -734,6 +666,8 @@ private fun WeatherExpandedForecast(
                         daily = daily,
                         expanded = expandedDayKey == key,
                         accent = accent,
+                        tempUnit = tempUnit,
+                        windUnit = windUnit,
                         onToggle = {
                             val opening = expandedDayKey != key
                             expandedDayKey = if (opening) key else null
@@ -754,16 +688,105 @@ private fun WeatherExpandedForecast(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WhatToWearCard(
+    advice: ClothingAdvice,
+    accent: Color,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(accent.copy(alpha = 0.22f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Checkroom,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "What to wear",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                )
+                Text(
+                    text = advice.headline,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        if (advice.items.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                advice.items.forEach { item ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(item.icon.iconRes),
+                            contentDescription = item.label,
+                            tint = Color.White.copy(alpha = 0.95f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = item.label,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = advice.detail,
+            fontSize = 13.sp,
+            color = Color.White.copy(alpha = 0.78f),
+            lineHeight = 18.sp,
+        )
+    }
+}
+
 @Composable
 private fun WeatherDetailsGrid(
     weather: WeatherInfo,
+    windUnit: WindUnit,
 ) {
     val cells = buildList {
         add(
             DetailCell(
                 iconRes = R.drawable.ic_weather_wind,
                 label = "Wind",
-                value = "${weather.windSpeed.toInt()} m/s",
+                value = WeatherUnits.formatWind(weather.windSpeed, windUnit),
                 tint = Color.White,
             ),
         )
@@ -772,7 +795,7 @@ private fun WeatherDetailsGrid(
                 DetailCell(
                     iconRes = R.drawable.ic_weather_wind,
                     label = "Gusts",
-                    value = "${it.toInt()} m/s",
+                    value = WeatherUnits.formatWind(it, windUnit),
                     tint = Color.White.copy(alpha = 0.85f),
                 ),
             )
@@ -908,6 +931,8 @@ private fun DailyForecastRow(
     daily: DailyForecast,
     expanded: Boolean,
     accent: Color,
+    tempUnit: TempUnit,
+    windUnit: WindUnit,
     onToggle: () -> Unit,
 ) {
     val chevronRotation by animateFloatAsState(
@@ -915,96 +940,74 @@ private fun DailyForecastRow(
         animationSpec = MacroMotion.entranceSpring(),
         label = "dailyChevron",
     )
+    val dayMeta = buildList {
+        add(daily.description)
+        daily.windSpeed?.let { add(WeatherUnits.formatWind(it, windUnit)) }
+        daily.precipProbability?.takeIf { it > 0 }?.let { add("$it% rain") }
+    }.joinToString(" · ")
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = if (expanded) 0.10f else 0.06f))
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = if (expanded) 0.11f else 0.07f))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(12.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                daily.date,
-                fontSize = 14.sp,
-                fontWeight = if (daily.isToday) FontWeight.Bold else FontWeight.Medium,
-                color = if (daily.isToday) accent else Color.White,
-                modifier = Modifier.width(52.dp),
+            Icon(
+                painter = painterResource(daily.iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = Color.Unspecified,
             )
-
-            if (daily.periods.isNotEmpty()) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    daily.periods.forEach { period ->
-                        PeriodGlanceChip(period = period)
-                    }
-                }
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        painter = painterResource(daily.iconRes),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = Color.Unspecified,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    daily.date,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (daily.isToday) accent else Color.White,
+                )
+                if (dayMeta.isNotBlank()) {
                     Text(
-                        daily.description,
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.7f),
+                        dayMeta,
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.55f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
             }
-
             Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        "${daily.minTemp.toInt()}°",
+                        WeatherUnits.formatTempValue(daily.minTemp, tempUnit),
                         fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.5f),
+                        color = Color.White.copy(alpha = 0.45f),
                     )
-                    Text(" / ", fontSize = 13.sp, color = Color.White.copy(alpha = 0.3f))
                     Text(
-                        "${daily.maxTemp.toInt()}°",
-                        fontSize = 14.sp,
+                        "  ${WeatherUnits.formatTempValue(daily.maxTemp, tempUnit)}",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                     )
                 }
-                daily.precipProbability?.takeIf { it > 0 }?.let { pop ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                daily.precipitation?.takeIf { it >= 0.1 }?.let { mm ->
+                    Text(
+                        WeatherUnits.formatPrecipMm(mm),
+                        fontSize = 11.sp,
+                        color = Color(0xFF90CAF9),
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(top = 2.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_weather_precip),
-                            contentDescription = null,
-                            tint = Color(0xFF90CAF9),
-                            modifier = Modifier.size(11.dp),
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            "$pop%",
-                            fontSize = 11.sp,
-                            color = Color(0xFF90CAF9),
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
+                    )
                 }
             }
-
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Icon(
                 imageVector = Icons.Outlined.KeyboardArrowDown,
                 contentDescription = if (expanded) "Collapse day" else "Expand day",
@@ -1013,6 +1016,11 @@ private fun DailyForecastRow(
                     .size(20.dp)
                     .rotate(chevronRotation),
             )
+        }
+
+        if (daily.periods.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            DayPeriodGlanceStrip(periods = daily.periods, tempUnit = tempUnit, windUnit = windUnit)
         }
 
         AnimatedVisibility(
@@ -1026,9 +1034,15 @@ private fun DailyForecastRow(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 if (daily.periods.isNotEmpty()) {
-                    daily.periods.forEachIndexed { index, period ->
-                        if (index > 0) Spacer(modifier = Modifier.height(8.dp))
-                        DayPeriodDetailRow(period = period, accent = accent)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        daily.periods.forEach { period ->
+                            DayPeriodDetailRow(
+                                period = period,
+                                accent = accent,
+                                tempUnit = tempUnit,
+                                windUnit = windUnit,
+                            )
+                        }
                     }
                 } else {
                     Text(
@@ -1038,33 +1052,70 @@ private fun DailyForecastRow(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                val dayStats = buildList {
                     daily.windSpeed?.let {
-                        DayStatPill(
-                            iconRes = R.drawable.ic_weather_wind,
-                            text = "${it.toInt()} m/s",
-                            modifier = Modifier.weight(1f),
+                        add(
+                            DayStat(
+                                iconRes = R.drawable.ic_weather_wind,
+                                label = "Wind",
+                                value = WeatherUnits.formatWind(it, windUnit),
+                            ),
                         )
                     }
                     daily.humidity?.let {
-                        DayStatPill(
-                            iconRes = R.drawable.ic_humidity,
-                            text = "${it.toInt()}%",
-                            tint = Color(0xFF4FC3F7),
-                            modifier = Modifier.weight(1f),
+                        add(
+                            DayStat(
+                                iconRes = R.drawable.ic_humidity,
+                                label = "Humidity",
+                                value = "${it.toInt()}%",
+                                tint = Color(0xFF4FC3F7),
+                            ),
                         )
                     }
-                    daily.precipitation?.let {
-                        DayStatPill(
-                            iconRes = R.drawable.ic_weather_precip,
-                            text = String.format(Locale.US, "%.1f mm", it),
-                            tint = Color(0xFF90CAF9),
-                            modifier = Modifier.weight(1f),
+                    val pop = daily.precipProbability?.takeIf { it > 0 }
+                    val mm = daily.precipitation?.takeIf { it >= 0.1 }
+                    when {
+                        pop != null && mm != null -> add(
+                            DayStat(
+                                iconRes = R.drawable.ic_weather_precip,
+                                label = "Rain",
+                                value = "$pop% · ${String.format(Locale.US, "%.1f", mm)}",
+                                tint = Color(0xFF90CAF9),
+                            ),
                         )
+                        pop != null -> add(
+                            DayStat(
+                                iconRes = R.drawable.ic_weather_precip,
+                                label = "Rain",
+                                value = "$pop%",
+                                tint = Color(0xFF90CAF9),
+                            ),
+                        )
+                        mm != null -> add(
+                            DayStat(
+                                iconRes = R.drawable.ic_weather_precip,
+                                label = "Precip",
+                                value = String.format(Locale.US, "%.1f mm", mm),
+                                tint = Color(0xFF90CAF9),
+                            ),
+                        )
+                    }
+                }
+                if (dayStats.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        dayStats.forEach { stat ->
+                            DayStatPill(
+                                iconRes = stat.iconRes,
+                                label = stat.label,
+                                value = stat.value,
+                                tint = stat.tint,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                 }
             }
@@ -1072,32 +1123,87 @@ private fun DailyForecastRow(
     }
 }
 
+private data class DayStat(
+    val iconRes: Int,
+    val label: String,
+    val value: String,
+    val tint: Color = Color.White.copy(alpha = 0.85f),
+)
+
 @Composable
-private fun PeriodGlanceChip(period: DayPeriodForecast) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+private fun DayPeriodGlanceStrip(
+    periods: List<DayPeriodForecast>,
+    tempUnit: TempUnit,
+    windUnit: WindUnit,
+) {
+    Row(
         modifier = Modifier
-            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .padding(vertical = 8.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            period.shortLabel,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White.copy(alpha = 0.5f),
-        )
-        Icon(
-            painter = painterResource(period.iconRes),
-            contentDescription = period.description,
-            modifier = Modifier.size(22.dp),
-            tint = Color.Unspecified,
-        )
-        Text(
-            "${period.temp.toInt()}°",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-        )
+        periods.forEachIndexed { index, period ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .padding(vertical = 4.dp)
+                        .width(1.dp)
+                        .height(52.dp)
+                        .background(Color.White.copy(alpha = 0.12f)),
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    period.shortLabel,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.45f),
+                    letterSpacing = 0.3.sp,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Icon(
+                    painter = painterResource(period.iconRes),
+                    contentDescription = period.description,
+                    modifier = Modifier.size(26.dp),
+                    tint = Color.Unspecified,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    WeatherUnits.formatTempValue(period.temp, tempUnit),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                val pop = period.precipProbability
+                when {
+                    pop != null && pop > 0 -> Text(
+                        "$pop%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF90CAF9),
+                    )
+                    period.windSpeed != null -> Text(
+                        WeatherUnits.formatWind(period.windSpeed, windUnit),
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.5f),
+                        maxLines = 1,
+                    )
+                    else -> Text(
+                        "—",
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.3f),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1105,104 +1211,121 @@ private fun PeriodGlanceChip(period: DayPeriodForecast) {
 private fun DayPeriodDetailRow(
     period: DayPeriodForecast,
     accent: Color,
+    tempUnit: TempUnit,
+    windUnit: WindUnit,
 ) {
-    Row(
+    val pop = period.precipProbability
+    val precipMm = period.precipitation?.takeIf { it >= 0.1 }
+    val range = period.minTemp?.let { low ->
+        period.maxTemp?.takeIf {
+            WeatherUnits.celsiusToDisplay(low, tempUnit).toInt() !=
+                WeatherUnits.celsiusToDisplay(it, tempUnit).toInt()
+        }?.let { high -> low to high }
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Column(modifier = Modifier.width(72.dp)) {
-            Text(
-                period.label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = accent,
-            )
-            Text(
-                period.description,
-                fontSize = 11.sp,
-                color = Color.White.copy(alpha = 0.55f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Icon(
-            painter = painterResource(period.iconRes),
-            contentDescription = null,
-            modifier = Modifier.size(30.dp),
-            tint = Color.Unspecified,
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            val tempLabel = when {
-                period.minTemp != null && period.maxTemp != null ->
-                    "${period.minTemp.toInt()}° / ${period.maxTemp.toInt()}°"
-                else -> "${period.temp.toInt()}°"
-            }
-            Text(
-                tempLabel,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-            )
-            period.windSpeed?.let {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Wind ${it.toInt()} m/s",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.55f),
+                    period.label,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accent,
+                )
+                Text(
+                    period.description,
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            val pop = period.precipProbability
-            if (pop != null && pop > 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_weather_precip),
-                        contentDescription = null,
-                        tint = Color(0xFF90CAF9),
-                        modifier = Modifier.size(12.dp),
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
+            Icon(
+                painter = painterResource(period.iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(34.dp),
+                tint = Color.Unspecified,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            if (range != null) {
+                val (low, high) = range
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.widthIn(min = 56.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
                     Text(
-                        "$pop%",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF90CAF9),
+                        WeatherUnits.formatTempValue(low, tempUnit),
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.45f),
+                    )
+                    Text(
+                        "  ${WeatherUnits.formatTempValue(high, tempUnit)}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
                     )
                 }
             } else {
                 Text(
-                    "Dry",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.4f),
+                    WeatherUnits.formatTempValue(period.temp, tempUnit),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.widthIn(min = 56.dp),
                 )
             }
-            period.precipitation?.takeIf { it >= 0.1 }?.let {
-                Text(
-                    String.format(Locale.US, "%.1f mm", it),
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.55f),
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            period.windSpeed?.let {
+                DayPeriodMetric(
+                    iconRes = R.drawable.ic_weather_wind,
+                    text = WeatherUnits.formatWind(it, windUnit),
+                    modifier = Modifier.weight(1f),
                 )
             }
+            DayPeriodMetric(
+                iconRes = R.drawable.ic_weather_precip,
+                text = when {
+                    pop != null && pop > 0 && precipMm != null ->
+                        "$pop% · ${String.format(Locale.US, "%.1f mm", precipMm)}"
+                    pop != null && pop > 0 -> "$pop%"
+                    precipMm != null -> String.format(Locale.US, "%.1f mm", precipMm)
+                    else -> "Dry"
+                },
+                tint = if ((pop != null && pop > 0) || precipMm != null) {
+                    Color(0xFF90CAF9)
+                } else {
+                    Color.White.copy(alpha = 0.55f)
+                },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
 
 @Composable
-private fun DayStatPill(
+private fun DayPeriodMetric(
     iconRes: Int,
     text: String,
     modifier: Modifier = Modifier,
-    tint: Color = Color.White.copy(alpha = 0.85f),
+    tint: Color = Color.White.copy(alpha = 0.7f),
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
         modifier = modifier
-            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         Icon(
@@ -1211,12 +1334,55 @@ private fun DayStatPill(
             tint = tint,
             modifier = Modifier.size(12.dp),
         )
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(5.dp))
         Text(
             text,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.White.copy(alpha = 0.85f),
+            color = Color.White.copy(alpha = 0.8f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun DayStatPill(
+    iconRes: Int,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White.copy(alpha = 0.85f),
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                label.uppercase(Locale.US),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.45f),
+                letterSpacing = 0.3.sp,
+                maxLines = 1,
+            )
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            value,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White.copy(alpha = 0.9f),
             maxLines = 1,
         )
     }
@@ -1247,7 +1413,11 @@ private fun WeatherMetricChip(
 }
 
 @Composable
-private fun HourlyForecastTile(hourly: HourlyForecast) {
+private fun HourlyForecastTile(
+    hourly: HourlyForecast,
+    tempUnit: TempUnit,
+    windUnit: WindUnit,
+) {
     val precip = hourly.precipitation
     val pop = hourly.precipProbability
     val showPrecipMm = precip != null && precip >= 0.1
@@ -1269,7 +1439,7 @@ private fun HourlyForecastTile(hourly: HourlyForecast) {
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "${hourly.temperature.toInt()}°",
+            WeatherUnits.formatTempValue(hourly.temperature, tempUnit),
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             color = Color.White,
@@ -1284,7 +1454,7 @@ private fun HourlyForecastTile(hourly: HourlyForecast) {
             )
             Spacer(modifier = Modifier.width(2.dp))
             Text(
-                "${hourly.windSpeed.toInt()}",
+                WeatherUnits.formatWindValue(hourly.windSpeed, windUnit),
                 fontSize = 10.sp,
                 color = Color.White.copy(alpha = 0.55f),
             )

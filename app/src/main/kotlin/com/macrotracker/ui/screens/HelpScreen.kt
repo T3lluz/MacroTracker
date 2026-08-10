@@ -77,7 +77,7 @@ private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.Flag,
         title = "Set Daily Goals",
-        body = "Go to Settings → Daily Goals. Enter your calorie and protein targets and tap \"Save Goals\". Progress bars turn red when you exceed a goal.",
+        body = "Go to Settings → Nutrition. Enter your calorie and protein targets and tap \"Save Goals\". Progress bars turn red when you exceed a goal.",
     ),
     HelpStep(
         icon = Icons.Outlined.Delete,

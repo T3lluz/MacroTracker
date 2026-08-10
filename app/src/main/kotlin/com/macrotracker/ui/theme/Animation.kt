@@ -3,6 +3,7 @@ package com.macrotracker.ui.theme
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
@@ -110,6 +111,23 @@ object MacroMotion {
             .togetherWith(
                 fadeOut(fadeTween(120)) + slideOutHorizontally(slideTween(120)) { -dir * it / 10 },
             )
+    }
+
+    /**
+     * In-card tab pager (F1 hub). Directional slide + fade.
+     * Pair with SizeTransform in the call site if height should morph.
+     * Content must use the AnimatedContent lambda target — never the outer
+     * selected-tab state — or enter/exit desync.
+     */
+    fun inCardTabSwitch(toRight: Boolean): ContentTransform {
+        val dir = if (toRight) 1 else -1
+        return ContentTransform(
+            targetContentEnter = fadeIn(fadeTween(200)) + slideInHorizontally(slideTween(260)) { dir * it / 5 },
+            initialContentExit = fadeOut(fadeTween(140)) + slideOutHorizontally(slideTween(200)) { -dir * it / 5 },
+            sizeTransform = SizeTransform(clip = false) { _, _ ->
+                tween(260, easing = FastOutSlowInEasing)
+            },
+        )
     }
 
     /** Number ticker for live totals (calories / protein on scan result). */

@@ -20,6 +20,10 @@ import com.macrotracker.ui.screens.WidgetsScreen
 import com.macrotracker.ui.screens.onboarding.PermissionsScreen
 import com.macrotracker.ui.screens.onboarding.TutorialScreen
 import com.macrotracker.ui.screens.onboarding.WelcomeScreen
+import com.macrotracker.ui.screens.settings.AboutSettingsScreen
+import com.macrotracker.ui.screens.settings.AiSettingsScreen
+import com.macrotracker.ui.screens.settings.ConnectionsSettingsScreen
+import com.macrotracker.ui.screens.settings.NutritionSettingsScreen
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.MacroMotion
 
@@ -37,7 +41,16 @@ fun DailyDashNavHost(
         Screen.AI.route,
         Screen.Settings.route,
     )
-    val subScreenRoutes = setOf("stats", "help", "widgets", "camera_scan")
+    val subScreenRoutes = setOf(
+        "stats",
+        "help",
+        "widgets",
+        "camera_scan",
+        SettingsRoutes.CONNECTIONS,
+        SettingsRoutes.AI,
+        SettingsRoutes.NUTRITION,
+        SettingsRoutes.ABOUT,
+    )
 
     fun getTabDirection(initial: String?, target: String?): Boolean {
         val initialIdx = tabOrder.indexOf(initial).takeIf { it != -1 } ?: 0
@@ -148,6 +161,18 @@ fun DailyDashNavHost(
         }
 
         composable(Screen.Settings.route) {
+            val onNavigateToConnections = remember(navController) {
+                { navController.navigate(SettingsRoutes.CONNECTIONS) }
+            }
+            val onNavigateToAi = remember(navController) {
+                { navController.navigate(SettingsRoutes.AI) }
+            }
+            val onNavigateToNutrition = remember(navController) {
+                { navController.navigate(SettingsRoutes.NUTRITION) }
+            }
+            val onNavigateToAbout = remember(navController) {
+                { navController.navigate(SettingsRoutes.ABOUT) }
+            }
             val onNavigateToHelp = remember(navController) { { navController.navigate("help") } }
             val onNavigateToStats = remember(navController) { { navController.navigate("stats") } }
             val onNavigateToWidgets = remember(navController) { { navController.navigate("widgets") } }
@@ -159,6 +184,10 @@ fun DailyDashNavHost(
                 }
             }
             SettingsScreen(
+                onNavigateToConnections = onNavigateToConnections,
+                onNavigateToAi = onNavigateToAi,
+                onNavigateToNutrition = onNavigateToNutrition,
+                onNavigateToAbout = onNavigateToAbout,
                 onNavigateToHelp = onNavigateToHelp,
                 onNavigateToStats = onNavigateToStats,
                 onNavigateToWidgets = onNavigateToWidgets,
@@ -167,6 +196,50 @@ fun DailyDashNavHost(
         }
 
         // Sub-screens
+        composable(
+            route = SettingsRoutes.CONNECTIONS,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            ConnectionsSettingsScreen(onNavigateBack = onNavigateBack)
+        }
+
+        composable(
+            route = SettingsRoutes.AI,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            AiSettingsScreen(onNavigateBack = onNavigateBack)
+        }
+
+        composable(
+            route = SettingsRoutes.NUTRITION,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            NutritionSettingsScreen(onNavigateBack = onNavigateBack)
+        }
+
+        composable(
+            route = SettingsRoutes.ABOUT,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            AboutSettingsScreen(onNavigateBack = onNavigateBack)
+        }
+
         composable(
             route = "stats",
             enterTransition = { MacroMotion.subScreenEnter },

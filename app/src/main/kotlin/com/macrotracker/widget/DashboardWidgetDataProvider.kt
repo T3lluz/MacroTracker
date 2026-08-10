@@ -54,8 +54,6 @@ object DashboardWidgetDataProvider {
     private const val TAG = "DashWidgetData"
     private const val WEATHER_PREFS = "daily_dash_weather_cache"
     private const val WIDGET_PREFS = "daily_dash_widget"
-    private const val CALENDAR_PREFS = "calendar_settings"
-    private const val KEY_SELECTED_CALENDARS = "selected_calendar_ids"
     private const val AI_INSIGHT_KEY = "ai_insight"
     private const val AI_INSIGHT_TS_KEY = "ai_insight_ts"
     private const val AI_NUTRITION_KEY = "ai_insight_nutrition"
@@ -558,11 +556,6 @@ object DashboardWidgetDataProvider {
                 return DashboardWidgetData()
             }
 
-            val calendarPrefs = context.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-            val selectedIds = calendarPrefs.getStringSet(KEY_SELECTED_CALENDARS, null)
-                ?.mapNotNull { it.toLongOrNull() }
-                ?.toSet()
-
             val zone = ZoneId.systemDefault()
             val now = Instant.now()
             val startMillis = now.toEpochMilli()
@@ -581,15 +574,10 @@ object DashboardWidgetDataProvider {
             ContentUris.appendId(builder, startMillis)
             ContentUris.appendId(builder, endMillis)
 
-            var selection: String? = null
-            if (selectedIds != null && selectedIds.isNotEmpty()) {
-                selection = "${CalendarContract.Instances.CALENDAR_ID} IN (${selectedIds.joinToString(",")})"
-            }
-
             val cursor = context.contentResolver.query(
                 builder.build(),
                 projection,
-                selection,
+                null,
                 null,
                 "${CalendarContract.Instances.BEGIN} ASC",
             )

@@ -9,7 +9,6 @@ import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.calendar.CalendarEvent
-import com.macrotracker.data.calendar.CalendarInfo
 import com.macrotracker.data.calendar.CalendarRepository
 import com.macrotracker.data.f1.F1Repository
 import com.macrotracker.data.health.HealthConnectRepository
@@ -18,8 +17,9 @@ import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
 import com.macrotracker.data.local.SettingsRepository
+import com.macrotracker.data.remote.ClothingAdvice
+import com.macrotracker.data.remote.ClothingAdvisor
 import com.macrotracker.data.remote.LocationProvider
-import com.macrotracker.data.remote.WeatherAiRepository
 import com.macrotracker.data.remote.WeatherInfo
 import com.macrotracker.data.remote.WeatherRepository
 import com.macrotracker.widget.WidgetStateProvider
@@ -50,13 +50,10 @@ sealed class WeatherUiState {
     data object Loading : WeatherUiState()
     data class Success(
         val weather: WeatherInfo,
-        val aiSummary: String? = null,
-        val aiClothingRecommendation: String? = null,
-        val aiSummaryLoading: Boolean = false,
+        val clothingAdvice: ClothingAdvice? = null,
         /** True when the location was obtained with coarse (approximate) permission only. */
         val isPrecise: Boolean = true,
         val lastUpdatedAt: Instant? = null,
-        val aiSummaryUpdatedAt: Instant? = null,
     ) : WeatherUiState()
     data object PermissionRequired : WeatherUiState()
     /** User granted only approximate (coarse) location — weather works but precision is limited. */
@@ -75,8 +72,6 @@ sealed class CalendarUiState {
     data class Success(
         val events: List<CalendarEvent>,
         val upcomingEvents: List<CalendarEvent> = emptyList(),
-        val availableCalendars: List<CalendarInfo> = emptyList(),
-        val selectedCalendarIds: Set<Long> = emptySet(),
         val lastUpdatedAt: Instant? = null,
     ) : CalendarUiState()
     data object PermissionRequired : CalendarUiState()
@@ -88,7 +83,6 @@ class HomeViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repository: MacroRepository,
     private val weatherRepository: WeatherRepository,
-    private val weatherAiRepository: WeatherAiRepository,
     private val locationProvider: LocationProvider,
     private val healthConnectRepository: HealthConnectRepository,
     private val calendarRepository: CalendarRepository,
@@ -99,8 +93,6 @@ class HomeViewModel @Inject constructor(
     companion object {
         private const val TAG = "HomeViewModel"
         private const val WEATHER_PREFS = "daily_dash_weather_cache"
-        private const val CALENDAR_PREFS = "calendar_settings"
-        private const val KEY_SELECTED_CALENDARS = "selected_calendar_ids"
     }
 
     private val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -130,7 +122,8 @@ class HomeViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
-    val hasAiApiKey: Boolean get() = weatherAiRepository.hasApiKey
+    val tempUnit = settingsRepository.tempUnit
+    val windUnit = settingsRepository.windUnit
 
     private var f1DataJob: Job? = null
     private var widgetUpdateJob: Job? = null
@@ -194,18 +187,6 @@ class HomeViewModel @Inject constructor(
 
     fun setMasterCalendarEnabled(enabled: Boolean) {
         settingsRepository.setCalendarEnabled(enabled)
-    }
-
-    private fun getSelectedCalendarIds(): Set<Long> {
-        val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-        return prefs.getStringSet(KEY_SELECTED_CALENDARS, null)
-            ?.mapNotNull { it.toLongOrNull() }
-            ?.toSet() ?: emptySet()
-    }
-
-    private fun saveSelectedCalendarIds(ids: Set<Long>) {
-        val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-        prefs.edit { putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet()) }
     }
 
     fun loadData(force: Boolean = false) {
@@ -383,16 +364,8 @@ class HomeViewModel @Inject constructor(
             if (forceRefresh) {
                 calendarRepository.clearCache()
             }
-            val available = calendarRepository.getAvailableCalendars()
-            val selected = getSelectedCalendarIds().let {
-                if (it.isEmpty() && available.isNotEmpty()) {
-                    val all = available.map { cal -> cal.id }.toSet()
-                    saveSelectedCalendarIds(all)
-                    all
-                } else it
-            }
 
-            val allEvents = calendarRepository.readEvents(extraDays = 14, calendarIds = selected)
+            val allEvents = calendarRepository.readEvents(extraDays = 14, calendarIds = null)
             val now = LocalDateTime.now()
             val endOfToday = LocalDate.now().plusDays(1).atStartOfDay()
 
@@ -408,8 +381,6 @@ class HomeViewModel @Inject constructor(
             _calendarState.value = CalendarUiState.Success(
                 events = todayEvents,
                 upcomingEvents = upcoming.take(10),
-                availableCalendars = available,
-                selectedCalendarIds = selected,
                 lastUpdatedAt = Instant.now(),
             )
         } catch (e: Exception) {
@@ -448,7 +419,6 @@ class HomeViewModel @Inject constructor(
             if (forceRefresh) {
                 weatherRepository.clearCache()
                 locationProvider.clearCache()
-                weatherAiRepository.clearCache()
             }
             val location = locationProvider.getLocation(forceRefresh = forceRefresh)
             if (location == null) {
@@ -459,91 +429,24 @@ class HomeViewModel @Inject constructor(
             }
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
             val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
+            val clothingAdvice = ClothingAdvisor.advise(weather)
             val fetchedAt = weatherRepository.lastFetchTimeMs
                 .takeIf { it > 0L }
                 ?.let(Instant::ofEpochMilli)
                 ?: Instant.now()
 
-            val current = _weatherState.value
-            if (current is WeatherUiState.Success) {
-                _weatherState.value = current.copy(
-                    weather = weather,
-                    isPrecise = hasPreciseLocation,
-                    lastUpdatedAt = fetchedAt,
-                    // Drop stale AI when the user forced a weather refresh.
-                    aiSummary = if (forceRefresh) null else current.aiSummary,
-                    aiClothingRecommendation = if (forceRefresh) null else current.aiClothingRecommendation,
-                    aiSummaryUpdatedAt = if (forceRefresh) null else current.aiSummaryUpdatedAt,
-                    aiSummaryLoading = if (forceRefresh) false else current.aiSummaryLoading,
-                )
-            } else {
-                _weatherState.value = WeatherUiState.Success(
-                    weather,
-                    isPrecise = hasPreciseLocation,
-                    lastUpdatedAt = fetchedAt,
-                )
-            }
+            _weatherState.value = WeatherUiState.Success(
+                weather = weather,
+                clothingAdvice = clothingAdvice,
+                isPrecise = hasPreciseLocation,
+                lastUpdatedAt = fetchedAt,
+            )
 
             cacheWeatherForWidget(weather, location.latitude, location.longitude)
         } catch (e: Exception) {
             Log.e(TAG, "Weather error: ${e.message}", e)
             if (_weatherState.value !is WeatherUiState.Success) {
                 _weatherState.value = WeatherUiState.Error(e.message ?: "Unknown error")
-            }
-        }
-    }
-
-    fun loadWeatherAiSummary(force: Boolean = false) {
-        val current = _weatherState.value
-        if (current !is WeatherUiState.Success) return
-        if (!force && (current.aiSummary != null || current.aiSummaryLoading)) return
-        if (!weatherAiRepository.hasApiKey) return
-
-        if (!force) {
-            val cached = weatherAiRepository.getCachedResult(current.weather.symbolCode)
-            if (cached != null) {
-                // Use the real generation timestamp from the repository cache
-                val aiGeneratedAt = weatherAiRepository.aiLastFetchTimeMs
-                    .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
-                _weatherState.value = current.copy(
-                    aiSummary = cached.summary,
-                    aiClothingRecommendation = cached.clothingRecommendation,
-                    aiSummaryLoading = false,
-                    aiSummaryUpdatedAt = aiGeneratedAt,
-                )
-                return
-            }
-        }
-
-        _weatherState.value = current.copy(aiSummaryLoading = true)
-        viewModelScope.launch {
-            try {
-                val result = weatherAiRepository.generateWeatherSummary(
-                    current.weather,
-                    forceRefresh = force,
-                )
-                // Stamp with the repository's cached time — set inside cacheResult() when Gemini responded
-                val aiGeneratedAt = weatherAiRepository.aiLastFetchTimeMs
-                    .takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
-                val latest = _weatherState.value
-                if (latest is WeatherUiState.Success) {
-                    _weatherState.value = latest.copy(
-                        aiSummary = result?.summary ?: "Could not generate summary.",
-                        aiClothingRecommendation = result?.clothingRecommendation ?: "",
-                        aiSummaryLoading = false,
-                        aiSummaryUpdatedAt = aiGeneratedAt,
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "AI weather summary error: ${e.message}", e)
-                val latest = _weatherState.value
-                if (latest is WeatherUiState.Success) {
-                    _weatherState.value = latest.copy(
-                        aiSummary = "Weather summary unavailable.",
-                        aiClothingRecommendation = "",
-                        aiSummaryLoading = false,
-                    )
-                }
             }
         }
     }

@@ -20,3 +20,11 @@ object OnboardingRoutes {
     const val PERMISSIONS = "onboarding_permissions"
     const val TUTORIAL = "onboarding_tutorial"
 }
+
+// Settings category sub-screens
+object SettingsRoutes {
+    const val CONNECTIONS = "settings_connections"
+    const val AI = "settings_ai"
+    const val NUTRITION = "settings_nutrition"
+    const val ABOUT = "settings_about"
+}

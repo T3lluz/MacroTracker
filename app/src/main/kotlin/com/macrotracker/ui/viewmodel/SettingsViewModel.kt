@@ -5,14 +5,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotracker.data.calendar.CalendarInfo
-import com.macrotracker.data.calendar.CalendarRepository
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.local.SettingsRepository
 import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.TempUnit
+import com.macrotracker.data.remote.WindUnit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,20 +23,16 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val healthConnectRepository: HealthConnectRepository,
-    private val calendarRepository: CalendarRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
-
-    companion object {
-        private const val CALENDAR_PREFS = "calendar_settings"
-        private const val KEY_SELECTED_CALENDARS = "selected_calendar_ids"
-    }
 
     val aiProvider: StateFlow<AiProvider> = settings.aiProvider
     val geminiApiKey: StateFlow<String> = settings.geminiApiKey
     val openAiApiKey: StateFlow<String> = settings.openAiApiKey
     val openRouterApiKey: StateFlow<String> = settings.openRouterApiKey
     val openRouterModelId: StateFlow<String> = settings.openRouterModelId
+    val tempUnit: StateFlow<TempUnit> = settings.tempUnit
+    val windUnit: StateFlow<WindUnit> = settings.windUnit
 
     private val _healthConnectConnected = MutableStateFlow(false)
     val healthConnectConnected: StateFlow<Boolean> = _healthConnectConnected
@@ -47,12 +42,6 @@ class SettingsViewModel @Inject constructor(
 
     private val _calendarConnected = MutableStateFlow(false)
     val calendarConnected: StateFlow<Boolean> = _calendarConnected
-
-    private val _availableCalendars = MutableStateFlow<List<CalendarInfo>>(emptyList())
-    val availableCalendars: StateFlow<List<CalendarInfo>> = _availableCalendars
-
-    private val _selectedCalendarIds = MutableStateFlow<Set<Long>>(emptySet())
-    val selectedCalendarIds: StateFlow<Set<Long>> = _selectedCalendarIds
 
     // Master toggles
     val masterHealthConnectEnabled: StateFlow<Boolean> = settings.masterHealthConnectEnabled
@@ -68,22 +57,6 @@ class SettingsViewModel @Inject constructor(
     val distanceEnabled: StateFlow<Boolean> = settings.distanceEnabled
     val floorsClimbedEnabled: StateFlow<Boolean> = settings.floorsClimbedEnabled
     val activeCaloriesEnabled: StateFlow<Boolean> = settings.activeCaloriesEnabled
-
-    init {
-        _selectedCalendarIds.value = getSelectedCalendarIds()
-    }
-
-    private fun getSelectedCalendarIds(): Set<Long> {
-        val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-        return prefs.getStringSet(KEY_SELECTED_CALENDARS, null)
-            ?.mapNotNull { it.toLongOrNull() }
-            ?.toSet() ?: emptySet()
-    }
-
-    private fun saveSelectedCalendarIds(ids: Set<Long>) {
-        val prefs = appContext.getSharedPreferences(CALENDAR_PREFS, Context.MODE_PRIVATE)
-        prefs.edit { putStringSet(KEY_SELECTED_CALENDARS, ids.map { it.toString() }.toSet()) }
-    }
 
     fun setMasterHealthConnectEnabled(enabled: Boolean) {
         settings.setMasterHealthConnectEnabled(enabled)
@@ -105,31 +78,22 @@ class SettingsViewModel @Inject constructor(
         refreshConnectionStatus()
     }
 
+    fun setTempUnit(unit: TempUnit) {
+        settings.setTempUnit(unit)
+    }
+
+    fun setWindUnit(unit: WindUnit) {
+        settings.setWindUnit(unit)
+    }
+
     fun setMasterCalendarEnabled(enabled: Boolean) {
         settings.setCalendarEnabled(enabled)
-        if (!enabled) {
-            // Clear selected calendars
-            _selectedCalendarIds.value = emptySet()
-            saveSelectedCalendarIds(emptySet())
-        }
         refreshConnectionStatus()
     }
 
     fun setMetricEnabled(metric: String, enabled: Boolean) {
         settings.setMetricEnabled(metric, enabled)
         refreshConnectionStatus()
-    }
-
-    fun toggleCalendar(id: Long) {
-        val current = _selectedCalendarIds.value
-        val newSelected = current.toMutableSet()
-        if (newSelected.contains(id)) {
-            newSelected.remove(id)
-        } else {
-            newSelected.add(id)
-        }
-        _selectedCalendarIds.value = newSelected
-        saveSelectedCalendarIds(newSelected)
     }
 
     fun setAiProvider(provider: AiProvider) {
@@ -161,7 +125,7 @@ class SettingsViewModel @Inject constructor(
             if (floorsClimbedEnabled.value) permissions.add("android.permission.health.READ_FLOORS_CLIMBED")
             if (activeCaloriesEnabled.value) permissions.add("android.permission.health.READ_ACTIVE_CALORIES_BURNED")
 
-            _healthConnectConnected.value = settings.masterHealthConnectEnabled.value && 
+            _healthConnectConnected.value = settings.masterHealthConnectEnabled.value &&
                 healthConnectRepository.isAvailable() &&
                 healthConnectRepository.hasPermissions(permissions)
 
@@ -175,10 +139,6 @@ class SettingsViewModel @Inject constructor(
                 appContext, Manifest.permission.READ_CALENDAR,
             ) == PackageManager.PERMISSION_GRANTED
             _calendarConnected.value = settings.calendarEnabled.value && calPerm
-            
-            if (calPerm) {
-                _availableCalendars.value = calendarRepository.getAvailableCalendars()
-            }
         }
     }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simplified scarf silhouette (Phosphor-style, 256 viewport) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M176,40H80A16,16,0,0,0,64,56v40a8,8,0,0,0,8,8h40v96a16,16,0,0,0,16,16h16a16,16,0,0,0,16-16V104h24a8,8,0,0,0,8-8V56A16,16,0,0,0,176,40ZM152,200H136V104h16Zm32-112H72V56H184Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M104,216a8,8,0,0,0-8,8v16a8,8,0,0,0,16,0V224A8,8,0,0,0,104,216Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M136,216a8,8,0,0,0-8,8v16a8,8,0,0,0,16,0V224A8,8,0,0,0,136,216Z" />
+</vector>
