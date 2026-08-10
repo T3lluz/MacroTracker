@@ -551,7 +551,8 @@ class HomeViewModel @Inject constructor(
     private fun cacheWeatherForWidget(weather: WeatherInfo, latitude: Double, longitude: Double) {
         try {
             val prefs = appContext.getSharedPreferences(WEATHER_PREFS, Context.MODE_PRIVATE)
-            val todayForecast = weather.dailyForecasts.firstOrNull()
+            val todayForecast = weather.dailyForecasts.firstOrNull { it.isToday }
+                ?: weather.dailyForecasts.firstOrNull()
 
             val hourlyStr = buildHourlyForecastJson(weather)
 
@@ -584,7 +585,7 @@ class HomeViewModel @Inject constructor(
                 .put("time", h.time)
                 .put("symbol", h.symbolCode)
                 .put("temp", h.temperature.toInt().toString())
-                .put("pop", 0)
+                .put("pop", h.precipProbability ?: 0)
                 .put("wind", "${h.windSpeed.toInt()} m/s")
                 .put("description", h.description.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() })
                 .put("date", h.dateStr ?: "")

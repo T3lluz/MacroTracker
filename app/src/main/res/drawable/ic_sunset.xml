@@ -1,24 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lucide sunset icon (ISC) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Sunset: Sun is lower, partially below the horizon -->
     <path
-        android:pathData="M12,22m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0"
-        android:fillColor="#E64A19" />
-
-    <!-- Horizon line (higher up to submerge sun) -->
+        android:pathData="M12,10V2"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
     <path
-        android:pathData="M2,20h20"
+        android:pathData="M4.93,10.93l1.41,1.41"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M2,18h2"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M20,18h2"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M19.07,10.93l-1.41,1.41"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M22,22H2"
+        android:fillColor="#00000000"
         android:strokeWidth="2"
         android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round" />
-
-    <!-- Downward arrows/rays to signify setting -->
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
     <path
-        android:pathData="M12,8l0,4 M12,12l-2,-2 M12,12l2,-2"
-        android:strokeWidth="1.5"
-        android:strokeColor="#FFAB91"
-        android:strokeLineCap="round" />
+        android:pathData="M16,6l-4,4 -4,-4"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M16,18a4,4 0,0 0,-8 0"
+        android:fillColor="#00000000"
+        android:strokeWidth="2"
+        android:strokeColor="#FF8A65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>
