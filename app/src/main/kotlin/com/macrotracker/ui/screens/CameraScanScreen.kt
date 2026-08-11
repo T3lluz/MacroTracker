@@ -113,6 +113,7 @@ fun CameraScanScreen(
     onNavigateBack: () -> Unit,
     onLogged: () -> Unit,
     onNavigateToAiSettings: () -> Unit,
+    openGalleryOnStart: Boolean = false,
     viewModel: CameraScanViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -131,6 +132,7 @@ fun CameraScanScreen(
     var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var capturedBase64 by remember { mutableStateOf<String?>(null) }
     var cameraError by remember { mutableStateOf<String?>(null) }
+    var didAutoOpenGallery by rememberSaveable { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -157,8 +159,15 @@ fun CameraScanScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (hasApiKey && !hasCameraPermission) {
+        if (hasApiKey && !hasCameraPermission && !openGalleryOnStart) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    LaunchedEffect(openGalleryOnStart, hasApiKey) {
+        if (openGalleryOnStart && hasApiKey && !didAutoOpenGallery) {
+            didAutoOpenGallery = true
+            galleryLauncher.launch("image/*")
         }
     }
 
@@ -175,7 +184,13 @@ fun CameraScanScreen(
     }
 
     // Phase-aware system / predictive back (don't dump the whole route from preview).
-    BackHandler(enabled = hasApiKey && hasCameraPermission) {
+    BackHandler(
+        enabled = hasApiKey && (
+            hasCameraPermission ||
+                phase == ScanPhase.PREVIEW ||
+                phase == ScanPhase.RESULT
+            ),
+    ) {
         when (phase) {
             ScanPhase.PREVIEW -> {
                 if (scanning) {
@@ -183,7 +198,11 @@ fun CameraScanScreen(
                 } else {
                     capturedBitmap = null
                     capturedBase64 = null
-                    viewModel.setPhase(ScanPhase.CAMERA)
+                    if (hasCameraPermission) {
+                        viewModel.setPhase(ScanPhase.CAMERA)
+                    } else {
+                        onNavigateBack()
+                    }
                 }
             }
             ScanPhase.RESULT -> {
@@ -198,6 +217,8 @@ fun CameraScanScreen(
     AnimatedContent(
         targetState = when {
             !hasApiKey -> "no_key"
+            // Gallery picks can reach preview/result without camera permission.
+            phase == ScanPhase.PREVIEW || phase == ScanPhase.RESULT -> phase.name
             !hasCameraPermission -> "permission"
             cameraError != null -> "camera_error"
             else -> phase.name

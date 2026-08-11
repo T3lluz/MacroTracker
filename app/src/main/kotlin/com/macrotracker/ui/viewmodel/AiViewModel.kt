@@ -48,8 +48,8 @@ class AiViewModel @Inject constructor(
 
     private val welcome = NutritionChatMessage.Doctor(
         id = "welcome",
-        text = "Hey — I'm Clanker. Describe a meal and I'll estimate calories and protein. " +
-            "Type a dish (like “burger”) for add-on ideas, or tap a quick bite below.",
+        text = "Hey — I'm Clanker. Describe a meal, or use + to send a meal photo, and I'll estimate " +
+            "calories and protein. Need a package label instead? Use Scan label up top.",
     )
 
     private val _messages = MutableStateFlow<List<NutritionChatMessage>>(listOf(welcome))
@@ -64,6 +64,7 @@ class AiViewModel @Inject constructor(
     val hasApiKey: Boolean get() = aiRepo.hasApiKey
 
     private var estimateJob: Job? = null
+    private var lastMealPhotoBase64: String? = null
 
     fun sendFoodQuery(foodQuery: String) {
         val query = foodQuery.trim()
@@ -95,12 +96,58 @@ class AiViewModel @Inject constructor(
                 NutritionChatMessage.User(text = query) +
                 NutritionChatMessage.Typing()
         }
-        _loading.value = true
+        runEstimate(retryQuery = query) {
+            aiRepo.estimateNutritionWithAI(query)
+        }
+    }
 
+    /** Estimate macros from a plate/meal photo (chat flow — not the label scanner). */
+    fun sendMealPhoto(base64Jpeg: String) {
+        if (base64Jpeg.isBlank() || _loading.value) return
+        lastMealPhotoBase64 = base64Jpeg
+
+        if (!aiRepo.hasApiKey) {
+            _messages.update { current ->
+                current.filterNot { it is NutritionChatMessage.Typing } +
+                    NutritionChatMessage.User(text = "Meal photo") +
+                    NutritionChatMessage.Doctor(
+                        text = "No API key set. Add one in Settings → AI, then try again.",
+                        isError = true,
+                        retryQuery = MEAL_PHOTO_RETRY,
+                        showSettingsCta = true,
+                    )
+            }
+            return
+        }
+
+        _messages.update { current ->
+            current.filterNot { it is NutritionChatMessage.Typing } +
+                NutritionChatMessage.User(text = "Meal photo") +
+                NutritionChatMessage.Typing()
+        }
+        runEstimate(retryQuery = MEAL_PHOTO_RETRY) {
+            aiRepo.estimateNutritionFromMealImage(base64Jpeg)
+        }
+    }
+
+    fun retryQuery(query: String) {
+        if (query.isBlank() || _loading.value) return
+        if (query == MEAL_PHOTO_RETRY) {
+            lastMealPhotoBase64?.let { sendMealPhoto(it) }
+            return
+        }
+        sendFoodQuery(query)
+    }
+
+    private fun runEstimate(
+        retryQuery: String,
+        block: suspend () -> NutritionEstimate,
+    ) {
+        _loading.value = true
         estimateJob?.cancel()
         estimateJob = viewModelScope.launch {
             try {
-                val result = aiRepo.estimateNutritionWithAI(query)
+                val result = block()
                 val reply = buildEstimateReply(result)
                 _messages.update { current ->
                     current.filterNot { it is NutritionChatMessage.Typing } +
@@ -114,7 +161,7 @@ class AiViewModel @Inject constructor(
                         NutritionChatMessage.Doctor(
                             text = message,
                             isError = true,
-                            retryQuery = query,
+                            retryQuery = retryQuery,
                             showSettingsCta = looksLikeSettingsError(message),
                         )
                 }
@@ -123,11 +170,6 @@ class AiViewModel @Inject constructor(
                 estimateJob = null
             }
         }
-    }
-
-    fun retryQuery(query: String) {
-        if (query.isBlank() || _loading.value) return
-        sendFoodQuery(query)
     }
 
     fun cancelEstimate() {
@@ -202,5 +244,9 @@ class AiViewModel @Inject constructor(
             lower.contains("settings") ||
             lower.contains("unauthorized") ||
             lower.contains("invalid")
+    }
+
+    companion object {
+        private const val MEAL_PHOTO_RETRY = "__meal_photo__"
     }
 }

@@ -114,6 +114,46 @@ class NutritionAiRepository @Inject constructor(
         return parseNutritionEstimate(responseText, foodQuery)
     }
 
+    // ─── Estimate nutrition from a meal photo (not a label) ───────────────────
+    suspend fun estimateNutritionFromMealImage(base64Image: String): NutritionEstimate {
+        requireApiKey()
+
+        val prompt = """
+            Look at this photo of a prepared meal or food on a plate/bowl.
+            Identify what was eaten and estimate calories and protein for the portion shown.
+            Do NOT read nutrition facts labels — ignore packaging text if present.
+            Return ONLY a JSON object with this exact shape:
+            {
+              "foodName": "string",
+              "servingDescription": "string",
+              "calories": number,
+              "protein": number,
+              "confidence": "low" | "medium" | "high",
+              "notes": "brief caveat"
+            }
+            Rules:
+            - Estimate for the visible portion, not a whole package.
+            - Calories and protein must be non-negative numbers.
+            - If the image is unclear or not food, still return best-effort JSON with low confidence.
+            - Keep notes under 120 characters.
+        """.trimIndent()
+
+        val responseText = AiApiClient.generate(
+            httpClient = httpClient,
+            provider = provider,
+            apiKey = apiKey,
+            params = AiApiClient.GenerateParams(
+                prompt = prompt,
+                base64Jpeg = base64Image,
+                temperature = 0.2,
+                maxOutputTokens = 1024,
+                jsonMode = true,
+                openRouterModelId = settings.getOpenRouterModelId(),
+            ),
+        )
+        return parseNutritionEstimate(responseText, "Meal photo")
+    }
+
     // ─── Scan image for nutrition label ───────────────────────────────────────
     suspend fun analyzeImageWithGemini(base64Image: String): ScanResult =
         analyzeNutritionLabelImage(base64Image)

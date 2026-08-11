@@ -67,7 +67,7 @@ private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.AutoAwesome,
         title = "AI Food Estimates",
-        body = "On the AI tab, chat with Clanker — type something like \"1 medium avocado\" or \"burger\" (then tap add-ons like bacon). Adjust portion if needed, then log the estimate.",
+        body = "On the AI tab, chat with Clanker — type something like \"1 medium avocado\" or \"burger\" (then tap add-ons like bacon), or tap + to send a meal photo. Adjust portion if needed, then log the estimate.",
     ),
     HelpStep(
         icon = Icons.Outlined.BarChart,

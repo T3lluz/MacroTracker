@@ -1,5 +1,14 @@
 package com.macrotracker.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -47,11 +56,15 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -74,6 +87,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -82,6 +96,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.R
 import com.macrotracker.data.remote.NutritionEstimate
@@ -105,6 +121,8 @@ import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.AiViewModel
 import com.macrotracker.ui.viewmodel.NutritionChatMessage
+import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -133,6 +151,7 @@ fun AIScreen(
     onNavigateToAiSettings: () -> Unit,
     viewModel: AiViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val messages by viewModel.messages.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val loggedCount by viewModel.loggedCount.collectAsState()
@@ -143,6 +162,83 @@ fun AIScreen(
     val liveSuggestions = remember(draft) { suggestionsForDraft(draft) }
     val showSuggestions = !loading && liveSuggestions.isNotEmpty()
     var forceFollow by remember { mutableStateOf(true) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
+
+    fun submitMealPhoto(bitmap: Bitmap?) {
+        if (bitmap == null) {
+            Toast.makeText(context, "Couldn't read that image.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        forceFollow = true
+        viewModel.sendMealPhoto(mealPhotoToBase64(bitmap))
+    }
+
+    fun decodeUri(uri: Uri): Bitmap? = try {
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+    } catch (_: Exception) {
+        null
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        submitMealPhoto(decodeUri(uri))
+    }
+
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { success ->
+        val uri = pendingCameraUri
+        val file = pendingCameraFile
+        pendingCameraUri = null
+        pendingCameraFile = null
+        if (success && uri != null) {
+            submitMealPhoto(decodeUri(uri))
+        }
+        file?.delete()
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            launchMealCamera(
+                context = context,
+                onReady = { uri, file ->
+                    pendingCameraUri = uri
+                    pendingCameraFile = file
+                },
+                launcher = takePictureLauncher::launch,
+            )
+        } else {
+            Toast.makeText(context, "Camera permission is needed to take a meal photo.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun onTakeMealPhoto() {
+        haptics.click()
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            launchMealCamera(
+                context = context,
+                onReady = { uri, file ->
+                    pendingCameraUri = uri
+                    pendingCameraFile = file
+                },
+                launcher = takePictureLauncher::launch,
+            )
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    fun onAddMealPhoto() {
+        haptics.click()
+        galleryLauncher.launch("image/*")
+    }
 
     val nearBottom by remember {
         derivedStateOf {
@@ -289,9 +385,46 @@ fun AIScreen(
             value = draft,
             onValueChange = { draft = it },
             onSend = { send() },
+            onTakePhoto = ::onTakeMealPhoto,
+            onAddPhoto = ::onAddMealPhoto,
             enabled = !loading,
         )
     }
+}
+
+private fun launchMealCamera(
+    context: android.content.Context,
+    onReady: (Uri, File) -> Unit,
+    launcher: (Uri) -> Unit,
+) {
+    try {
+        val dir = File(context.cacheDir, "meal_photos").apply { mkdirs() }
+        val file = File.createTempFile("meal_", ".jpg", dir)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        onReady(uri, file)
+        launcher(uri)
+    } catch (e: Exception) {
+        Toast.makeText(context, e.message ?: "Couldn't open camera.", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun mealPhotoToBase64(bitmap: Bitmap): String {
+    val maxSide = 1280
+    val scaled = if (bitmap.width <= maxSide && bitmap.height <= maxSide) {
+        bitmap
+    } else {
+        val scale = maxSide.toFloat() / maxOf(bitmap.width, bitmap.height)
+        Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1),
+            true,
+        )
+    }
+    val stream = ByteArrayOutputStream()
+    scaled.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+    if (scaled !== bitmap) scaled.recycle()
+    return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
 }
 
 @Composable
@@ -480,7 +613,7 @@ private fun AiChatHeader(
             ) {
                 HeaderAction(
                     icon = Icons.Outlined.CameraAlt,
-                    label = "Scan",
+                    label = "Scan label",
                     emphasized = true,
                     onClick = onCameraScan,
                 )
@@ -985,11 +1118,15 @@ private fun TypingBubble(onCancel: () -> Unit) {
     }
 }
 
+private val ComposerSendShape = RoundedCornerShape(10.dp)
+
 @Composable
 private fun ChatComposer(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
+    onTakePhoto: () -> Unit,
+    onAddPhoto: () -> Unit,
     enabled: Boolean,
 ) {
     val density = LocalDensity.current
@@ -997,6 +1134,7 @@ private fun ChatComposer(
     val imeOpen = WindowInsets.ime.getBottom(density) > 0
     val bottomPad = if (imeOpen) 10.dp else navBottom + PillNavClearance
     val canSend = enabled && value.isNotBlank()
+    var attachMenuOpen by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -1006,9 +1144,57 @@ private fun ChatComposer(
             .clip(RoundedCornerShape(16.dp))
             .background(Surface)
             .border(1.dp, Border, RoundedCornerShape(16.dp))
-            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
+        Box {
+            IconButton(
+                onClick = { attachMenuOpen = true },
+                enabled = enabled,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = "Add meal photo",
+                    tint = if (enabled) TextPrimary else TextSecondary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            DropdownMenu(
+                expanded = attachMenuOpen,
+                onDismissRequest = { attachMenuOpen = false },
+                modifier = Modifier.background(Surface),
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Take photo of meal", color = TextPrimary, fontSize = 15.sp) },
+                    onClick = {
+                        attachMenuOpen = false
+                        onTakePhoto()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.CameraAlt,
+                            contentDescription = null,
+                            tint = Primary,
+                        )
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Add photo of meal", color = TextPrimary, fontSize = 15.sp) },
+                    onClick = {
+                        attachMenuOpen = false
+                        onAddPhoto()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.PhotoLibrary,
+                            contentDescription = null,
+                            tint = Primary,
+                        )
+                    },
+                )
+            }
+        }
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -1037,19 +1223,20 @@ private fun ChatComposer(
                 inner()
             },
         )
-        IconButton(
-            onClick = onSend,
-            enabled = canSend,
+        Box(
             modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(if (canSend) Primary else Border),
+                .padding(bottom = 4.dp)
+                .size(34.dp)
+                .clip(ComposerSendShape)
+                .background(if (canSend) Primary else Border, ComposerSendShape)
+                .clickable(enabled = canSend, onClick = onSend),
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Send,
                 contentDescription = "Send",
                 tint = Color.White,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
             )
         }
     }
