@@ -392,7 +392,8 @@ class HomeViewModel @Inject constructor(
     fun loadWeather(hasPermission: Boolean, forceRefresh: Boolean = false) {
         viewModelScope.launch {
             loadWeatherInternal(hasPermission, forceRefresh)
-            scheduleWidgetUpdate()
+            // Push fresh SharedPrefs weather to Glance widgets right away on manual refresh.
+            scheduleWidgetUpdate(immediate = forceRefresh)
         }
     }
 
@@ -422,12 +423,15 @@ class HomeViewModel @Inject constructor(
             }
             val location = locationProvider.getLocation(forceRefresh = forceRefresh)
             if (location == null) {
+                Log.w(TAG, "Weather refresh: location unavailable (force=$forceRefresh)")
                 if (_weatherState.value !is WeatherUiState.Success) {
                     _weatherState.value = WeatherUiState.Error("Could not get location")
                 }
                 return
             }
+            Log.d(TAG, "Weather refresh: lat=${location.latitude}, lon=${location.longitude}, force=$forceRefresh")
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
+            // Always hit the network path after clearCache on force; clothing is recomputed every fetch.
             val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
             val clothingAdvice = ClothingAdvisor.advise(weather)
             val fetchedAt = weatherRepository.lastFetchTimeMs

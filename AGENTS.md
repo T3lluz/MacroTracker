@@ -139,21 +139,27 @@ When the user asks to **commit**, **push**, or **commit and push** (with or with
 ### Pipeline (do not fight it)
 1. Push / merge to **`master`** triggers `.github/workflows/build-apk.yml`.
 2. CI runs `ensure-unique-version.sh` — bumps `versionCode` / `versionName` only if needed, commits `chore: bump version to … [skip ci]`, then builds.
-3. `package-release.sh` builds release notes from PR titles / commits since the previous `v*` tag, publishes GitHub Release + `DailyDash-{versionName}-vc{versionCode}.apk`.
+3. `package-release.sh` builds **What's New** from **commit subjects since the previous `v*` tag** (plus PR titles when present), publishes the GitHub Release + `DailyDash-{versionName}-vc{versionCode}.apk`.
 4. Installed apps poll GitHub, download, PackageInstaller self-update, relaunch, show What's New.
 
-### Commit message = release notes
-In-app What's New and the GitHub Release body are derived from **your commit / PR titles**. Write them for humans:
+### Commit message = release notes (critical)
+**Your commit subject line is what users see in What's New.** CI copies non-noise subjects from `git log prev_tag..HEAD` into the GitHub Release body; the app shows that body after update.
 
-- **One clear, user-facing sentence** (or short subject) describing what changed and why it matters.
+Write the subject as a human release note:
+
+- **One clear, user-facing sentence** describing what changed and why it matters (imperative or past tense is fine).
 - Prefer product language over file lists:  
-  ✅ `Polish in-app updates with What's New sheet and smoother relaunch`  
-  ❌ `Update AppUpdateRepository.kt and MainScreen.kt`
-- Do **not** put `[skip ci]` on feature/fix commits (that skips the APK release).
-- Do **not** hand-bump `versionCode` / `versionName` in `app/build.gradle.kts` — CI owns that. Leave those lines alone unless the user explicitly asks for a manual bump.
+  ✅ `Refresh Health with clearer metric icons and a cleaner Daily Health card`  
+  ✅ `Show clothing icons on the weather card for today's conditions`  
+  ❌ `Update AppUpdateRepository.kt and MainScreen.kt`  
+  ❌ `wip` / `fix` / `stuff`
+- Keep it to the **subject line** (≈72 chars is ideal). Extra body text is fine for reviewers but is **not** used in What's New.
+- Do **not** put `[skip ci]` on feature/fix commits (that skips the APK release entirely).
+- Do **not** hand-bump `versionCode` / `versionName` in `app/build.gradle.kts` — CI owns that.
 - Do **not** create git tags or GitHub Releases yourself for normal ship flow — the workflow does.
-- Avoid noise subjects that the note generator filters out: `chore: bump version…`, merge-only titles, empty "wip" / "fix stuff".
+- Noise filtered out of notes: `chore: bump version…`, anything with `[skip ci]`, merge-only titles, `wip` / `fix stuff`.
 - If the user supplies a commit message, use it when it is already release-note quality; otherwise lightly tighten it into a clear What's New bullet **without** changing their intent. Confirm only if their message would ship as useless notes (e.g. only `wip`).
+- When shipping several changes in one push, either one strong subject covering the theme, or multiple commits each with its own user-facing subject (each becomes its own bullet).
 
 ### Push target
 - Default ship path: commit on the current branch, then **`git push -u origin HEAD`** (or push the tracked branch).
@@ -163,8 +169,8 @@ In-app What's New and the GitHub Release body are derived from **your commit / P
 
 ### After push (when shipping to master)
 Briefly tell the user:
-- Commit hash + message (this becomes the What's New line if no PR title wins).
-- That **Build & Release APK** will publish the tester APK and notes.
+- Commit hash + **subject** (this is the What's New bullet).
+- That **Build & Release APK** will publish the tester APK with that subject in the release notes.
 - They can update from the app (Settings badge / dialog); after install it should reopen with What's New.
 
 ### External APIs

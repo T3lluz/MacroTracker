@@ -45,8 +45,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Shallow clone; scripts fetch tags / origin/master as needed.
-          fetch-depth: 1
+          # Full history so package-release.sh can turn commit subjects since the
+          # previous v* tag into What's New bullets (shallow clones were falling
+          # back to "Stability and polish improvements").
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK 17
@@ -79,6 +81,9 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
           COMMIT_SHA: ${{ steps.version.outputs.commit_sha || github.sha }}
           INPUT_NOTES: ${{ github.event.inputs.release_notes }}
+          # First-line subject of the push that triggered CI — used if tag-range
+          # history is empty (e.g. bump-only follow-up).
+          TRIGGER_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/package-release.sh
 

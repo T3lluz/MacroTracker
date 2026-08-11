@@ -29,15 +29,23 @@ data class ClothingAdvice(
 )
 
 object ClothingAdvisor {
+    /**
+     * Near-term horizon for rain/snow clothing extras — looking too far ahead
+     * (e.g. overnight showers) made daytime advice feel stale and overdressed.
+     */
+    private const val NEAR_TERM_HOURS = 3
+
     fun advise(weather: WeatherInfo): ClothingAdvice {
-        val temp = weather.temperature
+        val temp = comfortTemp(weather)
         val wind = weather.windSpeed
         val desc = weather.description.lowercase()
-        val hourlyDescs = weather.hourlyForecasts.take(12).map { it.description.lowercase() }
-        val allDescs = listOf(desc) + hourlyDescs
+        val nearTermDescs = weather.hourlyForecasts
+            .take(NEAR_TERM_HOURS)
+            .map { it.description.lowercase() }
+        val allNear = listOf(desc) + nearTermDescs
 
-        val hasRain = allDescs.any { it.contains("rain") || it.contains("shower") || it.contains("drizzle") }
-        val hasSnow = allDescs.any { it.contains("snow") || it.contains("sleet") }
+        val hasRain = allNear.any { it.contains("rain") || it.contains("shower") || it.contains("drizzle") }
+        val hasSnow = allNear.any { it.contains("snow") || it.contains("sleet") }
         val isClear = desc.contains("clear") || desc.contains("fair")
         val isWindy = wind >= 8.0
 
@@ -85,37 +93,49 @@ object ClothingAdvisor {
                     items[ClothingIcon.GLOVES] = "Gloves"
                 }
             }
-            temp <= 15 -> {
-                headline = "Cool — medium jacket"
-                detail = "A medium-weight jacket or fleece with a long-sleeve shirt should keep you comfortable."
-                items[ClothingIcon.JACKET] = "Medium jacket"
+            temp <= 14 -> {
+                headline = "Cool — light jacket"
+                detail = "A light jacket or fleece over a long-sleeve shirt should keep you comfortable."
+                items[ClothingIcon.JACKET] = "Light jacket"
                 items[ClothingIcon.TSHIRT] = "Long sleeve"
             }
-            temp <= 20 -> {
-                headline = "Mild — light layer"
-                detail = "A light jacket or cardigan works well over a t-shirt or light long-sleeve."
-                items[ClothingIcon.JACKET] = "Light jacket"
+            temp <= 17 -> {
+                headline = "Mild — long sleeve"
+                detail = "A t-shirt or light long-sleeve is enough; bring a thin layer only if you'll be out late."
                 items[ClothingIcon.TSHIRT] = "T-shirt"
+                items[ClothingIcon.LAYERS] = "Optional layer"
             }
-            temp <= 25 -> {
+            temp <= 22 -> {
                 headline = "Warm — keep it light"
-                detail = "Light clothing like a t-shirt and comfortable trousers or shorts will work well."
+                detail = "T-shirt weather. Light pants or shorts will feel comfortable."
                 items[ClothingIcon.TSHIRT] = "T-shirt"
                 items[ClothingIcon.SHORTS] = "Light pants"
             }
-            else -> {
+            temp <= 26 -> {
                 headline = "Hot — stay cool"
                 detail = "Light, breathable clothing such as a t-shirt and shorts."
                 items[ClothingIcon.TSHIRT] = "T-shirt"
                 items[ClothingIcon.SHORTS] = "Shorts"
             }
+            else -> {
+                headline = "Scorching — dress light"
+                detail = "Stick to a t-shirt and shorts, and seek shade when you can."
+                items[ClothingIcon.TSHIRT] = "T-shirt"
+                items[ClothingIcon.SHORTS] = "Shorts"
+            }
         }
 
-        if (isWindy && temp <= 15) items.putIfAbsent(ClothingIcon.WINDBREAKER, "Windproof layer")
-        if (isWindy && temp > 15) items[ClothingIcon.WINDBREAKER] = "Windbreaker"
+        if (isWindy && temp <= 14) items.putIfAbsent(ClothingIcon.WINDBREAKER, "Windproof layer")
+        if (isWindy && temp > 14 && temp <= 20) items[ClothingIcon.WINDBREAKER] = "Light windbreaker"
         if (hasRain) {
             items[ClothingIcon.UMBRELLA] = "Umbrella"
-            items.putIfAbsent(ClothingIcon.JACKET, "Waterproof jacket")
+            // Only suggest a rain shell when it is cool enough that an outer layer makes sense,
+            // or when no top-layer item is already recommended.
+            if (temp <= 18) {
+                items.putIfAbsent(ClothingIcon.JACKET, "Waterproof jacket")
+            } else {
+                items.putIfAbsent(ClothingIcon.WINDBREAKER, "Light rain shell")
+            }
             items[ClothingIcon.BOOTS] = "Waterproof shoes"
         }
         if (hasSnow && !hasRain) {
@@ -127,8 +147,8 @@ object ClothingAdvisor {
         if (isClear && temp > 22) items[ClothingIcon.SUN_HAT] = "Sun hat"
 
         val extras = buildList {
-            if (hasRain || hasSnow) add("Waterproof footwear helps today.")
-            if (isWindy) add("It will feel cooler in the wind.")
+            if (hasRain || hasSnow) add("Rain is nearby — waterproof footwear helps.")
+            if (isWindy && temp <= 20) add("It will feel cooler in the wind.")
         }
         val fullDetail = (listOf(detail) + extras).joinToString(" ")
 
@@ -137,5 +157,14 @@ object ClothingAdvisor {
             detail = fullDetail,
             items = items.map { (icon, label) -> ClothingItem(icon, label) },
         )
+    }
+
+    /** Air temp adjusted slightly for wind so advice tracks how it feels outdoors. */
+    private fun comfortTemp(weather: WeatherInfo): Double {
+        var t = weather.temperature
+        if (weather.windSpeed >= 5.0 && t < 18.0) {
+            t -= ((weather.windSpeed - 4.0).coerceAtMost(5.0) * 0.35)
+        }
+        return t
     }
 }

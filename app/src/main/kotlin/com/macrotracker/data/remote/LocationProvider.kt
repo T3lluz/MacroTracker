@@ -5,6 +5,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.util.Log
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -27,6 +28,9 @@ class LocationProvider @Inject constructor(
     companion object {
         private const val TAG = "LocationProvider"
         private const val LOCATION_CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
+        /** How old a fused fix may be when we are not force-refreshing. */
+        private const val MAX_UPDATE_AGE_NORMAL_MS = 60_000L
+        private const val LOCATION_REQUEST_DURATION_MS = 20_000L
     }
 
     private val fusedClient: FusedLocationProviderClient by lazy {
@@ -47,9 +51,10 @@ class LocationProvider @Inject constructor(
     /**
      * Returns the device's precise current location, or null if unavailable.
      * Results are cached for [LOCATION_CACHE_TTL_MS] to avoid redundant GPS fixes.
-     * Pass [forceRefresh] to bypass the cache (e.g. user-triggered widget refresh).
-     * Falls back to BALANCED_POWER_ACCURACY if GPS cannot produce a fix (e.g. indoors).
-     * The caller MUST have already acquired ACCESS_FINE_LOCATION permission.
+     * Pass [forceRefresh] to bypass the cache and demand a fresh fused fix
+     * (max update age 0 — does not reuse Play Services' stale "current" location).
+     * Falls back to BALANCED_POWER_ACCURACY, then [FusedLocationProviderClient.getLastLocation].
+     * The caller MUST have already acquired location permission.
      */
     @SuppressLint("MissingPermission")
     suspend fun getLocation(forceRefresh: Boolean = false): LatLon? {
@@ -59,36 +64,51 @@ class LocationProvider @Inject constructor(
             return cachedLocation
         }
 
+        val maxAge = if (forceRefresh) 0L else MAX_UPDATE_AGE_NORMAL_MS
+
         // Try a fresh HIGH_ACCURACY (GPS) fix first
-        val precise = requestLocation(Priority.PRIORITY_HIGH_ACCURACY)
+        val precise = requestLocation(Priority.PRIORITY_HIGH_ACCURACY, maxAge)
         if (precise != null) {
-            Log.d(TAG, "GPS fix (accuracy=${precise.accuracy}m): ${precise.latitude}, ${precise.longitude}")
-            val result = LatLon(precise.latitude, precise.longitude)
-            cachedLocation = result
-            locationCacheTimestamp = now
-            return result
+            Log.d(TAG, "GPS fix (accuracy=${precise.accuracy}m, age=${now - precise.time}ms): ${precise.latitude}, ${precise.longitude}")
+            return cacheAndReturn(precise, now)
         }
 
         // GPS unavailable (indoors / no signal) — fall back to network-based fix
         Log.d(TAG, "GPS fix unavailable, falling back to BALANCED_POWER_ACCURACY")
-        val fallback = requestLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
-        return if (fallback != null) {
+        val fallback = requestLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, maxAge)
+        if (fallback != null) {
             Log.d(TAG, "Network fix (accuracy=${fallback.accuracy}m): ${fallback.latitude}, ${fallback.longitude}")
-            val result = LatLon(fallback.latitude, fallback.longitude)
-            cachedLocation = result
-            locationCacheTimestamp = now
-            result
+            return cacheAndReturn(fallback, now)
+        }
+
+        // Last resort: Play Services last-known location (may be older, but better than failing refresh)
+        val last = lastLocationOrNull()
+        return if (last != null) {
+            Log.w(TAG, "Using lastLocation fallback (accuracy=${last.accuracy}m, age=${now - last.time}ms)")
+            cacheAndReturn(last, now)
         } else {
-            Log.w(TAG, "Both GPS and network location unavailable")
+            Log.w(TAG, "GPS, network, and lastLocation all unavailable")
             null
         }
     }
 
+    private fun cacheAndReturn(location: Location, now: Long): LatLon {
+        val result = LatLon(location.latitude, location.longitude)
+        cachedLocation = result
+        locationCacheTimestamp = now
+        return result
+    }
+
     @SuppressLint("MissingPermission")
-    private suspend fun requestLocation(priority: Int): Location? =
+    private suspend fun requestLocation(priority: Int, maxUpdateAgeMillis: Long): Location? =
         suspendCancellableCoroutine { cont ->
             val cts = CancellationTokenSource()
-            fusedClient.getCurrentLocation(priority, cts.token)
+            val request = CurrentLocationRequest.Builder()
+                .setPriority(priority)
+                .setMaxUpdateAgeMillis(maxUpdateAgeMillis)
+                .setDurationMillis(LOCATION_REQUEST_DURATION_MS)
+                .build()
+            fusedClient.getCurrentLocation(request, cts.token)
                 .addOnSuccessListener { location: Location? ->
                     cont.resume(location)
                 }
@@ -97,6 +117,19 @@ class LocationProvider @Inject constructor(
                     cont.resume(null)
                 }
             cont.invokeOnCancellation { cts.cancel() }
+        }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun lastLocationOrNull(): Location? =
+        suspendCancellableCoroutine { cont ->
+            fusedClient.lastLocation
+                .addOnSuccessListener { location: Location? ->
+                    cont.resume(location)
+                }
+                .addOnFailureListener { e: Exception ->
+                    Log.e(TAG, "lastLocation failed: ${e.message}")
+                    cont.resume(null)
+                }
         }
 
     @Suppress("DEPRECATION")
@@ -132,4 +165,3 @@ class LocationProvider @Inject constructor(
         }
     }
 }
-

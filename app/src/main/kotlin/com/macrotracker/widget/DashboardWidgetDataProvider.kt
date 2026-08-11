@@ -74,7 +74,7 @@ object DashboardWidgetDataProvider {
     @Volatile private var lastWeatherStaleRefreshRequestAt: Long = 0L
     private const val STALE_WEATHER_REFRESH_REQUEST_THROTTLE_MS = 5 * 60 * 1000L
     /** Disk weather older than this triggers a background refresh request. */
-    private const val WEATHER_DISK_STALE_MS = 45 * 60 * 1000L
+    private const val WEATHER_DISK_STALE_MS = 20 * 60 * 1000L
 
     /** Singleton Room database — avoids rebuilding on every load call. */
     @Volatile private var dbInstance: MacroDatabase? = null
@@ -99,6 +99,12 @@ object DashboardWidgetDataProvider {
             val entryPoint = context.widgetEntryPoint()
             entryPoint.weatherRepository().clearCache()
             entryPoint.locationProvider().clearCache()
+            // Drop cached weather AI tip so a user refresh regenerates it for the new location.
+            context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .remove(AI_WEATHER_KEY)
+                .remove(AI_WEATHER_TS_KEY)
+                .apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear weather/location caches: ${e.message}")
         }
@@ -207,7 +213,12 @@ object DashboardWidgetDataProvider {
                 locationProvider.clearCache()
             }
 
-            val location = locationProvider.getLocation(forceRefresh = force) ?: return
+            val location = locationProvider.getLocation(forceRefresh = force)
+            if (location == null) {
+                Log.w(TAG, "fetchLiveWeather: location unavailable (force=$force)")
+                return
+            }
+            Log.d(TAG, "fetchLiveWeather: lat=${location.latitude}, lon=${location.longitude}, force=$force")
             val locationName = locationProvider.getLocationName(location.latitude, location.longitude)
             val weather = weatherRepository.fetchWeather(location.latitude, location.longitude, locationName)
 

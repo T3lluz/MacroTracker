@@ -12,19 +12,14 @@ import kotlinx.coroutines.withContext
  * Glance ActionCallback that manually refreshes all DailyDash widgets.
  * Triggered by the refresh button in the widget header.
  *
- * 1. Shows a feedback toast.
- * 2. Invalidate the in-memory cache so stale data isn't reused.
- * 3. Re-render only placed widgets immediately with fresh local data.
- * 4. Enqueue a background worker to fetch fresh AI insights + APIs (like live weather), then re-render again.
+ * Clears location + weather caches, re-resolves the current GPS fix, fetches
+ * live weather for that location, then re-renders placed dashboard widgets.
  */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        // 1. Give user feedback
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Refreshing widgets...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Updating location & weather…", Toast.LENGTH_SHORT).show()
         }
-
-        // 2. Fetch latest live data first, then re-render placed dashboard widgets.
         WidgetUpdater.forceRefreshDashboardWidgets(context)
     }
 }

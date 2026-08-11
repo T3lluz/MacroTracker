@@ -50,8 +50,9 @@ object WidgetUpdater {
     }
 
     /**
-     * User-requested dashboard refresh: fetch live widget data before rendering so
-     * the refresh button visibly updates weather/calendar/health data immediately.
+     * User-requested dashboard refresh: clear location/weather caches, refetch a
+     * fresh GPS fix + live forecast, then re-render so the ↻ button updates to
+     * the current location immediately.
      */
     suspend fun forceRefreshDashboardWidgets(context: Context) {
         if (!WidgetStateProvider.hasAnyDashboardWidget(context)) return

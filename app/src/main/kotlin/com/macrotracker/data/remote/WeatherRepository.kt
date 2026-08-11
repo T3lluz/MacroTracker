@@ -99,7 +99,7 @@ class WeatherRepository @Inject constructor(
         private const val BASE_URL =
             "https://api.met.no/weatherapi/locationforecast/2.0/complete"
         private const val USER_AGENT = "DailyDash/1.0 (Android; daily-dash-app)"
-        private const val CACHE_TTL_MS = 15 * 60 * 1000L // 15 minutes
+        private const val CACHE_TTL_MS = 8 * 60 * 1000L // 8 minutes — keeps What to Wear current
 
         fun mapSymbolCode(code: String): Pair<String, Int> {
             // Yr.no symbol codes: https://api.met.no/weatherapi/weathericon/2.0/documentation

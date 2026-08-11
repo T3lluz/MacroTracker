@@ -174,10 +174,10 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Occasional weather refresh while Home is open (respects in-repo TTL via force).
+    // Keep weather + What to Wear fresh while Home is open (forced location + forecast refetch).
     LaunchedEffect(Unit) {
         while (true) {
-            delay(20 * 60 * 1000L)
+            delay(10 * 60 * 1000L)
             val weatherVisible = parsedConfigs.any { it.id == "WEATHER" && it.isVisible }
             if (weatherVisible && hasLocationPermission()) {
                 viewModel.loadWeather(hasPermission = true, forceRefresh = true)
