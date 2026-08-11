@@ -3,6 +3,7 @@ package com.macrotracker.ui.screens.health
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -13,8 +14,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,11 +30,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.records.SleepSessionRecord
+import com.macrotracker.R
 import com.macrotracker.data.health.HealthStats
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.ui.components.MacroCard
@@ -89,17 +94,18 @@ fun DailyHealthSection(
                 val score = ((mins.toDouble() / DEFAULT_SLEEP_GOAL_MINUTES) * 100.0)
                     .roundToInt().coerceIn(0, 100)
                 SleepNightScore(
-                    score = score,
+                    score = score.coerceIn(0, 100),
                     efficiencyPercent = null,
                     totalMinutes = mins,
                     deepMinutes = 0,
                     remMinutes = 0,
                     lightMinutes = 0,
                     awakeMinutes = 0,
+                    // Garmin bands: 90+ Excellent · 80–89 Good · 60–79 Fair · <60 Poor
                     label = when {
-                        score >= 85 -> "Excellent"
-                        score >= 70 -> "Good"
-                        score >= 55 -> "Fair"
+                        score >= 90 -> "Excellent"
+                        score >= 80 -> "Good"
+                        score >= 60 -> "Fair"
                         else -> "Poor"
                     },
                 )
@@ -146,7 +152,7 @@ fun DailyHealthSection(
         ((sleepMin - it).toDouble() / it) * 100.0
     }
 
-    val (heroLabel, heroValue, heroUnit, heroSub, heroAccent) = when (hero) {
+    val (heroLabel, heroValue, heroUnit, heroSub, heroAccent, heroIcon) = when (hero) {
         HeroKind.SLEEP -> HeroCopy(
             "Sleep",
             if (sleepMin > 0) formatMinutesCompact(sleepMin) else "—",
@@ -161,6 +167,7 @@ fun DailyHealthSection(
                 if (isEmpty()) append("Last night")
             },
             SleepC,
+            R.drawable.ic_sleep,
         )
         HeroKind.STEPS -> HeroCopy(
             "Steps",
@@ -175,6 +182,7 @@ fun DailyHealthSection(
                 }
             },
             StepsC,
+            R.drawable.ic_steps,
         )
         HeroKind.MOVE -> HeroCopy(
             "Move",
@@ -182,6 +190,7 @@ fun DailyHealthSection(
             "kcal",
             "${pct(activity.moveProgress)}% of ${activity.activeCalGoal.roundToInt()} kcal",
             MoveC,
+            R.drawable.ic_flame,
         )
         HeroKind.RESTING -> HeroCopy(
             "Resting HR",
@@ -195,6 +204,7 @@ fun DailyHealthSection(
                 else -> "Latest reading"
             },
             RestC,
+            R.drawable.ic_heart_pulse,
         )
         HeroKind.ENERGY -> HeroCopy(
             "Energy",
@@ -215,29 +225,52 @@ fun DailyHealthSection(
                 }
             },
             EnergyC,
+            R.drawable.ic_energy,
         )
     }
 
     val chips = buildList {
         if (hero != HeroKind.RESTING && resting != null) {
-            add(Chip("Resting", "$resting bpm", RestC))
+            add(Chip("Resting", "$resting bpm", RestC, R.drawable.ic_heart_pulse))
         }
         heartRateBpm?.takeIf { it != "–" && it.isNotBlank() }?.let {
-            add(Chip("Heart", "$it bpm", HrC))
+            add(Chip("Heart", "$it bpm", HrC, R.drawable.ic_heart))
         }
         nightScore?.takeIf { it.deepMinutes + it.remMinutes > 0 }?.let { s ->
-            add(Chip("Deep+REM", formatMinutesCompact(s.deepMinutes + s.remMinutes), SleepC))
+            add(
+                Chip(
+                    "Deep+REM",
+                    formatMinutesCompact(s.deepMinutes + s.remMinutes),
+                    SleepC,
+                    R.drawable.ic_bed,
+                ),
+            )
         }
-        nightScore?.efficiencyPercent?.let { add(Chip("Efficiency", "$it%", SleepC)) }
+        nightScore?.efficiencyPercent?.let {
+            add(Chip("Efficiency", "$it%", SleepC, R.drawable.ic_percent))
+        }
         if (activity.distanceKm > 0.05) {
-            add(Chip("Distance", String.format(Locale.US, "%.1f km", activity.distanceKm), StepsC))
+            add(
+                Chip(
+                    "Distance",
+                    String.format(Locale.US, "%.1f km", activity.distanceKm),
+                    StepsC,
+                    R.drawable.ic_route,
+                ),
+            )
         }
         if (activity.floors > 0) {
-            add(Chip("Floors", "${activity.floors.roundToInt()}", FloorC))
+            add(Chip("Floors", "${activity.floors.roundToInt()}", FloorC, R.drawable.ic_stairs))
         }
-        spo2Percent?.takeIf { it != "–" && it.isNotBlank() }?.let { add(Chip("SpO₂", "$it%", Spo2C)) }
-        respRate?.takeIf { it != "–" && it.isNotBlank() }?.let { add(Chip("Resp", "$it rpm", RespC)) }
-        weekInsights?.stepStreak?.takeIf { it > 1 }?.let { add(Chip("Streak", "$it days", StepsC)) }
+        spo2Percent?.takeIf { it != "–" && it.isNotBlank() }?.let {
+            add(Chip("SpO₂", "$it%", Spo2C, R.drawable.ic_droplet))
+        }
+        respRate?.takeIf { it != "–" && it.isNotBlank() }?.let {
+            add(Chip("Resp", "$it rpm", RespC, R.drawable.ic_lungs))
+        }
+        weekInsights?.stepStreak?.takeIf { it > 1 }?.let {
+            add(Chip("Streak", "$it days", StepsC, R.drawable.ic_trending_up))
+        }
         if (hero != HeroKind.ENERGY && eaten != null) {
             val net = burned?.let { eaten - it }
             add(
@@ -249,10 +282,11 @@ fun DailyHealthSection(
                         else -> "$net kcal"
                     },
                     EnergyC,
+                    R.drawable.ic_energy,
                 ),
             )
         }
-        if (protein != null) add(Chip("Protein", "${protein}g", ProteinC))
+        if (protein != null) add(Chip("Protein", "${protein}g", ProteinC, R.drawable.ic_protein))
     }
 
     MacroCard(delayMs = delayMs) {
@@ -294,12 +328,23 @@ fun DailyHealthSection(
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column {
-                        Text(
-                            heroLabel,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = heroAccent,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(heroIcon),
+                                contentDescription = null,
+                                tint = heroAccent,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                heroLabel,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = heroAccent,
+                            )
+                        }
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
                                 heroValue,
@@ -334,6 +379,7 @@ fun DailyHealthSection(
 
                     GoalBar(
                         label = "Steps",
+                        iconRes = R.drawable.ic_steps,
                         value = if (activity.steps > 0) {
                             String.format(Locale.US, "%,d", activity.steps)
                         } else {
@@ -347,6 +393,7 @@ fun DailyHealthSection(
                     Spacer(modifier = Modifier.height(5.dp))
                     GoalBar(
                         label = "Sleep",
+                        iconRes = R.drawable.ic_sleep,
                         value = if (sleepMin > 0) formatMinutesCompact(sleepMin) else "—",
                         trailing = nightScore?.let { "${it.score}" } ?: "8h",
                         progress = sleepProgress,
@@ -356,6 +403,7 @@ fun DailyHealthSection(
                     Spacer(modifier = Modifier.height(5.dp))
                     GoalBar(
                         label = "Move",
+                        iconRes = R.drawable.ic_flame,
                         value = if (activity.activeCalories > 0) {
                             "${activity.activeCalories.roundToInt()}"
                         } else {
@@ -396,13 +444,20 @@ private data class HeroCopy(
     val unit: String?,
     val sub: String,
     val accent: Color,
+    @param:DrawableRes val iconRes: Int,
 )
 
-private data class Chip(val label: String, val value: String, val color: Color)
+private data class Chip(
+    val label: String,
+    val value: String,
+    val color: Color,
+    @param:DrawableRes val iconRes: Int,
+)
 
 @Composable
 private fun GoalBar(
     label: String,
+    @DrawableRes iconRes: Int,
     value: String,
     trailing: String,
     progress: Float,
@@ -415,12 +470,25 @@ private fun GoalBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                label,
-                fontSize = if (compact) 11.sp else 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = color,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.weight(1f, fill = false),
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(if (compact) 12.dp else 14.dp),
+                )
+                Text(
+                    label,
+                    fontSize = if (compact) 11.sp else 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = color,
+                    maxLines = 1,
+                )
+            }
             Text(
                 "$value / $trailing",
                 fontSize = if (compact) 11.sp else 12.sp,
@@ -454,20 +522,30 @@ private fun GoalBar(
 
 @Composable
 private fun MetricCell(chip: Chip, modifier: Modifier = Modifier) {
-    Column(
+    Row(
         modifier = modifier
             .background(chip.color.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(chip.label, fontSize = 10.sp, color = TextSecondary, maxLines = 1)
-        Text(
-            chip.value,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Icon(
+            painter = painterResource(chip.iconRes),
+            contentDescription = null,
+            tint = chip.color,
+            modifier = Modifier.size(16.dp),
         )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(chip.label, fontSize = 10.sp, color = TextSecondary, maxLines = 1)
+            Text(
+                chip.value,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

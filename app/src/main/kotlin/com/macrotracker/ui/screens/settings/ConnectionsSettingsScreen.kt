@@ -13,16 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
-import androidx.compose.material.icons.outlined.Air
-import androidx.compose.material.icons.outlined.Bedtime
-import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.LocalFireDepartment
-import androidx.compose.material.icons.outlined.Route
-import androidx.compose.material.icons.outlined.Stairs
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +32,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.remote.TempUnit
 import com.macrotracker.data.remote.WindUnit
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.screens.health.HealthMetric
+import com.macrotracker.ui.screens.health.iconRes
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.TextPrimary
@@ -127,7 +122,7 @@ fun ConnectionsSettingsScreen(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.FavoriteBorder,
+                    iconRes = HealthMetric.HEART_RATE.iconRes(),
                     name = "Heart Rate",
                     enabled = heartRateEnabled,
                     onCheckedChange = {
@@ -136,7 +131,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.Bedtime,
+                    iconRes = HealthMetric.RESTING_HEART_RATE.iconRes(),
                     name = "Resting Heart Rate",
                     enabled = restingHeartRateEnabled,
                     onCheckedChange = {
@@ -145,7 +140,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.Bloodtype,
+                    iconRes = HealthMetric.OXYGEN_SATURATION.iconRes(),
                     name = "Oxygen Saturation",
                     enabled = oxygenSaturationEnabled,
                     onCheckedChange = {
@@ -154,7 +149,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.Air,
+                    iconRes = HealthMetric.RESPIRATORY_RATE.iconRes(),
                     name = "Respiratory Rate",
                     enabled = respiratoryRateEnabled,
                     onCheckedChange = {
@@ -163,7 +158,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
+                    iconRes = HealthMetric.STEPS.iconRes(),
                     name = "Steps",
                     enabled = stepsEnabled,
                     onCheckedChange = {
@@ -172,7 +167,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.Route,
+                    iconRes = HealthMetric.DISTANCE.iconRes(),
                     name = "Distance",
                     enabled = distanceEnabled,
                     onCheckedChange = {
@@ -181,7 +176,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.Stairs,
+                    iconRes = HealthMetric.FLOORS_CLIMBED.iconRes(),
                     name = "Floors Climbed",
                     enabled = floorsClimbedEnabled,
                     onCheckedChange = {
@@ -190,7 +185,7 @@ fun ConnectionsSettingsScreen(
                     },
                 )
                 MetricToggleRow(
-                    icon = Icons.Outlined.LocalFireDepartment,
+                    iconRes = HealthMetric.CALORIES.iconRes(),
                     name = "Active Calories",
                     enabled = activeCaloriesEnabled,
                     onCheckedChange = {

@@ -1,6 +1,8 @@
 package com.macrotracker.ui.screens.health
 
+import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
+import com.macrotracker.R
 import com.macrotracker.data.health.HealthStats
 import com.macrotracker.ui.theme.Primary
 import java.util.Locale
@@ -15,6 +17,20 @@ enum class HealthMetric {
     RESPIRATORY_RATE,
     DISTANCE,
     FLOORS_CLIMBED,
+}
+
+/** Lucide / Tabler stroke icons used across Daily Health, trends, and Body Stats. */
+@DrawableRes
+fun HealthMetric.iconRes(): Int = when (this) {
+    HealthMetric.STEPS -> R.drawable.ic_steps
+    HealthMetric.HEART_RATE -> R.drawable.ic_heart
+    HealthMetric.SLEEP -> R.drawable.ic_sleep
+    HealthMetric.CALORIES -> R.drawable.ic_flame
+    HealthMetric.RESTING_HEART_RATE -> R.drawable.ic_heart_pulse
+    HealthMetric.OXYGEN_SATURATION -> R.drawable.ic_droplet
+    HealthMetric.RESPIRATORY_RATE -> R.drawable.ic_lungs
+    HealthMetric.DISTANCE -> R.drawable.ic_route
+    HealthMetric.FLOORS_CLIMBED -> R.drawable.ic_stairs
 }
 
 fun HealthStats.valueOf(metric: HealthMetric): Double = when (metric) {

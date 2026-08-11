@@ -29,7 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -37,11 +39,15 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
@@ -209,6 +215,8 @@ fun AnimatedHealthAreaChart(
         reveal.animateTo(1f, MacroMotion.chartRevealTween(850))
     }
 
+    val textMeasurer = rememberTextMeasurer()
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -243,7 +251,8 @@ fun AnimatedHealthAreaChart(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val left = 16.dp.toPx()
             val right = size.width - 16.dp.toPx()
-            val top = 28.dp.toPx()
+            // Extra top pad so the selected-day value fits above its point
+            val top = 36.dp.toPx()
             val bottom = size.height - 34.dp.toPx()
             val width = right - left
             val height = bottom - top
@@ -308,18 +317,49 @@ fun AnimatedHealthAreaChart(
                         drawCircle(color = color.copy(alpha = progress), radius = radius, center = p)
                     }
                 }
+
+                // Value label anchored above the selected day's point
+                if (selectedIndex in points.indices && values[selectedIndex] > 0) {
+                    val p = points[selectedIndex]
+                    val label = valueFormatter(values[selectedIndex])
+                    val layout = textMeasurer.measure(
+                        label,
+                        TextStyle(
+                            color = color,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                    )
+                    val padX = 8.dp.toPx()
+                    val padY = 5.dp.toPx()
+                    val tw = layout.size.width + padX * 2
+                    val th = layout.size.height + padY * 2
+                    var tipX = p.x - tw / 2f
+                    tipX = tipX.coerceIn(6.dp.toPx(), size.width - tw - 6.dp.toPx())
+                    var tipY = p.y - th - 10.dp.toPx()
+                    if (tipY < 4.dp.toPx()) tipY = 4.dp.toPx()
+                    drawRoundRect(
+                        color = Surface.copy(alpha = 0.94f),
+                        topLeft = Offset(tipX, tipY),
+                        size = Size(tw, th),
+                        cornerRadius = CornerRadius(8.dp.toPx()),
+                    )
+                    drawRoundRect(
+                        color = color.copy(alpha = 0.35f),
+                        topLeft = Offset(tipX, tipY),
+                        size = Size(tw, th),
+                        cornerRadius = CornerRadius(8.dp.toPx()),
+                        style = Stroke(1.dp.toPx()),
+                    )
+                    drawText(
+                        layout,
+                        topLeft = Offset(tipX + padX, tipY + padY),
+                    )
+                }
             }
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            val selectedValue = values.getOrNull(selectedIndex) ?: 0.0
-            Text(
-                valueFormatter(selectedValue),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = color,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            )
             Spacer(modifier = Modifier.weight(1f))
             Row(
                 modifier = Modifier

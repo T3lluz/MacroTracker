@@ -320,25 +320,6 @@ fun HealthActivityHighlights(
 }
 
 @Composable
-fun WeekScoresStrip(insights: WeekHealthInsights) {
-    if (insights.moveScore <= 0 && insights.sleepScore <= 0 && insights.readinessScore <= 0) return
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (insights.readinessScore > 0) {
-            CompactScore("Ready", insights.readinessScore, Primary, Modifier.weight(1f))
-        }
-        if (insights.moveScore > 0) {
-            CompactScore("Move", insights.moveScore, MoveRing, Modifier.weight(1f))
-        }
-        if (insights.sleepScore > 0) {
-            CompactScore("Sleep", insights.sleepScore, SleepAccent, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
 private fun ActivityRings(
     moveProgress: Float,
     exerciseProgress: Float,
@@ -459,25 +440,6 @@ private fun ScoreTile(
         Text(subtitle, fontSize = 11.sp, color = TextSecondary)
         Spacer(modifier = Modifier.height(8.dp))
         ThinProgress(progress = score / 100f, color = accent)
-    }
-}
-
-@Composable
-private fun CompactScore(
-    label: String,
-    score: Int,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .background(Background, RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-    ) {
-        Text(label, fontSize = 10.sp, color = TextSecondary)
-        Text("$score", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = color)
-        Spacer(modifier = Modifier.height(6.dp))
-        ThinProgress(progress = score / 100f, color = color)
     }
 }
 

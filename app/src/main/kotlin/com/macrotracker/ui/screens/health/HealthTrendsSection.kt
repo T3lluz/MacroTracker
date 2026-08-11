@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,7 +59,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -71,7 +71,6 @@ fun HealthTrendsSection(
     weekStartDay: DayOfWeek,
     weeksBack: Int,
     haptics: HapticHelper,
-    weekInsights: WeekHealthInsights? = null,
     isStepsEnabled: Boolean,
     isHeartRateEnabled: Boolean,
     isRestingHeartRateEnabled: Boolean,
@@ -198,11 +197,6 @@ fun HealthTrendsSection(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            if (weeksBack == 0 && weekInsights != null) {
-                WeekScoresStrip(weekInsights)
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
             if (availableMetrics.isEmpty()) {
                 Text(
                     "No Health Connect data for this week yet.",
@@ -221,6 +215,7 @@ fun HealthTrendsSection(
                 availableMetrics.forEach { metric ->
                     MetricChip(
                         text = metric.chipLabel(),
+                        iconRes = metric.iconRes(),
                         selected = activeMetric == metric,
                         color = metric.tint(),
                         onClick = { onMetricSelected(metric) },
@@ -231,12 +226,23 @@ fun HealthTrendsSection(
             Spacer(modifier = Modifier.height(12.dp))
 
             if (avgValue > 0) {
-                Text(
-                    "Avg ${formatMetricValue(activeMetric, avgValue, compact = true)} ${formatMetricUnit(activeMetric)}".trim(),
-                    fontSize = 13.sp,
-                    color = TextSecondary,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(bottom = 10.dp),
-                )
+                ) {
+                    Icon(
+                        painter = painterResource(activeMetric.iconRes()),
+                        contentDescription = null,
+                        tint = color.copy(alpha = 0.85f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "Avg ${formatMetricValue(activeMetric, avgValue, compact = true)} ${formatMetricUnit(activeMetric)}".trim(),
+                        fontSize = 13.sp,
+                        color = TextSecondary,
+                    )
+                }
             }
 
             AnimatedContent(
@@ -284,9 +290,17 @@ fun HealthTrendsSection(
                     selectedDate.format(DateTimeFormatter.ofPattern("EEE, MMM d"))
                 }
                 val selectedDayValue = selectedDayStats.stats.valueOf(activeMetric)
-                val day = selectedDayStats.stats
 
-                Text(dayName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(activeMetric.iconRes()),
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(dayName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                }
                 if (selectedDayValue > 0) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
@@ -335,40 +349,6 @@ fun HealthTrendsSection(
                     }
                 }
 
-                // Companion day stats — only useful companions for context
-                val companions = buildList {
-                    if (activeMetric != HealthMetric.SLEEP && day.sleepMinutes > 0) {
-                        add("Sleep" to formatMinutesCompact(day.sleepMinutes))
-                    }
-                    if (activeMetric != HealthMetric.RESTING_HEART_RATE && day.restingHeartRate > 0) {
-                        add("Resting" to "${day.restingHeartRate} bpm")
-                    }
-                    if (activeMetric != HealthMetric.STEPS && day.steps > 0) {
-                        add("Steps" to String.format(Locale.US, "%,d", day.steps))
-                    }
-                    if (activeMetric != HealthMetric.CALORIES && day.activeCaloriesBurned > 0) {
-                        add("Move" to "${day.activeCaloriesBurned.roundToInt()} kcal")
-                    }
-                }.take(3)
-                if (companions.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        companions.forEach { (label, value) ->
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .background(Background, RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                            ) {
-                                Text(label, fontSize = 10.sp, color = TextSecondary)
-                                Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                            }
-                        }
-                    }
-                }
             }
 
             AnimatedVisibility(
@@ -399,17 +379,26 @@ fun HealthTrendsSection(
 @Composable
 private fun MetricChip(
     text: String,
+    iconRes: Int,
     selected: Boolean,
     color: Color,
     onClick: () -> Unit,
 ) {
-    Box(
+    Row(
         modifier = Modifier
             .clip(CircleShape)
             .background(if (selected) color.copy(alpha = 0.18f) else Background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = if (selected) color else TextSecondary,
+            modifier = Modifier.size(14.dp),
+        )
         Text(
             text = text,
             fontSize = 12.sp,

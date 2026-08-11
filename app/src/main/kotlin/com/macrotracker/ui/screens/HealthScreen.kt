@@ -27,21 +27,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.ShowChart
-import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.ViewDay
-import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.LocalFireDepartment
-import androidx.compose.material.icons.outlined.Route
-import androidx.compose.material.icons.outlined.Stairs
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,6 +72,7 @@ import com.macrotracker.ui.screens.health.DailyHealthSection
 import com.macrotracker.ui.screens.health.HealthMetric
 import com.macrotracker.ui.screens.health.HealthStatCard
 import com.macrotracker.ui.screens.health.HealthTrendsSection
+import com.macrotracker.ui.screens.health.iconRes
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.ui.components.ButtonVariant
@@ -330,14 +324,26 @@ fun HealthScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
                     "BODY_STATS" -> {
-                        // Secondary vitals grid — hero sleep/resting/rings live in Daily Health.
-                        val showHeartRate = heartRateState.isEnabled && heartRateState.value != "–"
-                        val showRestingHr = restingHeartRateState.isEnabled && restingHeartRateState.value != "–"
-                        val showSpo2 = oxygenSaturationState.isEnabled && oxygenSaturationState.value != "–"
-                        val showResp = respiratoryRateState.isEnabled && respiratoryRateState.value != "–"
+                        // Daily Health already surfaces today's vitals/chips — skip this duplicate
+                        // grid when that widget is visible. Keep Body Stats for installs that
+                        // hide Daily Health.
+                        val dailyHealthVisible = parsedConfigs.any {
+                            it.id == "DAILY_HEALTH" && it.isVisible
+                        }
+                        val showHeartRate = !dailyHealthVisible &&
+                            heartRateState.isEnabled && heartRateState.value != "–"
+                        val showRestingHr = !dailyHealthVisible &&
+                            restingHeartRateState.isEnabled && restingHeartRateState.value != "–"
+                        val showSpo2 = !dailyHealthVisible &&
+                            oxygenSaturationState.isEnabled && oxygenSaturationState.value != "–"
+                        val showResp = !dailyHealthVisible &&
+                            respiratoryRateState.isEnabled && respiratoryRateState.value != "–"
+                        val showSteps = !dailyHealthVisible && stepsState.isEnabled
+                        val showDistance = !dailyHealthVisible && distanceState.isEnabled
+                        val showFloors = !dailyHealthVisible && floorsClimbedState.isEnabled
+                        val showActive = !dailyHealthVisible && activeCaloriesState.isEnabled
                         val isAnyStatEnabled = showHeartRate || showRestingHr || showSpo2 || showResp ||
-                                stepsState.isEnabled || distanceState.isEnabled ||
-                                floorsClimbedState.isEnabled || activeCaloriesState.isEnabled
+                                showSteps || showDistance || showFloors || showActive
 
                         if (isAnyStatEnabled) {
                             MacroCard(delayMs = 0) {
@@ -361,7 +367,7 @@ fun HealthScreen(
                                             metricName = "Heart Rate",
                                             value = "${heartRateState.value} bpm",
                                             percentageChange = calculatePercentageChange(heartRateState.today, heartRateState.yesterday),
-                                            icon = Icons.Outlined.FavoriteBorder,
+                                            iconRes = HealthMetric.HEART_RATE.iconRes(),
                                             color = Color(0xFFEF5350),
                                         )
                                     }
@@ -371,7 +377,7 @@ fun HealthScreen(
                                             metricName = "Resting HR",
                                             value = "${restingHeartRateState.value} bpm",
                                             percentageChange = calculatePercentageChange(restingHeartRateState.today, restingHeartRateState.yesterday),
-                                            icon = Icons.Filled.MonitorHeart,
+                                            iconRes = HealthMetric.RESTING_HEART_RATE.iconRes(),
                                             color = Color(0xFFE57373),
                                         )
                                     }
@@ -381,7 +387,7 @@ fun HealthScreen(
                                             metricName = "SpO2",
                                             value = "${oxygenSaturationState.value} %",
                                             percentageChange = calculatePercentageChange(oxygenSaturationState.today, oxygenSaturationState.yesterday),
-                                            icon = Icons.Outlined.Bloodtype,
+                                            iconRes = HealthMetric.OXYGEN_SATURATION.iconRes(),
                                             color = Color(0xFF42A5F5),
                                         )
                                     }
@@ -391,47 +397,47 @@ fun HealthScreen(
                                             metricName = "Resp. Rate",
                                             value = "${respiratoryRateState.value} rpm",
                                             percentageChange = calculatePercentageChange(respiratoryRateState.today, respiratoryRateState.yesterday),
-                                            icon = Icons.Outlined.Air,
+                                            iconRes = HealthMetric.RESPIRATORY_RATE.iconRes(),
                                             color = Color(0xFF26C6DA),
                                         )
                                     }
-                                    if (stepsState.isEnabled) {
+                                    if (showSteps) {
                                         HealthStatCard(
                                             modifier = Modifier.weight(1f),
                                             metricName = "Steps",
                                             value = stepsState.value ?: "0",
                                             percentageChange = calculatePercentageChange(stepsState.today, stepsState.yesterday),
-                                            icon = Icons.AutoMirrored.Outlined.DirectionsWalk,
+                                            iconRes = HealthMetric.STEPS.iconRes(),
                                             color = Primary,
                                         )
                                     }
-                                    if (distanceState.isEnabled) {
+                                    if (showDistance) {
                                         HealthStatCard(
                                             modifier = Modifier.weight(1f),
                                             metricName = "Distance",
                                             value = "${distanceState.value} km",
                                             percentageChange = calculatePercentageChange(distanceState.today, distanceState.yesterday),
-                                            icon = Icons.Outlined.Route,
+                                            iconRes = HealthMetric.DISTANCE.iconRes(),
                                             color = Primary,
                                         )
                                     }
-                                    if (floorsClimbedState.isEnabled) {
+                                    if (showFloors) {
                                         HealthStatCard(
                                             modifier = Modifier.weight(1f),
                                             metricName = "Floors",
                                             value = floorsClimbedState.value ?: "0",
                                             percentageChange = calculatePercentageChange(floorsClimbedState.today, floorsClimbedState.yesterday),
-                                            icon = Icons.Outlined.Stairs,
+                                            iconRes = HealthMetric.FLOORS_CLIMBED.iconRes(),
                                             color = Color(0xFF66BB6A),
                                         )
                                     }
-                                    if (activeCaloriesState.isEnabled) {
+                                    if (showActive) {
                                         HealthStatCard(
                                             modifier = Modifier.weight(1f),
                                             metricName = "Active Cals",
                                             value = activeCaloriesState.value ?: "0",
                                             percentageChange = calculatePercentageChange(activeCaloriesState.today, activeCaloriesState.yesterday),
-                                            icon = Icons.Outlined.LocalFireDepartment,
+                                            iconRes = HealthMetric.CALORIES.iconRes(),
                                             color = Color(0xFFFF9800),
                                         )
                                     }
@@ -452,7 +458,6 @@ fun HealthScreen(
                                 weekStartDay = weekStartDay,
                                 weeksBack = weeksBack,
                                 haptics = haptics,
-                                weekInsights = weekInsights,
                                 isStepsEnabled = stepsState.isEnabled,
                                 isHeartRateEnabled = heartRateState.isEnabled,
                                 isRestingHeartRateEnabled = restingHeartRateState.isEnabled,

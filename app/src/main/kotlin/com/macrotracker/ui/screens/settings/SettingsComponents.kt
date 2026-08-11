@@ -1,5 +1,6 @@
 package com.macrotracker.ui.screens.settings
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -304,18 +306,57 @@ fun MetricToggleRow(
     icon: ImageVector,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    MetricToggleRowContent(
+        name = name,
+        enabled = enabled,
+        onCheckedChange = onCheckedChange,
+        icon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = name,
+                tint = TextSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        },
+    )
+}
+
+@Composable
+fun MetricToggleRow(
+    name: String,
+    enabled: Boolean,
+    @DrawableRes iconRes: Int,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    MetricToggleRowContent(
+        name = name,
+        enabled = enabled,
+        onCheckedChange = onCheckedChange,
+        icon = {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = name,
+                tint = TextSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        },
+    )
+}
+
+@Composable
+private fun MetricToggleRowContent(
+    name: String,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    icon: @Composable () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = name,
-            tint = TextSecondary,
-            modifier = Modifier.size(22.dp),
-        )
+        icon()
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = name,

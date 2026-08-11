@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.annotation.DrawableRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -29,7 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +55,7 @@ fun HealthHeroMetric(
     accent: Color,
     modifier: Modifier = Modifier,
     percentageChange: Double? = null,
+    @DrawableRes iconRes: Int? = null,
 ) {
     Column(
         modifier = modifier
@@ -62,7 +64,20 @@ fun HealthHeroMetric(
             .border(1.dp, Border, RoundedCornerShape(14.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
@@ -107,7 +122,7 @@ fun HealthStatCard(
     metricName: String,
     value: String,
     percentageChange: Double?,
-    icon: ImageVector,
+    @DrawableRes iconRes: Int,
     color: Color,
 ) {
     Box(
@@ -135,7 +150,7 @@ fun HealthStatCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = icon,
+                        painter = painterResource(iconRes),
                         contentDescription = metricName,
                         tint = color,
                         modifier = Modifier.size(16.dp),
