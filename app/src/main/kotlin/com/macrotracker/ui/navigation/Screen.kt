@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Health : Screen("health", "Health", Icons.Default.MonitorHeart)
-    object AI : Screen("ai", "AI Scan", Icons.Default.AutoAwesome)
+    object AI : Screen("ai", "AI", Icons.Default.AutoAwesome)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 

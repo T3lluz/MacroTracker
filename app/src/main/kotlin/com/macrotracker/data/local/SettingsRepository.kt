@@ -92,9 +92,7 @@ class SettingsRepository @Inject constructor(
     val homeWidgetOrder: StateFlow<String> = _homeWidgetOrder
 
     // Layout preferences for Health Screen
-    private val _healthWidgetOrder = MutableStateFlow(
-        prefs.getString("health_widget_order", "BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true") ?: "BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
-    )
+    private val _healthWidgetOrder = MutableStateFlow(loadHealthWidgetOrder())
     val healthWidgetOrder: StateFlow<String> = _healthWidgetOrder
 
     fun setAiProvider(provider: AiProvider) {
@@ -203,6 +201,17 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    private fun loadHealthWidgetOrder(): String {
+        val default =
+            "DAILY_HEALTH:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
+        val raw = prefs.getString("health_widget_order", default) ?: default
+        val migrated = migrateHealthWidgetOrder(raw)
+        if (migrated != raw) {
+            prefs.edit { putString("health_widget_order", migrated) }
+        }
+        return migrated
+    }
+
     companion object {
         const val KEY_AI_PROVIDER = "ai_provider"
         const val KEY_GEMINI_API_KEY = "gemini_api_key"
@@ -212,5 +221,11 @@ class SettingsRepository @Inject constructor(
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         const val KEY_TEMP_UNIT = "temp_unit"
         const val KEY_WIND_UNIT = "wind_unit"
+
+        /** Prepend Daily Health for installs that predate the widget. */
+        fun migrateHealthWidgetOrder(order: String): String {
+            if (order.contains("DAILY_HEALTH")) return order
+            return "DAILY_HEALTH:true,$order"
+        }
     }
 }

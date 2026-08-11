@@ -7,14 +7,38 @@ import com.macrotracker.data.local.MacroRepository
 import com.macrotracker.data.remote.NutritionAiRepository
 import com.macrotracker.data.remote.NutritionEstimate
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import javax.inject.Inject
 
-data class FeedbackState(val text: String, val isError: Boolean)
+sealed interface NutritionChatMessage {
+    val id: String
+
+    data class Doctor(
+        override val id: String = UUID.randomUUID().toString(),
+        val text: String,
+        val estimate: NutritionEstimate? = null,
+        val estimateLogged: Boolean = false,
+        val isError: Boolean = false,
+        val retryQuery: String? = null,
+        val showSettingsCta: Boolean = false,
+    ) : NutritionChatMessage
+
+    data class User(
+        override val id: String = UUID.randomUUID().toString(),
+        val text: String,
+    ) : NutritionChatMessage
+
+    data class Typing(
+        override val id: String = "typing",
+    ) : NutritionChatMessage
+}
 
 @HiltViewModel
 class AiViewModel @Inject constructor(
@@ -22,62 +46,161 @@ class AiViewModel @Inject constructor(
     private val macroRepo: MacroRepository,
 ) : ViewModel() {
 
+    private val welcome = NutritionChatMessage.Doctor(
+        id = "welcome",
+        text = "Hey — I'm Clanker. Describe a meal and I'll estimate calories and protein. " +
+            "Type a dish (like “burger”) for add-on ideas, or tap a quick bite below.",
+    )
+
+    private val _messages = MutableStateFlow<List<NutritionChatMessage>>(listOf(welcome))
+    val messages: StateFlow<List<NutritionChatMessage>> = _messages
+
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
 
-    private val _estimate = MutableStateFlow<NutritionEstimate?>(null)
-    val estimate: StateFlow<NutritionEstimate?> = _estimate
+    private val _loggedCount = MutableStateFlow(0)
+    val loggedCount: StateFlow<Int> = _loggedCount
 
-    private val _feedback = MutableStateFlow<FeedbackState?>(null)
-    val feedback: StateFlow<FeedbackState?> = _feedback
+    val hasApiKey: Boolean get() = aiRepo.hasApiKey
 
-    /** Emits `true` once after a successful log so the UI can navigate away. */
-    private val _loggedEvent = MutableStateFlow(false)
-    val loggedEvent: StateFlow<Boolean> = _loggedEvent
+    private var estimateJob: Job? = null
 
-    fun consumeLoggedEvent() { _loggedEvent.value = false }
-
-    fun estimateNutrition(foodQuery: String) {
-        if (foodQuery.isBlank()) {
-            _feedback.value = FeedbackState("Enter a food name or description first.", true)
+    fun sendFoodQuery(foodQuery: String) {
+        val query = foodQuery.trim()
+        if (query.isBlank()) {
+            appendDoctor(
+                text = "I need a food description first — even a rough one works.",
+                isError = true,
+            )
             return
         }
+        if (_loading.value) return
+
+        if (!aiRepo.hasApiKey) {
+            _messages.update { current ->
+                current.filterNot { it is NutritionChatMessage.Typing } +
+                    NutritionChatMessage.User(text = query) +
+                    NutritionChatMessage.Doctor(
+                        text = "No API key set. Add one in Settings → AI, then try again.",
+                        isError = true,
+                        retryQuery = query,
+                        showSettingsCta = true,
+                    )
+            }
+            return
+        }
+
+        _messages.update { current ->
+            current.filterNot { it is NutritionChatMessage.Typing } +
+                NutritionChatMessage.User(text = query) +
+                NutritionChatMessage.Typing()
+        }
         _loading.value = true
-        _feedback.value = null
-        viewModelScope.launch {
+
+        estimateJob?.cancel()
+        estimateJob = viewModelScope.launch {
             try {
-                val result = aiRepo.estimateNutritionWithAI(foodQuery)
-                _estimate.value = result
-                _feedback.value = FeedbackState("AI estimate ready.", false)
+                val result = aiRepo.estimateNutritionWithAI(query)
+                val reply = buildEstimateReply(result)
+                _messages.update { current ->
+                    current.filterNot { it is NutritionChatMessage.Typing } +
+                        NutritionChatMessage.Doctor(text = reply, estimate = result)
+                }
             } catch (e: Exception) {
-                _estimate.value = null
-                _feedback.value = FeedbackState(e.message ?: "Failed to estimate macros.", true)
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                val message = e.message ?: "Couldn't estimate those macros. Try again?"
+                _messages.update { current ->
+                    current.filterNot { it is NutritionChatMessage.Typing } +
+                        NutritionChatMessage.Doctor(
+                            text = message,
+                            isError = true,
+                            retryQuery = query,
+                            showSettingsCta = looksLikeSettingsError(message),
+                        )
+                }
             } finally {
                 _loading.value = false
+                estimateJob = null
             }
         }
     }
-    
-    fun clearEstimate() {
-        _estimate.value = null
-        _feedback.value = null
+
+    fun retryQuery(query: String) {
+        if (query.isBlank() || _loading.value) return
+        sendFoodQuery(query)
     }
 
-    fun logEstimate() {
-        val est = _estimate.value ?: return
-        viewModelScope.launch {
-            val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-            macroRepo.saveLog(
-                MacroLogEntity(
-                    id = System.currentTimeMillis().toString(),
-                    date = LocalDate.now().format(dateFormat),
-                    foodName = "${est.foodName} (AI)",
-                    calories = est.calories,
-                    protein = est.protein,
-                )
-            )
-            _feedback.value = FeedbackState("AI estimate logged to today.", false)
-            _loggedEvent.value = true
+    fun cancelEstimate() {
+        estimateJob?.cancel()
+        estimateJob = null
+        _loading.value = false
+        _messages.update { current ->
+            current.filterNot { it is NutritionChatMessage.Typing } +
+                NutritionChatMessage.Doctor(text = "Cancelled. Ask me about another meal whenever you're ready.")
         }
+    }
+
+    fun logEstimate(messageId: String, estimate: NutritionEstimate) {
+        val alreadyLogged = _messages.value.any {
+            it is NutritionChatMessage.Doctor && it.id == messageId && it.estimateLogged
+        }
+        if (alreadyLogged) return
+
+        viewModelScope.launch {
+            try {
+                val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                macroRepo.saveLog(
+                    MacroLogEntity(
+                        id = System.currentTimeMillis().toString(),
+                        date = LocalDate.now().format(dateFormat),
+                        foodName = "${estimate.foodName} (AI)",
+                        calories = estimate.calories,
+                        protein = estimate.protein,
+                    ),
+                )
+                _messages.update { list ->
+                    list.map { msg ->
+                        if (msg is NutritionChatMessage.Doctor && msg.id == messageId) {
+                            msg.copy(estimateLogged = true, estimate = estimate)
+                        } else {
+                            msg
+                        }
+                    } + NutritionChatMessage.Doctor(
+                        text = "Logged ${estimate.foodName} (${estimate.calories} kcal · ${estimate.protein}g protein). Ask about another meal anytime.",
+                    )
+                }
+                _loggedCount.update { it + 1 }
+            } catch (e: Exception) {
+                appendDoctor(
+                    text = e.message ?: "Couldn't save that log. Try again.",
+                    isError = true,
+                )
+            }
+        }
+    }
+
+    fun clearChat() {
+        if (_loading.value) return
+        _messages.value = listOf(welcome)
+        _loggedCount.value = 0
+    }
+
+    private fun appendDoctor(text: String, isError: Boolean = false) {
+        _messages.update { it + NutritionChatMessage.Doctor(text = text, isError = isError) }
+    }
+
+    private fun buildEstimateReply(est: NutritionEstimate): String {
+        val notes = est.notes.trim().takeIf { it.isNotEmpty() }?.let { " $it" } ?: ""
+        return "Here's my take on ${est.foodName} — ${est.servingDescription}." +
+            " About ${est.calories} kcal and ${est.protein}g protein.$notes" +
+            " Adjust the portion below if needed, then log it."
+    }
+
+    private fun looksLikeSettingsError(message: String): Boolean {
+        val lower = message.lowercase()
+        return lower.contains("api key") ||
+            lower.contains("settings") ||
+            lower.contains("unauthorized") ||
+            lower.contains("invalid")
     }
 }

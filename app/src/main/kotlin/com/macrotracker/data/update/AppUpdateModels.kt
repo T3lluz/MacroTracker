@@ -31,6 +31,13 @@ data class AppReleaseNotes(
     val isNewerThanInstalled: Boolean,
 )
 
+/** Shown once after the app relaunches onto a newly installed build. */
+data class WhatsNewInfo(
+    val versionName: String,
+    val versionCode: Int,
+    val releaseNotes: String,
+)
+
 sealed class AppUpdateUiState {
     data object Idle : AppUpdateUiState()
     data object Checking : AppUpdateUiState()

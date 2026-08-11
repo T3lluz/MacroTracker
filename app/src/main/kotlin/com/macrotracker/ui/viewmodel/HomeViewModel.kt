@@ -310,7 +310,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun loadHealthConnectInternal(silent: Boolean = false, forceRefresh: Boolean = false) {
-        if (!settingsRepository.masterHealthConnectEnabled.value || !healthConnectRepository.isAvailable() || !healthConnectRepository.hasAllPermissions()) {
+        if (!settingsRepository.masterHealthConnectEnabled.value || !healthConnectRepository.isAvailable() || !healthConnectRepository.hasAnyPermissions()) {
             _healthState.value = HomeHealthState.Unavailable
             return
         }

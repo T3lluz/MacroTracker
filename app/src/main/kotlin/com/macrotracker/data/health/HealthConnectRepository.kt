@@ -21,6 +21,7 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -35,9 +36,10 @@ data class HealthStats(
     val avgHeartRate: Long = 0,
     val sleepMinutes: Long = 0,
     val totalCaloriesBurned: Double = 0.0,
+    val activeCaloriesBurned: Double = 0.0,
     val restingHeartRate: Long = 0,
     val oxygenSaturation: Double = 0.0,
-    val respiratoryRate: Long = 0,
+    val respiratoryRate: Double = 0.0,
     val distance: Double = 0.0,
     val floorsClimbed: Double = 0.0,
 )
@@ -54,6 +56,9 @@ class HealthConnectRepository @Inject constructor(
     companion object {
         private const val TAG = "HealthConnectRepo"
 
+        /** Sparse overnight vitals (RHR / SpO2 / resp) often land just after midnight. */
+        private val SPARSE_VITAL_LOOKBACK: Duration = Duration.ofHours(36)
+
         val PERMISSIONS = setOf(
             HealthPermission.getReadPermission(StepsRecord::class),
             HealthPermission.getReadPermission(HeartRateRecord::class),
@@ -66,6 +71,17 @@ class HealthConnectRepository @Inject constructor(
             HealthPermission.getReadPermission(DistanceRecord::class),
             HealthPermission.getReadPermission(FloorsClimbedRecord::class),
         )
+
+        val STEPS_PERMISSION = HealthPermission.getReadPermission(StepsRecord::class)
+        val HEART_RATE_PERMISSION = HealthPermission.getReadPermission(HeartRateRecord::class)
+        val SLEEP_PERMISSION = HealthPermission.getReadPermission(SleepSessionRecord::class)
+        val TOTAL_CALORIES_PERMISSION = HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
+        val ACTIVE_CALORIES_PERMISSION = HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
+        val RESTING_HEART_RATE_PERMISSION = HealthPermission.getReadPermission(RestingHeartRateRecord::class)
+        val OXYGEN_SATURATION_PERMISSION = HealthPermission.getReadPermission(OxygenSaturationRecord::class)
+        val RESPIRATORY_RATE_PERMISSION = HealthPermission.getReadPermission(RespiratoryRateRecord::class)
+        val DISTANCE_PERMISSION = HealthPermission.getReadPermission(DistanceRecord::class)
+        val FLOORS_PERMISSION = HealthPermission.getReadPermission(FloorsClimbedRecord::class)
     }
 
     private val client: HealthConnectClient? by lazy {
@@ -85,7 +101,6 @@ class HealthConnectRepository @Inject constructor(
     fun isAvailable(): Boolean = client != null
 
     // ── Lightweight in-memory cache for individual metric reads ───────────
-    // Avoids hammering the Health Connect IPC on every DashboardViewModel refresh.
     private val METRIC_CACHE_TTL = 5 * 60 * 1000L // 5 minutes
     private val metricCache = mutableMapOf<String, Pair<Long, Any?>>()
 
@@ -99,32 +114,39 @@ class HealthConnectRepository @Inject constructor(
         metricCache[key] = System.currentTimeMillis() to value
     }
 
-    /** Clears per-metric IPC cache so the next reads hit Health Connect. */
     fun clearMetricCache() {
         metricCache.clear()
     }
 
-
-    suspend fun hasAllPermissions(): Boolean {
-        val hc = client ?: return false
+    suspend fun getGrantedPermissions(): Set<String> {
+        val hc = client ?: return emptySet()
         return try {
-            val granted = hc.permissionController.getGrantedPermissions()
-            PERMISSIONS.all { it in granted }
+            hc.permissionController.getGrantedPermissions()
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking permissions: ${e.message}")
-            false
+            Log.e(TAG, "Error reading granted permissions: ${e.message}")
+            emptySet()
         }
     }
 
+    suspend fun hasAllPermissions(): Boolean {
+        val granted = getGrantedPermissions()
+        return PERMISSIONS.all { it in granted }
+    }
+
+    /** True when at least one Health Connect read permission we request is granted. */
+    suspend fun hasAnyPermissions(): Boolean {
+        val granted = getGrantedPermissions()
+        return PERMISSIONS.any { it in granted }
+    }
+
+    suspend fun hasPermission(permission: String): Boolean {
+        return permission in getGrantedPermissions()
+    }
+
     suspend fun hasPermissions(permissions: Set<String>): Boolean {
-        val hc = client ?: return false
-        return try {
-            val granted = hc.permissionController.getGrantedPermissions()
-            permissions.all { it in granted }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking permissions: ${e.message}")
-            false
-        }
+        if (permissions.isEmpty()) return true
+        val granted = getGrantedPermissions()
+        return permissions.all { it in granted }
     }
 
     suspend fun revokeAllPermissions() {
@@ -136,7 +158,7 @@ class HealthConnectRepository @Inject constructor(
         }
     }
 
-    // ── New Functions for DashboardViewModel ───────────────────────────────
+    // ── Per-metric reads (DashboardViewModel) ──────────────────────────────
 
     suspend fun getLatestHeartRate(yesterday: Boolean = false): Long? = withContext(Dispatchers.IO) {
         val cacheKey = "hr_${if (yesterday) "yesterday" else "today"}"
@@ -148,7 +170,7 @@ class HealthConnectRepository @Inject constructor(
                 recordType = HeartRateRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(start, end),
                 ascendingOrder = false,
-                pageSize = 1
+                pageSize = 1,
             )
             val result = hc.readRecords(request).records.firstOrNull()?.samples?.lastOrNull()?.beatsPerMinute
             putCache(cacheKey, result)
@@ -163,13 +185,13 @@ class HealthConnectRepository @Inject constructor(
         val cacheKey = "rhr_${if (yesterday) "yesterday" else "today"}"
         getCached<Long>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
-        val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
+        val (start, end) = sparseVitalRange(yesterday)
         try {
             val request = ReadRecordsRequest(
                 recordType = RestingHeartRateRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(start, end),
                 ascendingOrder = false,
-                pageSize = 1
+                pageSize = 1,
             )
             val result = hc.readRecords(request).records.firstOrNull()?.beatsPerMinute
             putCache(cacheKey, result)
@@ -184,13 +206,13 @@ class HealthConnectRepository @Inject constructor(
         val cacheKey = "spo2_${if (yesterday) "yesterday" else "today"}"
         getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
-        val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
+        val (start, end) = sparseVitalRange(yesterday)
         try {
             val request = ReadRecordsRequest(
                 recordType = OxygenSaturationRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(start, end),
                 ascendingOrder = false,
-                pageSize = 1
+                pageSize = 1,
             )
             val result = hc.readRecords(request).records.firstOrNull()?.percentage?.value
             putCache(cacheKey, result)
@@ -205,13 +227,13 @@ class HealthConnectRepository @Inject constructor(
         val cacheKey = "resp_${if (yesterday) "yesterday" else "today"}"
         getCached<Double>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext null
-        val (start, end) = if (yesterday) getYesterdayTimeRange() else getTodayTimeRange()
+        val (start, end) = sparseVitalRange(yesterday)
         try {
             val request = ReadRecordsRequest(
                 recordType = RespiratoryRateRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(start, end),
                 ascendingOrder = false,
-                pageSize = 1
+                pageSize = 1,
             )
             val result = hc.readRecords(request).records.firstOrNull()?.rate
             putCache(cacheKey, result)
@@ -234,9 +256,6 @@ class HealthConnectRepository @Inject constructor(
     suspend fun getFloorsClimbedToday(): Double? = getFloorsClimbedForDate(LocalDate.now())
     suspend fun getFloorsClimbedYesterday(): Double? = getFloorsClimbedForDate(LocalDate.now().minusDays(1))
 
-
-    // ── Private Helpers for New Functions ──────────────────────────────────
-
     private suspend fun getStepsForDate(date: LocalDate): Long? = withContext(Dispatchers.IO) {
         val cacheKey = "steps_$date"
         getCached<Long>(cacheKey)?.let { return@withContext it }
@@ -246,8 +265,8 @@ class HealthConnectRepository @Inject constructor(
             val response = hc.aggregate(
                 AggregateRequest(
                     metrics = setOf(StepsRecord.COUNT_TOTAL),
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                ),
             )
             val result = response[StepsRecord.COUNT_TOTAL]
             putCache(cacheKey, result)
@@ -267,8 +286,8 @@ class HealthConnectRepository @Inject constructor(
             val response = hc.aggregate(
                 AggregateRequest(
                     metrics = setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                ),
             )
             val result = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
             putCache(cacheKey, result)
@@ -288,8 +307,8 @@ class HealthConnectRepository @Inject constructor(
             val response = hc.aggregate(
                 AggregateRequest(
                     metrics = setOf(DistanceRecord.DISTANCE_TOTAL),
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                ),
             )
             val result = response[DistanceRecord.DISTANCE_TOTAL]?.inKilometers
             putCache(cacheKey, result)
@@ -309,8 +328,8 @@ class HealthConnectRepository @Inject constructor(
             val response = hc.aggregate(
                 AggregateRequest(
                     metrics = setOf(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL),
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                ),
             )
             val result = response[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]
             putCache(cacheKey, result)
@@ -328,19 +347,24 @@ class HealthConnectRepository @Inject constructor(
         return start to end
     }
 
-    private fun getTodayTimeRange(): Pair<Instant, Instant> {
-        return getTimeRangeForDate(LocalDate.now())
-    }
+    private fun getTodayTimeRange(): Pair<Instant, Instant> = getTimeRangeForDate(LocalDate.now())
 
-    private fun getYesterdayTimeRange(): Pair<Instant, Instant> {
-        return getTimeRangeForDate(LocalDate.now().minusDays(1))
-    }
-
-
-    // ── Existing Public Functions (unchanged) ──────────────────────────────
+    private fun getYesterdayTimeRange(): Pair<Instant, Instant> =
+        getTimeRangeForDate(LocalDate.now().minusDays(1))
 
     /**
-     * Reads today's stats using the Aggregate API.
+     * Calendar day for yesterday; for "today" use a 36h lookback so overnight
+     * SpO2 / resp / RHR samples still surface in the morning.
+     */
+    private fun sparseVitalRange(yesterday: Boolean): Pair<Instant, Instant> {
+        if (yesterday) return getYesterdayTimeRange()
+        val end = Instant.now()
+        val start = end.minus(SPARSE_VITAL_LOOKBACK)
+        return start to end
+    }
+
+    /**
+     * Reads today's stats using the Aggregate API + latest sparse vitals.
      */
     suspend fun readTodayStats(): HealthStats = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext HealthStats()
@@ -360,6 +384,7 @@ class HealthConnectRepository @Inject constructor(
                         StepsRecord.COUNT_TOTAL,
                         HeartRateRecord.BPM_AVG,
                         TotalCaloriesBurnedRecord.ENERGY_TOTAL,
+                        ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
                         DistanceRecord.DISTANCE_TOTAL,
                         FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
                     ),
@@ -374,16 +399,16 @@ class HealthConnectRepository @Inject constructor(
                 ),
             )
 
-            // Latest-only reads (pageSize=1) — far cheaper than scanning every record.
             val restingHeartRate = getLatestRestingHeartRate() ?: 0L
             val oxygenSaturation = getLatestOxygenSaturation() ?: 0.0
-            val respiratoryRate = getLatestRespiratoryRate()?.toLong() ?: 0L
+            val respiratoryRate = getLatestRespiratoryRate() ?: 0.0
 
             HealthStats(
                 steps = response[StepsRecord.COUNT_TOTAL] ?: 0L,
                 avgHeartRate = response[HeartRateRecord.BPM_AVG] ?: 0L,
                 sleepMinutes = sleepResponse[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L,
                 totalCaloriesBurned = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
+                activeCaloriesBurned = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0,
                 restingHeartRate = restingHeartRate,
                 oxygenSaturation = oxygenSaturation,
                 respiratoryRate = respiratoryRate,
@@ -397,100 +422,239 @@ class HealthConnectRepository @Inject constructor(
     }
 
     /**
-     * Reads historical stats up to [days] ago using the AggregateGroupByPeriod API.
+     * Historical daily stats. Aggregates bulk metrics, then enriches with
+     * overnight sleep + sparse vitals via range reads (not N×day IPC).
      */
+    suspend fun readHistoryStatsBetween(startDate: LocalDate, endDate: LocalDate): List<DailyHealthStats> =
+        withContext(Dispatchers.IO) {
+            val hc = client ?: return@withContext emptyList()
+            val zone = ZoneId.systemDefault()
 
-    suspend fun readHistoryStatsBetween(startDate: LocalDate, endDate: LocalDate): List<DailyHealthStats> = withContext(Dispatchers.IO) {
-        val hc = client ?: return@withContext emptyList()
-        val zone = ZoneId.systemDefault()
+            val startDateTime = startDate.atStartOfDay()
+            val idealEndDateTime = endDate.plusDays(1).atStartOfDay()
+            val now = LocalDateTime.now(zone)
+            val endDateTime = if (idealEndDateTime.isAfter(now)) now else idealEndDateTime
 
-        val startDateTime = startDate.atStartOfDay()
-        val idealEndDateTime = endDate.plusDays(1).atStartOfDay()
-        val now = LocalDateTime.now(zone)
+            val dailyStatsMap = mutableMapOf<LocalDate, HealthStats>()
 
-        // Prevent querying into the future
-        val endDateTime = if (idealEndDateTime.isAfter(now)) now else idealEndDateTime
+            if (!startDateTime.isAfter(now)) {
+                try {
+                    val range = TimeRangeFilter.between(startDateTime, endDateTime)
 
-        val dailyStatsMap = mutableMapOf<LocalDate, HealthStats>()
-
-        // Only query if start date is actually before or equal to right now
-        if (!startDateTime.isAfter(now)) {
-            try {
-                // BUGFIX: MUST use LocalDateTime when TimeRangeSlicer is a Period
-                val range = TimeRangeFilter.between(startDateTime, endDateTime)
-
-                val response = hc.aggregateGroupByPeriod(
-                    AggregateGroupByPeriodRequest(
-                        metrics = setOf(
-                            StepsRecord.COUNT_TOTAL,
-                            HeartRateRecord.BPM_AVG,
-                            TotalCaloriesBurnedRecord.ENERGY_TOTAL,
-                            SleepSessionRecord.SLEEP_DURATION_TOTAL,
-                            DistanceRecord.DISTANCE_TOTAL,
-                            FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
+                    val response = hc.aggregateGroupByPeriod(
+                        AggregateGroupByPeriodRequest(
+                            metrics = setOf(
+                                StepsRecord.COUNT_TOTAL,
+                                HeartRateRecord.BPM_AVG,
+                                TotalCaloriesBurnedRecord.ENERGY_TOTAL,
+                                ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+                                DistanceRecord.DISTANCE_TOTAL,
+                                FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
+                                RestingHeartRateRecord.BPM_AVG,
+                            ),
+                            timeRangeFilter = range,
+                            timeRangeSlicer = Period.ofDays(1),
                         ),
-                        timeRangeFilter = range,
-                        timeRangeSlicer = Period.ofDays(1)
                     )
-                )
 
-                // Aggregate buckets only — skip per-day RHR/SpO2/resp full-range reads
-                // (those were ~3 unbound IPC calls × N days and dominated Health tab jank).
-                response.forEach { bucket ->
-                    val bucketDate = bucket.startTime.toLocalDate()
-                    val result = bucket.result
-
-                    dailyStatsMap[bucketDate] = HealthStats(
-                        steps = result[StepsRecord.COUNT_TOTAL] ?: 0L,
-                        avgHeartRate = result[HeartRateRecord.BPM_AVG] ?: 0L,
-                        sleepMinutes = result[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L,
-                        totalCaloriesBurned = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
-                        distance = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
-                        floorsClimbed = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
-                    )
+                    response.forEach { bucket ->
+                        val bucketDate = bucket.startTime.toLocalDate()
+                        val result = bucket.result
+                        dailyStatsMap[bucketDate] = HealthStats(
+                            steps = result[StepsRecord.COUNT_TOTAL] ?: 0L,
+                            avgHeartRate = result[HeartRateRecord.BPM_AVG] ?: 0L,
+                            totalCaloriesBurned = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
+                            activeCaloriesBurned = result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                                ?: 0.0,
+                            restingHeartRate = result[RestingHeartRateRecord.BPM_AVG] ?: 0L,
+                            distance = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
+                            floorsClimbed = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to aggregate history stats: ${e.message}", e)
+                    // Retry without RHR aggregate (some providers reject unknown metrics).
+                    try {
+                        val range = TimeRangeFilter.between(startDateTime, endDateTime)
+                        val response = hc.aggregateGroupByPeriod(
+                            AggregateGroupByPeriodRequest(
+                                metrics = setOf(
+                                    StepsRecord.COUNT_TOTAL,
+                                    HeartRateRecord.BPM_AVG,
+                                    TotalCaloriesBurnedRecord.ENERGY_TOTAL,
+                                    ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+                                    DistanceRecord.DISTANCE_TOTAL,
+                                    FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
+                                ),
+                                timeRangeFilter = range,
+                                timeRangeSlicer = Period.ofDays(1),
+                            ),
+                        )
+                        response.forEach { bucket ->
+                            val bucketDate = bucket.startTime.toLocalDate()
+                            val result = bucket.result
+                            dailyStatsMap[bucketDate] = HealthStats(
+                                steps = result[StepsRecord.COUNT_TOTAL] ?: 0L,
+                                avgHeartRate = result[HeartRateRecord.BPM_AVG] ?: 0L,
+                                totalCaloriesBurned = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories
+                                    ?: 0.0,
+                                activeCaloriesBurned = result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
+                                    ?.inKilocalories ?: 0.0,
+                                distance = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
+                                floorsClimbed = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
+                            )
+                        }
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Failed history aggregate retry: ${e2.message}", e2)
+                    }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to aggregate history stats: ${e.message}", e)
+
+                enrichHistoryWithSleep(hc, startDate, endDate, zone, dailyStatsMap)
+                enrichHistoryWithSparseVitals(hc, startDate, endDate, zone, dailyStatsMap)
+            }
+
+            val days = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
+            (0 until days).map { i ->
+                val date = startDate.plusDays(i.toLong())
+                DailyHealthStats(
+                    date = date,
+                    stats = dailyStatsMap[date] ?: HealthStats(),
+                )
             }
         }
 
-        val days = ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
-        (0 until days).map { i ->
-            val date = startDate.plusDays(i.toLong())
-            DailyHealthStats(
-                date = date,
-                stats = dailyStatsMap[date] ?: HealthStats()
-            )
-        }
-    }
+    /**
+     * Assign sleep to the logical sleep-day (prev day 18:00 → day 18:00), matching today stats.
+     */
+    private suspend fun enrichHistoryWithSleep(
+        hc: HealthConnectClient,
+        startDate: LocalDate,
+        endDate: LocalDate,
+        zone: ZoneId,
+        dailyStatsMap: MutableMap<LocalDate, HealthStats>,
+    ) {
+        try {
+            val sleepWindowStart = startDate.minusDays(1).atTime(18, 0).atZone(zone).toInstant()
+            val sleepWindowEnd = endDate.plusDays(1).atTime(18, 0).atZone(zone).toInstant()
+                .coerceAtMost(Instant.now())
+            if (!sleepWindowStart.isBefore(sleepWindowEnd)) return
 
-    private suspend fun <T : androidx.health.connect.client.records.Record> readRecords(
-        timeRangeFilter: TimeRangeFilter,
-        recordType: kotlin.reflect.KClass<T>
-    ): List<T> {
-        val hc = client ?: return emptyList()
-        return try {
-            val response = hc.readRecords(
+            val sessions = hc.readRecords(
                 ReadRecordsRequest(
-                    recordType = recordType,
-                    timeRangeFilter = timeRangeFilter
-                )
-            )
-            response.records
+                    recordType = SleepSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(sleepWindowStart, sleepWindowEnd),
+                ),
+            ).records
+
+            val sleepByDay = mutableMapOf<LocalDate, Long>()
+            for (session in sessions) {
+                val endLocal = session.endTime.atZone(zone)
+                // Sleep ending before 18:00 counts for that calendar day; after 18:00 → next day.
+                val sleepDay = if (endLocal.toLocalTime().isBefore(java.time.LocalTime.of(18, 0))) {
+                    endLocal.toLocalDate()
+                } else {
+                    endLocal.toLocalDate().plusDays(1)
+                }
+                if (sleepDay.isBefore(startDate) || sleepDay.isAfter(endDate)) continue
+                val minutes = ChronoUnit.MINUTES.between(session.startTime, session.endTime).coerceAtLeast(0)
+                sleepByDay[sleepDay] = (sleepByDay[sleepDay] ?: 0L) + minutes
+            }
+
+            sleepByDay.forEach { (date, minutes) ->
+                val existing = dailyStatsMap[date] ?: HealthStats()
+                dailyStatsMap[date] = existing.copy(sleepMinutes = minutes)
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read records", e)
-            emptyList()
+            Log.e(TAG, "Failed to enrich sleep history: ${e.message}", e)
         }
     }
 
     /**
-     * Reads detailed intraday heart rate data for a specific day.
+     * One range read each for SpO2 / respiratory / RHR fallback — bucket by local date.
      */
+    private suspend fun enrichHistoryWithSparseVitals(
+        hc: HealthConnectClient,
+        startDate: LocalDate,
+        endDate: LocalDate,
+        zone: ZoneId,
+        dailyStatsMap: MutableMap<LocalDate, HealthStats>,
+    ) {
+        val start = startDate.atStartOfDay(zone).toInstant()
+        val end = endDate.plusDays(1).atStartOfDay(zone).toInstant().coerceAtMost(Instant.now())
+        if (!start.isBefore(end)) return
+
+        // RHR fallback when aggregate left zeros
+        try {
+            val rhrRecords = hc.readRecords(
+                ReadRecordsRequest(
+                    recordType = RestingHeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    ascendingOrder = true,
+                ),
+            ).records
+            val rhrByDay = rhrRecords
+                .groupBy { it.time.atZone(zone).toLocalDate() }
+                .mapValues { (_, records) ->
+                    records.map { it.beatsPerMinute }.average().toLong()
+                }
+            rhrByDay.forEach { (date, bpm) ->
+                if (date !in dailyStatsMap.keys && (date.isBefore(startDate) || date.isAfter(endDate))) return@forEach
+                if (date.isBefore(startDate) || date.isAfter(endDate)) return@forEach
+                val existing = dailyStatsMap[date] ?: HealthStats()
+                if (existing.restingHeartRate <= 0 && bpm > 0) {
+                    dailyStatsMap[date] = existing.copy(restingHeartRate = bpm)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enrich RHR history: ${e.message}", e)
+        }
+
+        try {
+            val spo2Records = hc.readRecords(
+                ReadRecordsRequest(
+                    recordType = OxygenSaturationRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    ascendingOrder = true,
+                ),
+            ).records
+            spo2Records
+                .groupBy { it.time.atZone(zone).toLocalDate() }
+                .forEach { (date, records) ->
+                    if (date.isBefore(startDate) || date.isAfter(endDate)) return@forEach
+                    val avg = records.mapNotNull { it.percentage?.value }.average().takeIf { !it.isNaN() } ?: 0.0
+                    if (avg <= 0) return@forEach
+                    val existing = dailyStatsMap[date] ?: HealthStats()
+                    dailyStatsMap[date] = existing.copy(oxygenSaturation = avg)
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enrich SpO2 history: ${e.message}", e)
+        }
+
+        try {
+            val respRecords = hc.readRecords(
+                ReadRecordsRequest(
+                    recordType = RespiratoryRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    ascendingOrder = true,
+                ),
+            ).records
+            respRecords
+                .groupBy { it.time.atZone(zone).toLocalDate() }
+                .forEach { (date, records) ->
+                    if (date.isBefore(startDate) || date.isAfter(endDate)) return@forEach
+                    val avg = records.map { it.rate }.average().takeIf { !it.isNaN() } ?: 0.0
+                    if (avg <= 0) return@forEach
+                    val existing = dailyStatsMap[date] ?: HealthStats()
+                    dailyStatsMap[date] = existing.copy(respiratoryRate = avg)
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enrich respiratory history: ${e.message}", e)
+        }
+    }
+
     suspend fun readHeartRateIntraday(date: LocalDate): List<HeartRateRecord.Sample> = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext emptyList()
         val zone = ZoneId.systemDefault()
-
-        // From start of the day to the start of the next day
         val startOfDay = date.atStartOfDay(zone).toInstant()
         val endOfDay = date.plusDays(1).atStartOfDay(zone).toInstant()
 
@@ -498,8 +662,8 @@ class HealthConnectRepository @Inject constructor(
             val response = hc.readRecords(
                 ReadRecordsRequest(
                     recordType = HeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(startOfDay, endOfDay)
-                )
+                    timeRangeFilter = TimeRangeFilter.between(startOfDay, endOfDay),
+                ),
             )
             response.records.flatMap { it.samples }.sortedBy { it.time }
         } catch (e: Exception) {
@@ -508,14 +672,9 @@ class HealthConnectRepository @Inject constructor(
         }
     }
 
-    /**
-     * Reads detailed sleep sessions (and their stages) for a specific day.
-     */
     suspend fun readSleepSessions(date: LocalDate): List<SleepSessionRecord> = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext emptyList()
         val zone = ZoneId.systemDefault()
-
-        // A standard logical "sleep day" starts the evening before (e.g., 6 PM to 6 PM)
         val start = date.minusDays(1).atTime(18, 0).atZone(zone).toInstant()
         val end = date.atTime(18, 0).atZone(zone).toInstant()
 
@@ -523,8 +682,8 @@ class HealthConnectRepository @Inject constructor(
             val response = hc.readRecords(
                 ReadRecordsRequest(
                     recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                ),
             )
             response.records
         } catch (e: Exception) {

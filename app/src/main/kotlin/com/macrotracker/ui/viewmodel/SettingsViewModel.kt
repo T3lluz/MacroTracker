@@ -114,20 +114,10 @@ class SettingsViewModel @Inject constructor(
 
     fun refreshConnectionStatus() {
         viewModelScope.launch {
-            // Check Health Connect
-            val permissions = mutableSetOf<String>()
-            if (heartRateEnabled.value) permissions.add("android.permission.health.READ_HEART_RATE")
-            if (restingHeartRateEnabled.value) permissions.add("android.permission.health.READ_RESTING_HEART_RATE")
-            if (oxygenSaturationEnabled.value) permissions.add("android.permission.health.READ_OXYGEN_SATURATION")
-            if (respiratoryRateEnabled.value) permissions.add("android.permission.health.READ_RESPIRATORY_RATE")
-            if (stepsEnabled.value) permissions.add("android.permission.health.READ_STEPS")
-            if (distanceEnabled.value) permissions.add("android.permission.health.READ_DISTANCE")
-            if (floorsClimbedEnabled.value) permissions.add("android.permission.health.READ_FLOORS_CLIMBED")
-            if (activeCaloriesEnabled.value) permissions.add("android.permission.health.READ_ACTIVE_CALORIES_BURNED")
-
+            // Connected when master is on and at least one Health Connect permission is granted.
             _healthConnectConnected.value = settings.masterHealthConnectEnabled.value &&
                 healthConnectRepository.isAvailable() &&
-                healthConnectRepository.hasPermissions(permissions)
+                healthConnectRepository.hasAnyPermissions()
 
             // Check weather (location permission granted)
             _weatherConnected.value = settings.weatherEnabled.value && ContextCompat.checkSelfPermission(

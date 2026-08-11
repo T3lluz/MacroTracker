@@ -7,6 +7,7 @@ import com.macrotracker.data.update.AppReleaseNotes
 import com.macrotracker.data.update.AppUpdateInfo
 import com.macrotracker.data.update.AppUpdateRepository
 import com.macrotracker.data.update.AppUpdateUiState
+import com.macrotracker.data.update.WhatsNewInfo
 import com.macrotracker.data.update.updateAvailable
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -37,6 +38,9 @@ class AppUpdateViewModel @Inject constructor(
     private val _showDialog = MutableStateFlow(false)
     val showDialog: StateFlow<Boolean> = _showDialog.asStateFlow()
 
+    private val _whatsNew = MutableStateFlow<WhatsNewInfo?>(null)
+    val whatsNew: StateFlow<WhatsNewInfo?> = _whatsNew.asStateFlow()
+
     private val _releaseNotes = MutableStateFlow<List<AppReleaseNotes>>(emptyList())
     val releaseNotes: StateFlow<List<AppReleaseNotes>> = _releaseNotes.asStateFlow()
 
@@ -56,7 +60,9 @@ class AppUpdateViewModel @Inject constructor(
     private var listenJob: Job? = null
     private var releaseNotesJob: Job? = null
     private var pendingInstallPath: String? = null
+    private var pendingDownloadAfterPermission: AppUpdateInfo? = null
     private var listeningStarted = false
+    private var postUpdateHandled = false
 
     /**
      * Start foreground listening: immediate check, then poll GitHub every
@@ -85,8 +91,42 @@ class AppUpdateViewModel @Inject constructor(
         }
     }
 
-    /** Re-check when the activity resumes (throttled). */
+    fun willShowWhatsNew(forceFromIntent: Boolean): Boolean =
+        repository.willShowWhatsNew(forceFromIntent)
+
+    /**
+     * Call once after Compose is up. Handles post-install relaunch / first launch
+     * onto a newer versionCode and prepares the What's New sheet.
+     *
+     * @return true when a What's New sheet was queued.
+     */
+    fun handlePostUpdateLaunch(forceFromIntent: Boolean): Boolean {
+        if (postUpdateHandled && !forceFromIntent) return _whatsNew.value != null
+        postUpdateHandled = true
+        val info = repository.consumePostUpdateWhatsNew(forceFromIntent) ?: return false
+        _whatsNew.value = info
+        // Prefer live notes from GitHub when the offline cache was a placeholder.
+        viewModelScope.launch {
+            try {
+                val releases = repository.listReleaseNotes()
+                _releaseNotes.value = releases
+                _whatsNew.value = repository.enrichWhatsNewFromReleases(info, releases)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not enrich What's New from GitHub", e)
+            }
+        }
+        return true
+    }
+
+    fun dismissWhatsNew() {
+        val code = _whatsNew.value?.versionCode ?: currentVersionCode
+        repository.markWhatsNewSeen(code)
+        _whatsNew.value = null
+    }
+
+    /** Re-check when the activity resumes (throttled). Also resumes a stalled download. */
     fun checkOnResume() {
+        maybeResumeDownloadAfterPermission()
         checkForUpdate(
             showDialogIfAvailable = true,
             forceNetwork = false,
@@ -101,8 +141,9 @@ class AppUpdateViewModel @Inject constructor(
         startListening()
     }
 
-    /** Manual check from Settings — always hits the network. */
+    /** Manual check from Settings — always hits the network and clears soft snooze. */
     fun checkFromSettings() {
+        repository.clearDismissed()
         checkForUpdate(
             showDialogIfAvailable = true,
             forceNetwork = true,
@@ -154,14 +195,12 @@ class AppUpdateViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                val wasAlreadyAvailable =
-                    (_state.value as? AppUpdateUiState.Available)?.info?.versionCode == info.versionCode
                 _state.value = AppUpdateUiState.Available(info)
-                // Prompt when a newer build appears (or on first discovery). Don't re-open
-                // after the user snoozed the same versionCode.
+                // Prompt when a newer build is available and not soft-snoozed.
+                // Soft-snooze expires after [AppUpdateRepository.SNOOZE_DURATION_MS].
                 if (showDialogIfAvailable &&
                     !repository.isDismissed(info.versionCode) &&
-                    !wasAlreadyAvailable
+                    !_showDialog.value
                 ) {
                     _showDialog.value = true
                 }
@@ -184,6 +223,7 @@ class AppUpdateViewModel @Inject constructor(
         if (snooze && available != null) {
             repository.dismiss(available.versionCode)
         }
+        pendingDownloadAfterPermission = null
         _showDialog.value = false
     }
 
@@ -196,10 +236,12 @@ class AppUpdateViewModel @Inject constructor(
     fun startDownload(info: AppUpdateInfo = requiredAvailableInfo()) {
         if (!repository.canInstallPackages()) {
             // Caller should send user to install-unknown-apps settings first.
+            pendingDownloadAfterPermission = info
             _state.value = AppUpdateUiState.Available(info)
             _showDialog.value = true
             return
         }
+        pendingDownloadAfterPermission = null
         downloadJob?.cancel()
         downloadJob = viewModelScope.launch {
             _state.value = AppUpdateUiState.Downloading(info, 0f)
@@ -221,6 +263,13 @@ class AppUpdateViewModel @Inject constructor(
         }
     }
 
+    private fun maybeResumeDownloadAfterPermission() {
+        val pending = pendingDownloadAfterPermission ?: return
+        if (!repository.canInstallPackages()) return
+        pendingDownloadAfterPermission = null
+        startDownload(pending)
+    }
+
     fun canInstallPackages(): Boolean = repository.canInstallPackages()
 
     fun installPermissionSettingsIntent() = repository.installPermissionSettingsIntent()
@@ -230,6 +279,8 @@ class AppUpdateViewModel @Inject constructor(
             ?: (_state.value as? AppUpdateUiState.ReadyToInstall)?.apkPath
             ?: return
         try {
+            val info = (_state.value as? AppUpdateUiState.ReadyToInstall)?.info
+            if (info != null) repository.cacheWhatsNew(info)
             repository.installApk(File(path))
         } catch (e: Exception) {
             Log.e(TAG, "Install launch failed", e)

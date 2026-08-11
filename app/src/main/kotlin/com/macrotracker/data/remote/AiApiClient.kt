@@ -132,7 +132,7 @@ object AiApiClient {
 
                         if (isApiKeyError(code, responseBody)) {
                             throw Exception(
-                                "Gemini API key is invalid or unauthorized. Check Settings → AI Provider.",
+                                "Gemini API key is invalid or unauthorized. Check Settings → AI.",
                             )
                         }
                         if (code == 429 || isRateLimitError(responseBody)) {
@@ -271,7 +271,7 @@ object AiApiClient {
 
                     if (isApiKeyError(code, responseBody)) {
                         throw Exception(
-                            "$providerLabel API key is invalid or unauthorized. Check Settings → AI Provider.",
+                            "$providerLabel API key is invalid or unauthorized. Check Settings → AI.",
                         )
                     }
                     if (code == 429 || isRateLimitError(responseBody)) {

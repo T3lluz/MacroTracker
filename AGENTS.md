@@ -3,6 +3,8 @@
 ## Project Identity
 Single-module Android app (Kotlin + Jetpack Compose). The **app label is "DailyDash"**; the package/module name is `com.macrotracker`. Keep both names in mind — they differ intentionally.
 
+**Ship note:** When the user asks to commit/push, follow **[Commit, push & release](#commit-push--release-mandatory-when-user-asks)** so GitHub Releases + in-app What's New stay accurate (message quality, no manual version bumps, no `[skip ci]` on real changes).
+
 ## Build & API Keys
 ```bash
 ./gradlew assembleDebug      # standard debug build
@@ -116,9 +118,9 @@ Widget order and visibility are persisted as a single colon-and-comma encoded st
 
 The **Health screen** uses the same draggable pattern with a separate key (`healthWidgetOrder`):
 ```
-"BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
+"DAILY_HEALTH:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
 ```
-`WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
+`DAILY_HEALTH` is the hero Daily Health card (Apple-style activity rings + dynamic today metrics). `WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
 
 ### App Widgets (Glance)
 All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(context)` (call from the app) or `WidgetRefreshWorker` (periodic WorkManager task, 30-min interval, requires network). F1 widgets share a disk/memory cache through `F1WidgetDataProvider`. Full widget list: `DashboardWidget`, `MacrosWidget`, `HealthWidget`, `WeatherWidget`, `CalendarWidget`, `F1CountdownWidget`, `F1StandingsWidget`, `F1ScheduleWidget`.
@@ -126,6 +128,44 @@ All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(co
 `DashboardWidgetDataProvider` reads Room, Health Connect, weather cache, and calendar directly without Hilt (same no-injection pattern as `F1WidgetDataProvider` — use `EntryPointAccessors` when an interface is needed). `WidgetComponents.kt` houses all shared Glance composables and the `WidgetSizes` grid-constant object (cell formula: `74×n − 2 dp`; min 2×2, max 5×3).
 
 F1 widget theming goes through `F1WidgetColors.kt`: instantiate `F1Clr` for the palette, call `teamColorProvider(hex)` to parse a team hex string into a Glance `ColorProvider`, and `podiumColor(position, c)` for gold/silver/bronze medal colours. Status tags (last-updated, stale, syncing) are rendered via `F1WidgetStatus.kt` (`F1WidgetStatusTag`, `statusTagText`, `f1WidgetEmptyMessage`). The dashboard widget snapshot type is `DashboardWidgetData` in `DashboardWidgetData.kt` (also contains `HourlyForecast` and widget-layer `CalendarEvent`).
+
+### In-app updates (GitHub Releases)
+Sideload/tester path — not Play Core. CI publishes `DailyDash-{versionName}-vc{versionCode}.apk` on master merges. `AppUpdateRepository` polls GitHub while foregrounded; `AppUpdateDialog` downloads + `PackageInstaller` self-updates; `UpdateInstallActivity` relaunches `MainActivity` with `EXTRA_RELAUNCHED_AFTER_UPDATE` / `EXTRA_SHOW_WHATS_NEW`. `PackageReplacedReceiver` posts a tap-to-open notification if relaunch is blocked. Post-update, `WhatsNewDialog` shows once (notes cached at download time, enriched from `/releases`). Soft-snooze is 12h (`Later`); Settings badge deep-links to About + opens the update dialog. Key files: `data/update/*`, `ui/components/AppUpdateDialog.kt`, `WhatsNewDialog.kt`, `AppUpdateViewModel`, `.github/scripts/package-release.sh`.
+
+## Commit, push & release (mandatory when user asks)
+
+When the user asks to **commit**, **push**, or **commit and push** (with or without a suggested message), follow the normal git safety rules **and** this release hygiene so the in-app updater + What's New stay correct.
+
+### Pipeline (do not fight it)
+1. Push / merge to **`master`** triggers `.github/workflows/build-apk.yml`.
+2. CI runs `ensure-unique-version.sh` — bumps `versionCode` / `versionName` only if needed, commits `chore: bump version to … [skip ci]`, then builds.
+3. `package-release.sh` builds release notes from PR titles / commits since the previous `v*` tag, publishes GitHub Release + `DailyDash-{versionName}-vc{versionCode}.apk`.
+4. Installed apps poll GitHub, download, PackageInstaller self-update, relaunch, show What's New.
+
+### Commit message = release notes
+In-app What's New and the GitHub Release body are derived from **your commit / PR titles**. Write them for humans:
+
+- **One clear, user-facing sentence** (or short subject) describing what changed and why it matters.
+- Prefer product language over file lists:  
+  ✅ `Polish in-app updates with What's New sheet and smoother relaunch`  
+  ❌ `Update AppUpdateRepository.kt and MainScreen.kt`
+- Do **not** put `[skip ci]` on feature/fix commits (that skips the APK release).
+- Do **not** hand-bump `versionCode` / `versionName` in `app/build.gradle.kts` — CI owns that. Leave those lines alone unless the user explicitly asks for a manual bump.
+- Do **not** create git tags or GitHub Releases yourself for normal ship flow — the workflow does.
+- Avoid noise subjects that the note generator filters out: `chore: bump version…`, merge-only titles, empty "wip" / "fix stuff".
+- If the user supplies a commit message, use it when it is already release-note quality; otherwise lightly tighten it into a clear What's New bullet **without** changing their intent. Confirm only if their message would ship as useless notes (e.g. only `wip`).
+
+### Push target
+- Default ship path: commit on the current branch, then **`git push -u origin HEAD`** (or push the tracked branch).
+- If the work is already on **`master`** (or the user asked to ship to master), pushing `master` is what publishes the APK. Prefer that when they said "commit and push" for a finished feature on master.
+- If on a feature branch and they did **not** ask to merge/PR, push the branch; remind them the APK releases only after it lands on `master`.
+- Never `--force` to `master` / `main`. Never commit secrets (`local.properties`, keystores, API keys).
+
+### After push (when shipping to master)
+Briefly tell the user:
+- Commit hash + message (this becomes the What's New line if no PR title wins).
+- That **Build & Release APK** will publish the tester APK and notes.
+- They can update from the app (Settings badge / dialog); after install it should reopen with What's New.
 
 ### External APIs
 | Service | Client | Notes |
@@ -135,6 +175,7 @@ F1 widget theming goes through `F1WidgetColors.kt`: instantiate `F1Clr` for the 
 | YouTube | RSS feed (OkHttp) | No API key; tracked channels in SharedPrefs |
 | Weather | HTTP (WeatherRepository) | AI summary via Gemini |
 | Health Connect | SDK | Read-only; lazy client; gracefully returns null if SDK unavailable |
+| GitHub Releases | OkHttp (`AppUpdateRepository`) | In-app APK updates + changelog |
 
 ### Compose Strong Skipping
 `composeCompiler { enableStrongSkippingMode = true }` is set in `app/build.gradle.kts`. Composables with unstable parameters will skip recomposition automatically — avoid fighting this with `@Stable`/`@Immutable` unless you observe real correctness issues.

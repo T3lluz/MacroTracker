@@ -81,11 +81,14 @@ class CameraScanViewModel @Inject constructor(
     fun setProteinOverride(v: String) { _proteinOverride.value = v }
     fun setServingsOverride(v: String) { _servingsOverride.value = v }
     fun setServingSizeOverride(v: String) { _servingSizeOverride.value = v }
+    fun setPackageWeightOverride(v: String) { _packageWeightOverride.value = v }
 
     fun setAmountEaten(v: String) { _amountEaten.value = v }
     fun setUnitEaten(v: String) { _unitEaten.value = v }
 
     fun setPhase(p: ScanPhase) { _phase.value = p }
+
+    val hasApiKey: Boolean get() = aiRepo.hasApiKey
 
     private var analyzeJob: Job? = null
 
@@ -95,7 +98,7 @@ class CameraScanViewModel @Inject constructor(
         _error.value = null
         analyzeJob = viewModelScope.launch {
             try {
-                val scanResult = aiRepo.analyzeImageWithGemini(base64)
+                val scanResult = aiRepo.analyzeNutritionLabelImage(base64)
                 _result.value = scanResult
                 _foodNameOverride.value = if (scanResult.foodName == "Scanned Food") "" else scanResult.foodName
                 _caloriesOverride.value = formatNum(scanResult.caloriesPerServing)

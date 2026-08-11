@@ -28,6 +28,30 @@ clean_title() {
   printf '%s' "$title"
 }
 
+is_noise_title() {
+  local title="$1"
+  local lower="${title,,}"
+  if [[ "$lower" == chore:\ bump\ version* ]]; then return 0; fi
+  if [[ "$lower" == *"[skip ci]"* ]]; then return 0; fi
+  if [[ "$lower" == merge\ pull\ request* || "$lower" == merge\ branch* ]]; then return 0; fi
+  if [[ "$lower" == bumped\ version* || "$lower" == update\ version* ]]; then return 0; fi
+  return 1
+}
+
+add_bullet() {
+  local title="$1"
+  local url="${2:-}"
+  title="$(clean_title "$title")"
+  if is_noise_title "$title"; then
+    return
+  fi
+  if [ -n "$url" ]; then
+    bullets+=("- [${title}](${url})")
+  else
+    bullets+=("- ${title}")
+  fi
+}
+
 build_release_notes() {
   if [ -n "${INPUT_NOTES:-}" ]; then
     printf '%s\n' "$INPUT_NOTES"
@@ -52,24 +76,41 @@ build_release_notes() {
     raw=""
   fi
 
-  local bullets=()
+  bullets=()
   local line title url
   while IFS= read -r line; do
     if [[ "$line" =~ ^\*\ (.+)\ by\ @[^[:space:]]+\ in\ (https://github\.com/[^[:space:]]+/pull/[0-9]+)$ ]]; then
-      title="$(clean_title "${BASH_REMATCH[1]}")"
-      url="${BASH_REMATCH[2]}"
-      bullets+=("- [${title}](${url})")
+      add_bullet "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    elif [[ "$line" =~ ^[-*]\ \[([^]]+)\]\((https://github\.com/[^[:space:]]+/pull/[0-9]+)\) ]]; then
+      add_bullet "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
     fi
   done <<< "$raw"
 
   if [ "${#bullets[@]}" -eq 0 ] && [ -n "$prev" ]; then
     while IFS= read -r line; do
       [ -z "$line" ] && continue
-      bullets+=("- $(clean_title "$line")")
-    done < <(git log --no-merges --pretty=format:'%s' "${prev}..${COMMIT_SHA}" | head -8)
+      add_bullet "$line"
+    done < <(git log --no-merges --pretty=format:'%s' "${prev}..${COMMIT_SHA}" | head -20)
+  fi
+
+  # Deduplicate while preserving order.
+  if [ "${#bullets[@]}" -gt 0 ]; then
+    local deduped=()
+    local b seen
+    for b in "${bullets[@]}"; do
+      seen=0
+      for d in "${deduped[@]+"${deduped[@]}"}"; do
+        if [ "$d" = "$b" ]; then seen=1; break; fi
+      done
+      if [ "$seen" -eq 0 ]; then
+        deduped+=("$b")
+      fi
+    done
+    bullets=("${deduped[@]}")
   fi
 
   {
+    echo "<!-- dailydash-version: ${VERSION_NAME} vc${VERSION_CODE} -->"
     echo "## What's new"
     if [ "${#bullets[@]}" -gt 0 ]; then
       printf '%s\n' "${bullets[@]}"

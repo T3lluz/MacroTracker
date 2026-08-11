@@ -90,6 +90,13 @@ object MacroMotion {
     fun <T> drawTween(durationMs: Int = 1200): FiniteAnimationSpec<T> =
         tween(durationMs, easing = LinearEasing)
 
+    /** Chart reveal (area/line/bar grow-in). Slightly longer than fades for presence. */
+    fun <T> chartRevealTween(durationMs: Int = 700): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = FastOutSlowInEasing)
+
+    /** Stagger delay between chart bars / insight chips (ms). */
+    fun chartStaggerMs(index: Int, stepMs: Int = 45): Int = index * stepMs
+
     // ── Tab / content-switch transitions (NavHost top-level tabs) ────
     val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
 

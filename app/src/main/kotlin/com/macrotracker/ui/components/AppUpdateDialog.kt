@@ -35,6 +35,7 @@ import com.macrotracker.ui.theme.Surface as AppSurface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +58,7 @@ fun AppUpdateDialog(
     val downloading = state is AppUpdateUiState.Downloading
     val ready = state is AppUpdateUiState.ReadyToInstall
     val progress = (state as? AppUpdateUiState.Downloading)?.progress ?: 0f
+    val sizeLabel = formatApkSize(info.apkBytes)
 
     BasicAlertDialog(
         onDismissRequest = {
@@ -111,13 +113,16 @@ fun AppUpdateDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "DailyDash ${info.versionName} · build ${info.versionCode}",
+                    text = buildString {
+                        append("DailyDash ${info.versionName} · build ${info.versionCode}")
+                        if (sizeLabel != null) append(" · $sizeLabel")
+                    },
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Primary,
                 )
                 Text(
-                    text = "Installed $currentVersionName · app restarts after install",
+                    text = "Installed $currentVersionName · opens automatically after install",
                     fontSize = 12.sp,
                     color = TextSecondary,
                 )
@@ -149,10 +154,20 @@ fun AppUpdateDialog(
                     )
                 }
 
+                if (ready) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Installing… DailyDash will reopen when it's done. " +
+                            "If Android asks once, tap Install (silent updates are limited about once an hour).",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+
                 if (needsInstallPermission) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Allow DailyDash to install updates, then tap Update again.",
+                        text = "Allow DailyDash to install updates, then return here — download resumes automatically.",
                         fontSize = 12.sp,
                         color = TextSecondary,
                     )
@@ -185,7 +200,11 @@ fun AppUpdateDialog(
                         enabled = false,
                     )
                     else -> MacroButton(
-                        text = if (needsInstallPermission) "Update (after allowing installs)" else "Update now",
+                        text = if (needsInstallPermission) {
+                            "Update (after allowing installs)"
+                        } else {
+                            "Update now"
+                        },
                         onClick = {
                             haptics.confirm()
                             onUpdate(info)
@@ -197,7 +216,7 @@ fun AppUpdateDialog(
 
                 if (!downloading) {
                     MacroButton(
-                        text = "Later",
+                        text = "Remind me later",
                         onClick = {
                             haptics.click()
                             onDismiss()
@@ -209,4 +228,10 @@ fun AppUpdateDialog(
             }
         }
     }
+}
+
+private fun formatApkSize(bytes: Long?): String? {
+    if (bytes == null || bytes <= 0L) return null
+    val mb = bytes / (1024.0 * 1024.0)
+    return String.format(Locale.US, "%.0f MB", mb)
 }

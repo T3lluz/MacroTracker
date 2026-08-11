@@ -151,12 +151,12 @@ fun DailyDashNavHost(
             val onNavigateToCameraScan = remember(navController) {
                 { navController.navigate("camera_scan") }
             }
-            val onNavigateToHome = remember(navController) {
-                { navController.navigate(Screen.Home.route) }
+            val onNavigateToAiSettings = remember(navController) {
+                { navController.navigate(SettingsRoutes.AI) }
             }
             AIScreen(
                 onNavigateToCameraScan = onNavigateToCameraScan,
-                onNavigateToHome = onNavigateToHome,
+                onNavigateToAiSettings = onNavigateToAiSettings,
             )
         }
 
@@ -281,17 +281,13 @@ fun DailyDashNavHost(
             popExitTransition = { MacroMotion.subScreenPopExit },
         ) {
             val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
-            val onNavigateHome = remember(navController) {
-                {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Home.route) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                }
+            val onNavigateToAiSettings = remember(navController) {
+                { navController.navigate(SettingsRoutes.AI) }
             }
             CameraScanScreen(
                 onNavigateBack = onNavigateBack,
-                onNavigateHome = onNavigateHome,
+                onLogged = onNavigateBack,
+                onNavigateToAiSettings = onNavigateToAiSettings,
             )
         }
     }

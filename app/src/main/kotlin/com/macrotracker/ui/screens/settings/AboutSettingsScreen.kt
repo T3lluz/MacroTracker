@@ -121,7 +121,7 @@ fun AboutSettingsScreen(
             when (val s = updateState) {
                 is AppUpdateUiState.Idle -> {
                     Text(
-                        text = "Listens for new GitHub Releases and prompts in-app automatically.",
+                        text = "Checks GitHub Releases automatically, installs in-app, then reopens with What's new.",
                         fontSize = 12.sp,
                         color = TextSecondary,
                         modifier = Modifier.padding(bottom = 10.dp),

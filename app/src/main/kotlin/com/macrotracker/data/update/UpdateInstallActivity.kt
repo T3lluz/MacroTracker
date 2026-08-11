@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import com.macrotracker.MainActivity
 
 /**
  * Trampoline for [PackageInstaller] commit results.
@@ -16,7 +17,7 @@ import android.widget.Toast
  * An Activity PendingIntent stays eligible to launch
  * [PackageInstaller.STATUS_PENDING_USER_ACTION] confirmations on OEMs that block
  * background BroadcastReceivers. On success, relaunches DailyDash so the update
- * opens immediately after install.
+ * opens immediately after install and can show What's New.
  */
 class UpdateInstallActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,17 +83,18 @@ class UpdateInstallActivity : Activity() {
     }
 
     private fun relaunchApp() {
-        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        // Explicit activity class — more reliable than getLaunchIntentForPackage for
+        // carrying extras through OEM launchers after a package replace.
+        val launch = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TASK or
                     Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
             )
             putExtra(EXTRA_RELAUNCHED_AFTER_UPDATE, true)
-        }
-        if (launch == null) {
-            Log.e(TAG, "No launch intent for $packageName")
-            return
+            putExtra(EXTRA_SHOW_WHATS_NEW, true)
         }
         runCatching { startActivity(launch) }
             .onFailure { Log.e(TAG, "Failed to relaunch after update", it) }
@@ -114,6 +116,7 @@ class UpdateInstallActivity : Activity() {
     companion object {
         const val ACTION_INSTALL_COMPLETE = "com.macrotracker.action.UPDATE_INSTALL_COMPLETE"
         const val EXTRA_RELAUNCHED_AFTER_UPDATE = "relaunched_after_update"
+        const val EXTRA_SHOW_WHATS_NEW = "show_whats_new"
         private const val TAG = "UpdateInstall"
     }
 }

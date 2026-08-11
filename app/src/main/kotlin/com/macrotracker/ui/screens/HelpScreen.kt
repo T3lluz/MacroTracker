@@ -62,12 +62,12 @@ private val STEPS = listOf(
     HelpStep(
         icon = Icons.Outlined.CameraAlt,
         title = "Scan a Nutrition Label",
-        body = "Go to the AI tab and tap \"Open Camera Label Scan\". Point the camera at any nutrition facts label and the app will auto-fill calories and protein from the label.",
+        body = "Go to the AI tab and tap \"Scan label\". Point the camera at any nutrition facts label (or pick a photo from your gallery) and Clanker will read calories and protein for you.",
     ),
     HelpStep(
         icon = Icons.Outlined.AutoAwesome,
         title = "AI Food Estimates",
-        body = "On the AI tab, type a description such as \"1 medium avocado\" or \"bowl of oatmeal with banana\" and tap \"Estimate with AI\". An AI-powered estimate with calories, protein and a confidence level will appear — tap once to log it.",
+        body = "On the AI tab, chat with Clanker — type something like \"1 medium avocado\" or \"burger\" (then tap add-ons like bacon). Adjust portion if needed, then log the estimate.",
     ),
     HelpStep(
         icon = Icons.Outlined.BarChart,
@@ -95,11 +95,11 @@ private val FAQ = listOf(
     ),
     FaqItem(
         question = "Why is my progress bar red?",
-        answer = "The calorie progress bar turns red when your total calories for the day exceed your calorie goal. Set or adjust your goal in Settings → Daily Goals.",
+        answer = "The calorie progress bar turns red when your total calories for the day exceed your calorie goal. Set or adjust your goal in Settings → Nutrition.",
     ),
     FaqItem(
         question = "How do I set up an AI API key?",
-        answer = "Go to Settings → AI Provider, choose Gemini, OpenAI, or OpenRouter, paste your key, and tap \"Save Key\". Gemini keys start with \"AIza\" (aistudio.google.com). OpenAI keys start with \"sk-\" (platform.openai.com). OpenRouter keys start with \"sk-or-\" (openrouter.ai/keys) — then pick a cheap model and see its cost.",
+        answer = "Go to Settings → AI, choose Gemini, OpenAI, or OpenRouter, paste your key, and tap \"Save Key\". Gemini keys start with \"AIza\" (aistudio.google.com). OpenAI keys start with \"sk-\" (platform.openai.com). OpenRouter keys start with \"sk-or-\" (openrouter.ai/keys) — then pick a cheap model and see its cost.",
     ),
     FaqItem(
         question = "How do I connect Health Connect?",

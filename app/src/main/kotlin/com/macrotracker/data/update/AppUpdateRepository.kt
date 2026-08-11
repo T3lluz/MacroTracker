@@ -40,13 +40,23 @@ class AppUpdateRepository @Inject constructor(
             "https://api.github.com/repos/$OWNER/$REPO/releases?per_page=20"
         private const val PREFS = "app_update_prefs"
         private const val KEY_DISMISSED_VERSION_CODE = "dismissed_version_code"
+        private const val KEY_DISMISSED_AT_MS = "dismissed_at_ms"
         private const val KEY_LAST_CHECK_MS = "last_check_ms"
+        private const val KEY_LAST_LAUNCHED_VERSION_CODE = "last_launched_version_code"
+        private const val KEY_WHATS_NEW_SEEN_VERSION_CODE = "whats_new_seen_version_code"
+        private const val KEY_CACHED_WHATS_NEW_VERSION_CODE = "cached_whats_new_version_code"
+        private const val KEY_CACHED_WHATS_NEW_VERSION_NAME = "cached_whats_new_version_name"
+        private const val KEY_CACHED_WHATS_NEW_NOTES = "cached_whats_new_notes"
+        private const val KEY_BACKOFF_UNTIL_MS = "backoff_until_ms"
+
+        /** Soft snooze: "Later" hides the prompt for this long, then re-prompts. */
+        const val SNOOZE_DURATION_MS = 12L * 60L * 60L * 1000L
 
         /**
          * While the app is in the foreground, poll GitHub this often so a newly
-         * published release prompts in-app quickly.
+         * published release prompts in-app quickly without burning the rate limit.
          */
-        const val FOREGROUND_POLL_INTERVAL_MS = 2L * 60L * 1000L
+        const val FOREGROUND_POLL_INTERVAL_MS = 5L * 60L * 1000L
 
         /** Minimum gap between network checks (avoids hammering on rapid resume). */
         const val MIN_CHECK_INTERVAL_MS = 30L * 1000L
@@ -76,6 +86,8 @@ class AppUpdateRepository @Inject constructor(
     fun currentVersionCode(): Int = BuildConfig.VERSION_CODE
 
     fun shouldAutoCheck(minIntervalMs: Long = MIN_CHECK_INTERVAL_MS): Boolean {
+        val backoffUntil = prefs.getLong(KEY_BACKOFF_UNTIL_MS, 0L)
+        if (System.currentTimeMillis() < backoffUntil) return false
         val last = prefs.getLong(KEY_LAST_CHECK_MS, 0L)
         return System.currentTimeMillis() - last >= minIntervalMs
     }
@@ -85,58 +97,170 @@ class AppUpdateRepository @Inject constructor(
     }
 
     fun dismiss(versionCode: Int) {
-        prefs.edit { putInt(KEY_DISMISSED_VERSION_CODE, versionCode) }
+        prefs.edit {
+            putInt(KEY_DISMISSED_VERSION_CODE, versionCode)
+            putLong(KEY_DISMISSED_AT_MS, System.currentTimeMillis())
+        }
     }
 
-    fun isDismissed(versionCode: Int): Boolean =
-        prefs.getInt(KEY_DISMISSED_VERSION_CODE, -1) == versionCode
+    fun clearDismissed() {
+        prefs.edit {
+            remove(KEY_DISMISSED_VERSION_CODE)
+            remove(KEY_DISMISSED_AT_MS)
+        }
+    }
+
+    fun isDismissed(versionCode: Int): Boolean {
+        if (prefs.getInt(KEY_DISMISSED_VERSION_CODE, -1) != versionCode) return false
+        val at = prefs.getLong(KEY_DISMISSED_AT_MS, 0L)
+        // Legacy permanent dismiss (no timestamp) — keep it for that version only.
+        if (at <= 0L) return true
+        return System.currentTimeMillis() - at < SNOOZE_DURATION_MS
+    }
+
+    /** True when this launch should show What's New (and can skip splash). */
+    fun willShowWhatsNew(forceFromIntent: Boolean): Boolean {
+        val current = currentVersionCode()
+        if (prefs.getInt(KEY_WHATS_NEW_SEEN_VERSION_CODE, -1) == current) return false
+        val lastLaunched = prefs.getInt(KEY_LAST_LAUNCHED_VERSION_CODE, -1)
+        val upgraded = lastLaunched > 0 && current > lastLaunched
+        return forceFromIntent || upgraded
+    }
 
     /**
-     * Fetches the latest GitHub Release that contains a DailyDash APK asset
+     * Detects a first launch onto a newer installed build (or an explicit
+     * post-install relaunch / notification tap) and returns What's New content
+     * once per [versionCode].
+     */
+    fun consumePostUpdateWhatsNew(forceFromIntent: Boolean): WhatsNewInfo? {
+        val current = currentVersionCode()
+        val lastLaunched = prefs.getInt(KEY_LAST_LAUNCHED_VERSION_CODE, -1)
+        val seen = prefs.getInt(KEY_WHATS_NEW_SEEN_VERSION_CODE, -1)
+        val upgraded = lastLaunched > 0 && current > lastLaunched
+        prefs.edit { putInt(KEY_LAST_LAUNCHED_VERSION_CODE, current) }
+
+        if (seen == current) return null
+        if (!forceFromIntent && !upgraded) return null
+
+        clearDismissed()
+        clearDownloadedApks()
+        PackageReplacedReceiver.cancelOpenPrompt(context)
+
+        val cachedCode = prefs.getInt(KEY_CACHED_WHATS_NEW_VERSION_CODE, -1)
+        val notes = if (cachedCode == current) {
+            prefs.getString(KEY_CACHED_WHATS_NEW_NOTES, null)
+        } else {
+            null
+        }
+        val name = if (cachedCode == current) {
+            prefs.getString(KEY_CACHED_WHATS_NEW_VERSION_NAME, null)
+        } else {
+            null
+        }
+
+        return WhatsNewInfo(
+            versionName = name?.takeIf { it.isNotBlank() } ?: currentVersionName(),
+            versionCode = current,
+            releaseNotes = notes?.takeIf { it.isNotBlank() }
+                ?: "Bug fixes and improvements.",
+        )
+    }
+
+    fun markWhatsNewSeen(versionCode: Int = currentVersionCode()) {
+        prefs.edit { putInt(KEY_WHATS_NEW_SEEN_VERSION_CODE, versionCode) }
+    }
+
+    fun cacheWhatsNew(info: AppUpdateInfo) {
+        prefs.edit {
+            putInt(KEY_CACHED_WHATS_NEW_VERSION_CODE, info.versionCode)
+            putString(KEY_CACHED_WHATS_NEW_VERSION_NAME, info.versionName)
+            putString(KEY_CACHED_WHATS_NEW_NOTES, info.releaseNotes)
+        }
+    }
+
+    fun enrichWhatsNewFromReleases(current: WhatsNewInfo, releases: List<AppReleaseNotes>): WhatsNewInfo {
+        val placeholder = current.releaseNotes.trim().startsWith("Bug fixes and improvements.")
+        if (!placeholder) return current
+        val match = releases.firstOrNull { it.versionCode == current.versionCode }
+            ?: releases.firstOrNull {
+                it.versionName == current.versionName && it.versionCode > 0
+            }
+        return if (match != null && match.releaseNotes.isNotBlank()) {
+            current.copy(releaseNotes = match.releaseNotes)
+        } else {
+            current
+        }
+    }
+
+    private fun clearDownloadedApks() {
+        runCatching { updatesDir.listFiles()?.forEach { it.delete() } }
+    }
+
+    private fun markBackoff(seconds: Long) {
+        prefs.edit {
+            putLong(KEY_BACKOFF_UNTIL_MS, System.currentTimeMillis() + seconds * 1000L)
+        }
+    }
+
+    /**
+     * Fetches the newest GitHub Release that contains a DailyDash APK asset
      * with a higher [versionCode] than the installed build.
      */
     suspend fun checkForUpdate(): AppUpdateInfo? = withContext(Dispatchers.IO) {
         markCheckedNow()
-        val request = Request.Builder()
-            .url(LATEST_RELEASE_URL)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "DailyDash/${BuildConfig.VERSION_NAME}")
-            .get()
-            .build()
-
-        apiClient.newCall(request).execute().use { response ->
-            if (response.code == 404) {
-                Log.i(TAG, "No GitHub releases published yet")
-                return@withContext null
+        val latestJson = fetchJson(LATEST_RELEASE_URL)
+        if (latestJson != null) {
+            val root = JSONObject(latestJson)
+            if (!root.optBoolean("draft", false) && !root.optBoolean("prerelease", false)) {
+                val parsed = parseReleaseObject(root)
+                if (parsed != null && parsed.apkDownloadUrl.isNotBlank()) {
+                    return@withContext if (parsed.versionCode > currentVersionCode()) {
+                        formatUpdateInfo(parsed)
+                    } else {
+                        // Latest published APK is already installed (or older).
+                        null
+                    }
+                }
             }
-            if (!response.isSuccessful) {
-                throw IOException("GitHub releases HTTP ${response.code}")
-            }
-            val body = response.body?.string().orEmpty()
-            if (body.isBlank()) return@withContext null
-            parseLatestRelease(body)?.let { formatUpdateInfo(it) }
         }
+
+        // /latest had no usable APK — scan recent releases for the newest build.
+        val listJson = fetchJson(RELEASES_URL) ?: return@withContext null
+        parseNewestApkFromList(listJson)
     }
 
     /**
      * Fetches recent published releases for the Settings changelog dropdown.
      */
     suspend fun listReleaseNotes(): List<AppReleaseNotes> = withContext(Dispatchers.IO) {
+        val body = fetchJson(RELEASES_URL) ?: return@withContext emptyList()
+        parseReleaseList(body)
+    }
+
+    private fun fetchJson(url: String): String? {
         val request = Request.Builder()
-            .url(RELEASES_URL)
+            .url(url)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "DailyDash/${BuildConfig.VERSION_NAME}")
             .get()
             .build()
 
         apiClient.newCall(request).execute().use { response ->
-            if (response.code == 404) return@withContext emptyList()
-            if (!response.isSuccessful) {
-                throw IOException("GitHub releases list HTTP ${response.code}")
+            when (response.code) {
+                404 -> {
+                    Log.i(TAG, "GitHub releases 404 for $url")
+                    return null
+                }
+                403, 429 -> {
+                    Log.w(TAG, "GitHub rate limited HTTP ${response.code}; backing off")
+                    markBackoff(15 * 60L)
+                    throw IOException("GitHub rate limited (HTTP ${response.code}). Try again later.")
+                }
             }
-            val body = response.body?.string().orEmpty()
-            if (body.isBlank()) return@withContext emptyList()
-            parseReleaseList(body)
+            if (!response.isSuccessful) {
+                throw IOException("GitHub releases HTTP ${response.code}")
+            }
+            return response.body?.string()?.takeIf { it.isNotBlank() }
         }
     }
 
@@ -170,6 +294,22 @@ class AppUpdateRepository @Inject constructor(
         return out.sortedByDescending { it.versionCode }
     }
 
+    private fun parseNewestApkFromList(json: String): AppUpdateInfo? {
+        val arr = JSONArray(json)
+        var best: AppUpdateInfo? = null
+        for (i in 0 until arr.length()) {
+            val root = arr.optJSONObject(i) ?: continue
+            if (root.optBoolean("draft", false) || root.optBoolean("prerelease", false)) continue
+            val info = parseReleaseObject(root) ?: continue
+            if (info.apkDownloadUrl.isBlank()) continue
+            if (info.versionCode <= currentVersionCode()) continue
+            if (best == null || info.versionCode > best.versionCode) {
+                best = info
+            }
+        }
+        return best?.let { formatUpdateInfo(it) }
+    }
+
     private fun formatUpdateInfo(info: AppUpdateInfo): AppUpdateInfo =
         info.copy(
             releaseNotes = ReleaseNotesFormatter.format(
@@ -183,6 +323,7 @@ class AppUpdateRepository @Inject constructor(
         val htmlUrl = root.optString("html_url").orEmpty()
         val releaseNotes = root.optString("body").orEmpty().trim()
         val assets = root.optJSONArray("assets")
+        val meta = ReleaseNotesFormatter.parseMeta(releaseNotes)
 
         var best: AppUpdateInfo? = null
         if (assets != null) {
@@ -212,16 +353,15 @@ class AppUpdateRepository @Inject constructor(
 
         if (best != null) return best
 
-        // Fallback for changelog entries without a parseable APK asset yet.
-        val fallbackVersion = tagName.removePrefix("v").trim()
-        if (fallbackVersion.isBlank()) return null
-        val codeGuess = fallbackVersion.split('.')
-            .mapNotNull { it.toIntOrNull() }
-            .fold(0) { acc, n -> acc * 100 + n }
-            .coerceAtLeast(0)
+        // Changelog-only fallback: prefer CI meta comment, then tag versionName with
+        // unknown versionCode (0) so we never invent a bogus fold like 1.1.46 → 10146.
+        val fallbackVersion = meta.versionName
+            ?: tagName.removePrefix("v").trim().takeIf { it.isNotBlank() }
+            ?: return null
+        val code = meta.versionCode ?: 0
         return AppUpdateInfo(
             versionName = fallbackVersion,
-            versionCode = codeGuess,
+            versionCode = code,
             releaseNotes = releaseNotes.ifBlank { "Bug fixes and improvements." },
             apkDownloadUrl = "",
             apkBytes = null,
@@ -240,6 +380,7 @@ class AppUpdateRepository @Inject constructor(
         if (info.apkDownloadUrl.isBlank()) {
             throw IOException("No APK download URL for ${info.versionName}")
         }
+        cacheWhatsNew(info)
         updatesDir.listFiles()?.forEach { it.delete() }
         val outFile = File(updatesDir, "DailyDash-${info.versionName}-vc${info.versionCode}.apk")
 
@@ -301,10 +442,6 @@ class AppUpdateRepository @Inject constructor(
         // Always use PackageInstaller self-update sessions. Never fall back to
         // ACTION_VIEW — that opens the system Package Installer and always shows
         // Play Protect's "Scan app" UI for sideloaded APKs.
-        //
-        // On Android 12+ with UPDATE_PACKAGES_WITHOUT_USER_ACTION, same-package
-        // upgrades can commit without any system confirmation when the device
-        // treats this as a self-update (or we are installer/update-owner).
         installWithPackageInstaller(apkFile)
     }
 
@@ -353,7 +490,7 @@ class AppUpdateRepository @Inject constructor(
                 // restrictions often block starting confirmation / relaunch from a receiver.
                 val callback = Intent(context, UpdateInstallActivity::class.java).apply {
                     action = UpdateInstallActivity.ACTION_INSTALL_COMPLETE
-                    // Exclude from recents; relaunch path opens MainActivity on success.
+                    setPackage(context.packageName)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 val flags = PendingIntent.FLAG_UPDATE_CURRENT or
@@ -393,4 +530,5 @@ class AppUpdateRepository @Inject constructor(
             Log.i(TAG, "UPDATE_PACKAGES_WITHOUT_USER_ACTION granted=$canSilent")
         }.onFailure { Log.w(TAG, "Could not read install source", it) }
     }
+
 }

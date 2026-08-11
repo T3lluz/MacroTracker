@@ -26,11 +26,14 @@ import androidx.navigation.compose.rememberNavController
 import com.macrotracker.BuildConfig
 import com.macrotracker.data.remote.AiProvider
 import com.macrotracker.data.update.AppUpdateUiState
+import com.macrotracker.data.update.UpdateInstallActivity
 import com.macrotracker.ui.components.AppUpdateDialog
 import com.macrotracker.ui.components.PillNavigationBar
+import com.macrotracker.ui.components.WhatsNewDialog
 import com.macrotracker.ui.navigation.DailyDashNavHost
 import com.macrotracker.ui.navigation.OnboardingRoutes
 import com.macrotracker.ui.navigation.Screen
+import com.macrotracker.ui.navigation.SettingsRoutes
 import com.macrotracker.ui.screens.onboarding.SplashOverlay
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
@@ -67,7 +70,29 @@ fun MainScreen(
     val updateState by appUpdateViewModel.state.collectAsState()
     val showUpdateDialog by appUpdateViewModel.showDialog.collectAsState()
     val updateAvailable by appUpdateViewModel.updateAvailable.collectAsState()
+    val whatsNew by appUpdateViewModel.whatsNew.collectAsState()
     val context = LocalContext.current
+
+    fun consumePostUpdateIntent(): Boolean {
+        val intent = activity.intent ?: return false
+        val force =
+            intent.getBooleanExtra(UpdateInstallActivity.EXTRA_RELAUNCHED_AFTER_UPDATE, false) ||
+                intent.getBooleanExtra(UpdateInstallActivity.EXTRA_SHOW_WHATS_NEW, false)
+        if (!force) return false
+        intent.removeExtra(UpdateInstallActivity.EXTRA_RELAUNCHED_AFTER_UPDATE)
+        intent.removeExtra(UpdateInstallActivity.EXTRA_SHOW_WHATS_NEW)
+        return true
+    }
+
+    // Skip splash after an in-app update / version bump so What's New feels instant.
+    LaunchedEffect(Unit) {
+        val force = consumePostUpdateIntent()
+        val showWhatsNew = appUpdateViewModel.willShowWhatsNew(force)
+        if (showWhatsNew && !splashShown) {
+            onboardingViewModel.markSplashShown()
+        }
+        appUpdateViewModel.handlePostUpdateLaunch(forceFromIntent = force)
+    }
 
     val startDestination = remember(onboardingCompleted) {
         if (onboardingCompleted) Screen.Home.route else OnboardingRoutes.WELCOME
@@ -103,6 +128,11 @@ fun MainScreen(
         }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                // Notification tap while the process is already alive (singleTask).
+                if (consumePostUpdateIntent()) {
+                    onboardingViewModel.markSplashShown()
+                    appUpdateViewModel.handlePostUpdateLaunch(forceFromIntent = true)
+                }
                 appUpdateViewModel.checkOnResume()
             }
         }
@@ -119,10 +149,31 @@ fun MainScreen(
             onOnboardingComplete = onOnboardingComplete,
             showSettingsUpdateBadge = updateAvailable,
             hasAiApiKey = hasAiApiKey,
+            onSettingsUpdateBadgeClick = {
+                appUpdateViewModel.openDialog()
+                navController.navigate(Screen.Settings.route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+                navController.navigate(SettingsRoutes.ABOUT) {
+                    launchSingleTop = true
+                }
+            },
         )
 
         if (!splashShown) {
             SplashOverlay(onFinished = onSplashFinished)
+        }
+
+        val showWhatsNew = whatsNew
+        if (showWhatsNew != null && !showUpdateDialog) {
+            WhatsNewDialog(
+                info = showWhatsNew,
+                onDismiss = { appUpdateViewModel.dismissWhatsNew() },
+            )
         }
 
         if (showUpdateDialog &&
@@ -161,6 +212,7 @@ private fun MainScreenScaffold(
     onOnboardingComplete: () -> Unit,
     showSettingsUpdateBadge: Boolean,
     hasAiApiKey: Boolean,
+    onSettingsUpdateBadgeClick: () -> Unit,
 ) {
     val navHostModifier = remember { Modifier.statusBarsPadding() }
 
@@ -212,6 +264,7 @@ private fun MainScreenScaffold(
             navController = navController,
             items = items,
             showSettingsUpdateBadge = showSettingsUpdateBadge,
+            onSettingsUpdateBadgeClick = onSettingsUpdateBadgeClick,
             hazeState = hazeState,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -223,6 +276,7 @@ private fun MainBottomBar(
     navController: NavHostController,
     items: List<Screen>,
     showSettingsUpdateBadge: Boolean,
+    onSettingsUpdateBadgeClick: () -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
@@ -230,14 +284,18 @@ private fun MainBottomBar(
     val currentRoute = navBackStackEntry?.destination?.route
     if (!items.any { it.route == currentRoute }) return
 
-    val onItemClick = remember(navController) {
+    val onItemClick = remember(navController, showSettingsUpdateBadge, onSettingsUpdateBadgeClick) {
         { screen: Screen ->
-            navController.navigate(screen.route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
+            if (screen is Screen.Settings && showSettingsUpdateBadge) {
+                onSettingsUpdateBadgeClick()
+            } else {
+                navController.navigate(screen.route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
                 }
-                launchSingleTop = true
-                restoreState = true
             }
         }
     }

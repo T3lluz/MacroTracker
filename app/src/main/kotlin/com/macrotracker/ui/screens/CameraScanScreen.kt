@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -88,6 +89,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.macrotracker.R
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroTextField
@@ -109,7 +111,8 @@ import java.io.ByteArrayOutputStream
 @Composable
 fun CameraScanScreen(
     onNavigateBack: () -> Unit,
-    onNavigateHome: () -> Unit,
+    onLogged: () -> Unit,
+    onNavigateToAiSettings: () -> Unit,
     viewModel: CameraScanViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -117,6 +120,7 @@ fun CameraScanScreen(
     val scanning by viewModel.scanning.collectAsState()
     val error by viewModel.error.collectAsState()
     val loggedEvent by viewModel.loggedEvent.collectAsState()
+    val hasApiKey = viewModel.hasApiKey
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -132,8 +136,28 @@ fun CameraScanScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasCameraPermission = granted }
 
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val bitmap = BitmapFactory.decodeStream(stream)
+                if (bitmap != null) {
+                    capturedBitmap = bitmap
+                    capturedBase64 = bitmapToBase64(bitmap)
+                    viewModel.setPhase(ScanPhase.PREVIEW)
+                } else {
+                    Toast.makeText(context, "Couldn't read that image.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, e.message ?: "Couldn't open gallery image.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
+        if (hasApiKey && !hasCameraPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
@@ -145,13 +169,13 @@ fun CameraScanScreen(
     LaunchedEffect(loggedEvent) {
         if (loggedEvent) {
             viewModel.consumeLoggedEvent()
-            Toast.makeText(context, "✅ Food logged successfully!", Toast.LENGTH_SHORT).show()
-            onNavigateHome()
+            Toast.makeText(context, "Food logged successfully", Toast.LENGTH_SHORT).show()
+            onLogged()
         }
     }
 
     // Phase-aware system / predictive back (don't dump the whole route from preview).
-    BackHandler(enabled = hasCameraPermission) {
+    BackHandler(enabled = hasApiKey && hasCameraPermission) {
         when (phase) {
             ScanPhase.PREVIEW -> {
                 if (scanning) {
@@ -173,6 +197,7 @@ fun CameraScanScreen(
 
     AnimatedContent(
         targetState = when {
+            !hasApiKey -> "no_key"
             !hasCameraPermission -> "permission"
             cameraError != null -> "camera_error"
             else -> phase.name
@@ -185,13 +210,19 @@ fun CameraScanScreen(
         label = "cameraPhase",
     ) { target ->
         when (target) {
+            "no_key" -> ApiKeyGate(
+                onOpenSettings = onNavigateToAiSettings,
+                onGoBack = onNavigateBack,
+            )
             "permission" -> PermissionGate(
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onPickGallery = { galleryLauncher.launch("image/*") },
                 onGoBack = onNavigateBack,
             )
             "camera_error" -> CameraUnavailableGate(
                 message = cameraError ?: "Camera unavailable",
                 onRetry = { cameraError = null },
+                onPickGallery = { galleryLauncher.launch("image/*") },
                 onGoBack = onNavigateBack,
             )
             ScanPhase.CAMERA.name -> CameraPhase(
@@ -200,8 +231,12 @@ fun CameraScanScreen(
                     capturedBase64 = base64
                     viewModel.setPhase(ScanPhase.PREVIEW)
                 },
+                onPickGallery = { galleryLauncher.launch("image/*") },
                 onGoBack = onNavigateBack,
                 onCameraError = { cameraError = it },
+                onCaptureError = {
+                    Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                },
             )
             ScanPhase.PREVIEW.name -> PreviewPhase(
                 bitmap = capturedBitmap,
@@ -235,23 +270,77 @@ fun CameraScanScreen(
 }
 
 @Composable
-private fun PermissionGate(onRequestPermission: () -> Unit, onGoBack: () -> Unit) {
+private fun ApiKeyGate(onOpenSettings: () -> Unit, onGoBack: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Background)
+            .padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("📷", fontSize = 64.sp)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Camera Access Needed", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary, textAlign = TextAlign.Center)
+        ClankerCoachCard(
+            message = "Add an AI API key first — then I can read nutrition labels for you.",
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            "API key needed",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            textAlign = TextAlign.Center,
+        )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            "DailyDash needs camera access to scan nutrition labels on food packaging.",
-            fontSize = 15.sp, color = TextSecondary, textAlign = TextAlign.Center,
+            "Label scanning uses your selected provider in Settings → AI.",
+            fontSize = 15.sp,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        MacroButton(text = "Grant Camera Access", onClick = onRequestPermission)
-        MacroButton(text = "Go Back", onClick = onGoBack, variant = ButtonVariant.SECONDARY)
+        Spacer(modifier = Modifier.height(20.dp))
+        MacroButton(text = "Open AI settings", onClick = onOpenSettings)
+        MacroButton(text = "Go back", onClick = onGoBack, variant = ButtonVariant.SECONDARY)
+    }
+}
+
+@Composable
+private fun PermissionGate(
+    onRequestPermission: () -> Unit,
+    onPickGallery: () -> Unit,
+    onGoBack: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Background)
+            .padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        ClankerCoachCard(
+            message = "I need camera access to scan labels — or pick a photo from your gallery.",
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            "Camera access needed",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            "Point at the nutrition facts panel and I'll pull calories and protein.",
+            fontSize = 15.sp,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        MacroButton(text = "Grant camera access", onClick = onRequestPermission)
+        MacroButton(text = "Pick from gallery", onClick = onPickGallery, variant = ButtonVariant.SECONDARY)
+        MacroButton(text = "Go back", onClick = onGoBack, variant = ButtonVariant.SECONDARY)
     }
 }
 
@@ -259,27 +348,31 @@ private fun PermissionGate(onRequestPermission: () -> Unit, onGoBack: () -> Unit
 private fun CameraUnavailableGate(
     message: String,
     onRetry: () -> Unit,
+    onPickGallery: () -> Unit,
     onGoBack: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier.fillMaxSize().background(Background).padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Camera Unavailable", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary, textAlign = TextAlign.Center)
+        Text("Camera unavailable", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(12.dp))
         Text(message, fontSize = 15.sp, color = TextSecondary, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(16.dp))
-        MacroButton(text = "Try Again", onClick = onRetry)
-        MacroButton(text = "Go Back", onClick = onGoBack, variant = ButtonVariant.SECONDARY)
+        MacroButton(text = "Try again", onClick = onRetry)
+        MacroButton(text = "Pick from gallery", onClick = onPickGallery, variant = ButtonVariant.SECONDARY)
+        MacroButton(text = "Go back", onClick = onGoBack, variant = ButtonVariant.SECONDARY)
     }
 }
 
 @Composable
 private fun CameraPhase(
     onPhotoCaptured: (Bitmap, String) -> Unit,
+    onPickGallery: () -> Unit,
     onGoBack: () -> Unit,
     onCameraError: (String) -> Unit,
+    onCaptureError: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -388,29 +481,47 @@ private fun CameraPhase(
                 }
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(300.dp, 200.dp)
                         .border(3.dp, Primary, RoundedCornerShape(12.dp)),
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "Point at the nutrition facts label on the back of the product",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp),
+                Spacer(modifier = Modifier.height(14.dp))
+                ClankerCoachCard(
+                    message = "Line up the nutrition facts in that frame — calories & protein are what I hunt for.",
+                    compact = true,
+                    onDark = true,
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .fillMaxWidth(),
                 )
             }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 32.dp, start = 40.dp, end = 40.dp),
-                horizontalArrangement = Arrangement.Center,
+                    .padding(bottom = 32.dp, start = 28.dp, end = 28.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    "Gallery",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable {
+                            haptics.tick()
+                            onPickGallery()
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                )
                 Box(
                     modifier = Modifier
                         .size(76.dp)
@@ -427,13 +538,17 @@ private fun CameraPhase(
                                         val bytes = ByteArray(buffer.remaining())
                                         buffer.get(bytes)
                                         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                        val base64 = bitmapToBase64(bitmap)
                                         image.close()
+                                        if (bitmap == null) {
+                                            onCaptureError("Couldn't process that photo. Try again.")
+                                            return
+                                        }
+                                        val base64 = bitmapToBase64(bitmap)
                                         onPhotoCaptured(bitmap, base64)
                                     }
 
                                     override fun onError(exception: ImageCaptureException) {
-                                        // Silently fail - user can retry
+                                        onCaptureError(exception.message ?: "Capture failed. Try again.")
                                     }
                                 },
                             )
@@ -447,6 +562,7 @@ private fun CameraPhase(
                             .background(Color.White),
                     )
                 }
+                Spacer(modifier = Modifier.width(72.dp))
             }
         }
     }
@@ -480,24 +596,91 @@ private fun PreviewPhase(
                 .background(Surface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .padding(24.dp),
         ) {
-            Text("Looking good?", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Text(
-                "Make sure the nutrition label is clear and fully visible.",
-                fontSize = 14.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 20.dp),
-            )
-
             if (scanning) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(40.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Analysing nutrition label…", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                    Text("AI is reading the values for you ✨", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(top = 6.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
+                ClankerCoachCard(
+                    message = "One sec — I'm reading the label… calories and protein incoming.",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                ) {
+                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(36.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Clanker is analysing…",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
                     MacroButton(text = "Cancel", onClick = onCancelScan, variant = ButtonVariant.SECONDARY)
                 }
             } else {
-                MacroButton(text = "🔍  Scan This Photo", onClick = onScan)
+                ClankerCoachCard(
+                    message = "Looks sharp! Hit scan and I'll pull the macros from this label.",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Looking good?", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(
+                    "Make sure the nutrition label is clear and fully visible.",
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(bottom = 16.dp, top = 4.dp),
+                )
+                MacroButton(text = "Scan this photo", onClick = onScan)
                 MacroButton(text = "Retake", onClick = onRetake, variant = ButtonVariant.SECONDARY)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClankerCoachCard(
+    message: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    onDark: Boolean = false,
+) {
+    val bubbleBg = if (onDark) Color.Black.copy(alpha = 0.62f) else Surface
+    val bubbleBorder = if (onDark) Color.White.copy(alpha = 0.22f) else Border
+    val textColor = if (onDark) Color.White else TextPrimary
+    val avatar = if (compact) 44.dp else 56.dp
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_clanker),
+            contentDescription = "Clanker",
+            modifier = Modifier.size(avatar),
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(bubbleBg)
+                .border(1.dp, bubbleBorder, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = if (compact) 10.dp else 12.dp),
+        ) {
+            Column {
+                Text(
+                    "Dr. Clanker",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Primary,
+                )
+                Text(
+                    message,
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    color = textColor,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
         }
     }
@@ -513,9 +696,6 @@ private fun ResultPhase(
 ) {
     val context = LocalContext.current
     val haptics = rememberHaptics()
-    
-    // Original result helps us know what fields were missing
-    val originalResult by viewModel.result.collectAsState()
 
     // Collect all overrides
     val foodNameOverride by viewModel.foodNameOverride.collectAsState()
@@ -555,6 +735,13 @@ private fun ResultPhase(
             )
         }
 
+        ClankerCoachCard(
+            message = "Got it! Tweak anything that looks off, set how much you ate, then log it.",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp),
+        )
+
         // Result card
         Card(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -563,7 +750,7 @@ private fun ResultPhase(
             elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("📊 Nutrition Scan Results", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                Text("Nutrition scan results", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                 Text(summary.foodName, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Primary, modifier = Modifier.padding(bottom = 20.dp))
 
                 // Per serving
@@ -675,27 +862,45 @@ private fun ResultPhase(
                 // ─── Follow-up fields for overrides & missing data ───
                 Spacer(modifier = Modifier.height(20.dp))
 
-                val orig = originalResult
-                val hasNamedFood = orig != null && orig.foodName.isNotBlank() && orig.foodName.lowercase() != "scanned food"
                 val needsServingSize = unitEaten in listOf("g", "kg", "ml", "dl", "L")
                 val needsServingsInPackage = unitEaten == "packages"
+                var showLabelEdit by rememberSaveable { mutableStateOf(false) }
 
-                if (!hasNamedFood) {
-                    FollowUpField("Product Name *", "Enter product name", foodNameOverride, { viewModel.setFoodNameOverride(it) })
-                }
-                if (orig == null || orig.caloriesPerServing <= 0) {
-                    FollowUpField("Calories Per Serving *", "e.g. 180", caloriesOverride, { viewModel.setCaloriesOverride(it) }, KeyboardType.Decimal)
-                }
-                if (orig == null || orig.proteinPerServing <= 0) {
-                    FollowUpField("Protein Per Serving (g)", "e.g. 12", proteinOverride, { viewModel.setProteinOverride(it) }, KeyboardType.Decimal)
-                }
-                if (orig == null || orig.servingSizeGrams <= 0 || (needsServingSize && summary.servingSizeGrams <= 0)) {
-                    val label = if (needsServingSize && summary.servingSizeGrams <= 0) "Serving Size (g) - Required for $unitEaten *" else "Serving Size (g)"
-                    FollowUpField(label, "e.g. 85", servingSizeOverride, { viewModel.setServingSizeOverride(it) }, KeyboardType.Decimal)
-                }
-                if (orig == null || orig.servingsPerContainer <= 0 || (needsServingsInPackage && summary.servingsPerContainer <= 0)) {
-                    val label = if (needsServingsInPackage && summary.servingsPerContainer <= 0) "Servings in Package - Required *" else "Servings in Package"
-                    FollowUpField(label, "e.g. 4", servingsOverride, { viewModel.setServingsOverride(it) }, KeyboardType.Decimal)
+                Text(
+                    if (showLabelEdit) "Hide label data" else "Edit label data",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Primary,
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .clickable { showLabelEdit = !showLabelEdit },
+                )
+
+                if (showLabelEdit || foodNameOverride.isBlank() || (caloriesOverride.toDoubleOrNull() ?: 0.0) <= 0) {
+                    FollowUpField("Product name", "Enter product name", foodNameOverride, { viewModel.setFoodNameOverride(it) })
+                    FollowUpField("Calories per serving", "e.g. 180", caloriesOverride, { viewModel.setCaloriesOverride(it) }, KeyboardType.Decimal)
+                    FollowUpField("Protein per serving (g)", "e.g. 12", proteinOverride, { viewModel.setProteinOverride(it) }, KeyboardType.Decimal)
+                    FollowUpField(
+                        if (needsServingSize && summary.servingSizeGrams <= 0) "Serving size (g) *" else "Serving size (g)",
+                        "e.g. 85",
+                        servingSizeOverride,
+                        { viewModel.setServingSizeOverride(it) },
+                        KeyboardType.Decimal,
+                    )
+                    FollowUpField(
+                        if (needsServingsInPackage && summary.servingsPerContainer <= 0) "Servings in package *" else "Servings in package",
+                        "e.g. 4",
+                        servingsOverride,
+                        { viewModel.setServingsOverride(it) },
+                        KeyboardType.Decimal,
+                    )
+                    FollowUpField(
+                        "Package weight (g)",
+                        "e.g. 340",
+                        packageWeightOverride,
+                        { viewModel.setPackageWeightOverride(it) },
+                        KeyboardType.Decimal,
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -708,7 +913,7 @@ private fun ResultPhase(
                     border = BorderStroke(1.dp, Primary.copy(alpha = 0.25f)),
                 ) {
                     Column(modifier = Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🍽 TOTAL TO LOG", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Primary)
+                        Text("TOTAL TO LOG", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Primary)
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),

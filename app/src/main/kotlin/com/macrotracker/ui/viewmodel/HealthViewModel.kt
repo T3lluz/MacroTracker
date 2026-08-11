@@ -12,6 +12,10 @@ import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
 import com.macrotracker.data.local.SettingsRepository
+import com.macrotracker.ui.screens.health.MacroRangeInsights
+import com.macrotracker.ui.screens.health.WeekHealthInsights
+import com.macrotracker.ui.screens.health.computeMacroInsights
+import com.macrotracker.ui.screens.health.computeWeekInsights
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -61,6 +65,15 @@ class HealthViewModel @Inject constructor(
     private val _healthHistory = MutableStateFlow<List<DailyHealthStats>>(emptyList())
     val healthHistory: StateFlow<List<DailyHealthStats>> = _healthHistory
 
+    private val _previousWeekHistory = MutableStateFlow<List<DailyHealthStats>>(emptyList())
+    val previousWeekHistory: StateFlow<List<DailyHealthStats>> = _previousWeekHistory
+
+    private val _weekInsights = MutableStateFlow<WeekHealthInsights?>(null)
+    val weekInsights: StateFlow<WeekHealthInsights?> = _weekInsights
+
+    private val _macroInsights = MutableStateFlow<MacroRangeInsights?>(null)
+    val macroInsights: StateFlow<MacroRangeInsights?> = _macroInsights
+
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate
 
@@ -69,6 +82,10 @@ class HealthViewModel @Inject constructor(
 
     private val _detailedSleep = MutableStateFlow<List<SleepSessionRecord>>(emptyList())
     val detailedSleep: StateFlow<List<SleepSessionRecord>> = _detailedSleep
+
+    /** Last night's sessions for the Daily Health hero (independent of trend detail panel). */
+    private val _todaySleepSessions = MutableStateFlow<List<SleepSessionRecord>>(emptyList())
+    val todaySleepSessions: StateFlow<List<SleepSessionRecord>> = _todaySleepSessions
 
     // Macro trends (formerly History tab)
     private val _macroRangeDays = MutableStateFlow(7)
@@ -155,23 +172,36 @@ class HealthViewModel @Inject constructor(
         viewModelScope.launch {
             if (settingsRepository.masterHealthConnectEnabled.value &&
                 healthConnectRepository.isAvailable() &&
-                healthConnectRepository.hasAllPermissions()
+                healthConnectRepository.hasAnyPermissions()
             ) {
-                val (start, end) = getWeekRange()
-                _healthHistory.value = healthConnectRepository.readHistoryStatsBetween(start, end)
+                loadWeekHistory()
             }
         }
     }
 
-    private fun getWeekRange(): Pair<LocalDate, LocalDate> {
+    private fun getWeekRange(weeksBack: Int = _weeksBack.value): Pair<LocalDate, LocalDate> {
         val today = LocalDate.now()
         val startDay = _weekStartDay.value
-        var start = today.minusWeeks(_weeksBack.value.toLong())
+        var start = today.minusWeeks(weeksBack.toLong())
         while (start.dayOfWeek != startDay) {
             start = start.minusDays(1)
         }
         val end = start.plusDays(6)
         return Pair(start, end)
+    }
+
+    private suspend fun loadWeekHistory() {
+        coroutineScope {
+            val (start, end) = getWeekRange()
+            val (prevStart, prevEnd) = getWeekRange(_weeksBack.value + 1)
+            val currentDeferred = async { healthConnectRepository.readHistoryStatsBetween(start, end) }
+            val previousDeferred = async { healthConnectRepository.readHistoryStatsBetween(prevStart, prevEnd) }
+            val current = currentDeferred.await()
+            val previous = previousDeferred.await()
+            _healthHistory.value = current
+            _previousWeekHistory.value = previous
+            _weekInsights.value = computeWeekInsights(current, previous)
+        }
     }
 
     fun loadData() {
@@ -189,8 +219,16 @@ class HealthViewModel @Inject constructor(
             val showLoading = _macroHistory.value.isEmpty()
             if (showLoading) _macroHistoryLoading.value = true
             try {
-                _macroHistory.value = repository.getDailySummariesRange(_macroRangeDays.value)
+                val history = repository.getDailySummariesRange(_macroRangeDays.value)
+                val goals = repository.getGoals()
+                _macroHistory.value = history
                 _macroSelectedLogs.value = repository.getLogsForDate(_macroSelectedDate.value)
+                _macroInsights.value = computeMacroInsights(
+                    history = history,
+                    rangeDays = _macroRangeDays.value,
+                    calorieGoal = goals.calorieGoal,
+                    proteinGoal = goals.proteinGoal,
+                )
             } catch (_: Exception) { }
             _macroHistoryLoading.value = false
         }
@@ -233,13 +271,17 @@ class HealthViewModel @Inject constructor(
         if (metric == DetailMetric.NONE) return
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
-            if (!healthConnectRepository.hasAllPermissions()) return@launch
+            if (!healthConnectRepository.hasAnyPermissions()) return@launch
             when (metric) {
                 DetailMetric.HEART_RATE -> {
-                    _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
+                    if (healthConnectRepository.hasPermission(HealthConnectRepository.HEART_RATE_PERMISSION)) {
+                        _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
+                    }
                 }
                 DetailMetric.SLEEP -> {
-                    _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+                    if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
+                        _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+                    }
                 }
                 DetailMetric.NONE -> Unit
             }
@@ -264,7 +306,7 @@ class HealthViewModel @Inject constructor(
                 return@launch
             }
 
-            val hasPerms = permissionsGranted || healthConnectRepository.hasAllPermissions()
+            val hasPerms = permissionsGranted || healthConnectRepository.hasAnyPermissions()
             if (!hasPerms) {
                 _healthConnectState.value = HealthConnectUiState.PermissionRequired
                 return@launch
@@ -283,15 +325,22 @@ class HealthViewModel @Inject constructor(
             try {
                 coroutineScope {
                     val statsDeferred = async { healthConnectRepository.readTodayStats() }
-                    val (start, end) = getWeekRange()
-                    val historyDeferred = async { healthConnectRepository.readHistoryStatsBetween(start, end) }
+                    val historyDeferred = async { loadWeekHistory() }
+                    val todaySleepDeferred = async {
+                        if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
+                            healthConnectRepository.readSleepSessions(LocalDate.now())
+                        } else {
+                            emptyList()
+                        }
+                    }
                     val stats = statsDeferred.await()
+                    historyDeferred.await()
+                    _todaySleepSessions.value = todaySleepDeferred.await()
                     if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
                         _healthConnectState.value = current.copy(isRefreshing = false)
                     } else {
                         _healthConnectState.value = HealthConnectUiState.Success(stats)
                     }
-                    _healthHistory.value = historyDeferred.await()
                 }
                 // Detail datasets only when the HR/Sleep panel is open.
                 loadDetailedData(_selectedDate.value, detailMetric)

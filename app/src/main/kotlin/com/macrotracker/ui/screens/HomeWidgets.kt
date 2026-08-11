@@ -229,9 +229,18 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
                         HealthMetricUiState(value = sleepDisplay, isEnabled = true),
                     ),
                     Pair(
-                        MetricInfo("Total Cal", "kcal", Icons.Outlined.LocalFireDepartment, Color(0xFFFF9800)),
+                        MetricInfo(
+                            if (stats.activeCaloriesBurned > 0) "Active" else "Total Cal",
+                            "kcal",
+                            Icons.Outlined.LocalFireDepartment,
+                            Color(0xFFFF9800),
+                        ),
                         HealthMetricUiState(
-                            value = if (stats.totalCaloriesBurned > 0) "${stats.totalCaloriesBurned.toInt()}" else "—",
+                            value = when {
+                                stats.activeCaloriesBurned > 0 -> "${stats.activeCaloriesBurned.toInt()}"
+                                stats.totalCaloriesBurned > 0 -> "${stats.totalCaloriesBurned.toInt()}"
+                                else -> "—"
+                            },
                             isEnabled = true,
                         ),
                     ),

@@ -114,7 +114,7 @@ Every merge to `master` publishes a tester-signed APK via **Build & Release APK*
 2. Builds a minified release APK  
 3. Publishes `DailyDash-{version}-vc{code}.apk` to [GitHub Releases](https://github.com/T3lluz/MacroTracker/releases)
 
-Install once from Releases — later builds update in-app when the version code is higher, then DailyDash relaunches automatically.
+Install once from Releases — later builds update in-app when the version code is higher. DailyDash downloads the APK, installs it, relaunches automatically, and shows a **What's new** sheet. If the relaunch is blocked by the system, a tap-to-open notification appears.
 
 Manual run: **Actions → Build & Release APK → Run workflow**.
 
