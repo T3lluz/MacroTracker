@@ -1,13 +1,7 @@
 package com.macrotracker.ui.components
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -98,7 +92,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
@@ -177,8 +170,6 @@ fun TwitchCard(viewModel: TwitchViewModel = hiltViewModel()) {
     val twitchState by viewModel.twitchState.collectAsState()
     val trackedChannels by viewModel.trackedChannels.collectAsState()
     val authState by viewModel.authState.collectAsState()
-    val webLoginUrl by viewModel.webLoginUrl.collectAsState()
-
     val successStreams = remember(twitchState) {
         (twitchState as? TwitchUiState.Success)?.streams.orEmpty()
     }
@@ -430,6 +421,10 @@ fun TwitchCard(viewModel: TwitchViewModel = hiltViewModel()) {
                                         haptics.tick()
                                         viewModel.cancelBrowserLogin()
                                     },
+                                    onOpenActivation = {
+                                        haptics.click()
+                                        viewModel.openTwitchActivation()
+                                    },
                                 )
                             }
                             selectedTab == TwHubTab.LIVE && twitchState is TwitchUiState.Success -> {
@@ -499,16 +494,6 @@ fun TwitchCard(viewModel: TwitchViewModel = hiltViewModel()) {
         }
     }
 
-    webLoginUrl?.let { url ->
-        TwitchLoginWebSheet(
-            url = url,
-            onRedirect = { uri -> viewModel.onWebLoginRedirect(uri) },
-            onCancel = {
-                haptics.tick()
-                viewModel.cancelBrowserLogin()
-            },
-        )
-    }
 }
 
 @Composable
@@ -1099,6 +1084,7 @@ private fun TwitchChannelsHub(
                 viewModel.disconnectTwitch()
             },
             onCancelLogin = onCancelLogin,
+            onOpenActivation = { viewModel.openTwitchActivation() },
             onDismissStatus = { viewModel.clearAuthStatus() },
         )
 
@@ -1215,6 +1201,7 @@ private fun NoTwitchChannelsPrompt(
     onOpenSettings: () -> Unit,
     onConnectTwitch: () -> Unit,
     onCancelLogin: () -> Unit,
+    onOpenActivation: () -> Unit,
 ) {
     val haptics = rememberHaptics()
     Column(
@@ -1246,41 +1233,39 @@ private fun NoTwitchChannelsPrompt(
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
         )
         if (!authState.isConnected) {
-            Button(
-                onClick = {
-                    if (!authState.isBusy) {
-                        haptics.click()
-                        onConnectTwitch()
-                    }
-                },
-                enabled = !authState.isBusy,
-                colors = ButtonDefaults.buttonColors(containerColor = TwPurple),
-                shape = RoundedCornerShape(10.dp),
-            ) {
-                if (authState.isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White,
-                    )
-                } else {
-                    Icon(Icons.Outlined.AccountCircle, null, modifier = Modifier.size(16.dp))
-                }
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    when {
-                        authState.isAwaitingBrowser -> "Waiting for Twitch…"
-                        authState.isBusy -> "Connecting…"
-                        else -> "Connect Twitch"
-                    },
-                    fontSize = 13.sp,
-                )
-            }
             if (authState.isAwaitingBrowser) {
-                TextButton(onClick = { haptics.tick(); onCancelLogin() }) {
-                    Text("Cancel login", color = TextSecondary, fontSize = 13.sp)
-                }
+                TwitchDeviceCodePanel(
+                    userCode = authState.deviceLogin?.userCode,
+                    onOpenActivation = onOpenActivation,
+                    onCancelLogin = onCancelLogin,
+                )
             } else {
+                Button(
+                    onClick = {
+                        if (!authState.isBusy) {
+                            haptics.click()
+                            onConnectTwitch()
+                        }
+                    },
+                    enabled = !authState.isBusy,
+                    colors = ButtonDefaults.buttonColors(containerColor = TwPurple),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    if (authState.isBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White,
+                        )
+                    } else {
+                        Icon(Icons.Outlined.AccountCircle, null, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        if (authState.isBusy) "Connecting…" else "Connect Twitch",
+                        fontSize = 13.sp,
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = { haptics.click(); onOpenSettings() }) {
                     Text("Search channels", color = TextSecondary, fontSize = 13.sp)
@@ -1310,12 +1295,75 @@ private fun NoTwitchChannelsPrompt(
 }
 
 @Composable
+private fun TwitchDeviceCodePanel(
+    userCode: String?,
+    onOpenActivation: () -> Unit,
+    onCancelLogin: () -> Unit,
+) {
+    val haptics = rememberHaptics()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(TwPurple.copy(alpha = 0.08f))
+            .border(1.dp, TwPurple.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+            .padding(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Enter this code on Twitch",
+            fontSize = 12.sp,
+            color = TextSecondary,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            userCode?.chunked(4)?.joinToString("-") ?: "····",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            letterSpacing = 1.5.sp,
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            "Login + SMS 2FA happen in the browser",
+            fontSize = 11.sp,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    haptics.click()
+                    onOpenActivation()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = TwPurple),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.OpenInNew,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Open Twitch", fontSize = 13.sp)
+            }
+            TextButton(onClick = { haptics.tick(); onCancelLogin() }) {
+                Text("Cancel", color = TextSecondary, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
 private fun TwitchAccountCard(
     authState: TwitchAuthUiState,
     onConnect: () -> Unit,
     onSync: () -> Unit,
     onDisconnect: () -> Unit,
     onCancelLogin: () -> Unit,
+    onOpenActivation: () -> Unit,
     onDismissStatus: () -> Unit,
 ) {
     Column(
@@ -1369,7 +1417,7 @@ private fun TwitchAccountCard(
                         !authState.isConfigured ->
                             "Add TWITCH_CLIENT_ID + SECRET in local.properties"
                         authState.isAwaitingBrowser ->
-                            "Finish signing in — you'll return here automatically"
+                            "Approve DailyDash on twitch.tv/activate"
                         else ->
                             "Import channels you follow"
                     },
@@ -1431,6 +1479,15 @@ private fun TwitchAccountCard(
             }
         }
 
+        if (authState.isAwaitingBrowser) {
+            Spacer(modifier = Modifier.height(12.dp))
+            TwitchDeviceCodePanel(
+                userCode = authState.deviceLogin?.userCode,
+                onOpenActivation = onOpenActivation,
+                onCancelLogin = onCancelLogin,
+            )
+        }
+
         AnimatedVisibility(
             visible = !authState.statusMessage.isNullOrBlank(),
             enter = MacroMotion.expandEnter,
@@ -1465,125 +1522,6 @@ private fun TwitchAccountCard(
             }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TwitchLoginWebSheet(
-    url: String,
-    onRedirect: (android.net.Uri) -> Unit,
-    onCancel: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onCancel,
-        sheetState = sheetState,
-        containerColor = Surface,
-        dragHandle = null,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 420.dp, max = 640.dp)
-                .padding(bottom = 12.dp),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_twitch_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Sign in with Twitch",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                    )
-                    Text(
-                        "Stay in the app — approve to import follows",
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                    )
-                }
-                IconButton(onClick = onCancel) {
-                    Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = TextSecondary)
-                }
-            }
-            HorizontalDivider(color = TwHairline, thickness = 0.5.dp)
-            TwitchLoginWebView(
-                url = url,
-                onRedirect = onRedirect,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(480.dp),
-            )
-        }
-    }
-}
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun TwitchLoginWebView(
-    url: String,
-    onRedirect: (android.net.Uri) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            WebView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.userAgentString =
-                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                webViewClient = object : WebViewClient() {
-                    private fun maybeIntercept(requestUrl: String?): Boolean {
-                        if (requestUrl.isNullOrBlank()) return false
-                        val uri = requestUrl.toUri()
-                        // Match TwitchAuthClient.isTwitchRedirect without injecting the client.
-                        val path = uri.path.orEmpty()
-                        val isRedirect = uri.scheme.equals("https", ignoreCase = true) &&
-                            uri.host.equals("localhost", ignoreCase = true) &&
-                            (path == "/twitch/oauth" || path.startsWith("/twitch/oauth/"))
-                        if (!isRedirect) return false
-                        onRedirect(uri)
-                        return true
-                    }
-
-                    override fun shouldOverrideUrlLoading(
-                        view: WebView?,
-                        request: WebResourceRequest?,
-                    ): Boolean = maybeIntercept(request?.url?.toString())
-
-                    @Deprecated("Deprecated in Java")
-                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                        maybeIntercept(url)
-
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        maybeIntercept(url)
-                    }
-                }
-                loadUrl(url)
-            }
-        },
-        update = { webView ->
-            if (webView.url != url) webView.loadUrl(url)
-        },
-    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1652,6 +1590,10 @@ private fun TwitchSettingsSheet(
                 onCancelLogin = {
                     haptics.tick()
                     viewModel.cancelBrowserLogin()
+                },
+                onOpenActivation = {
+                    haptics.click()
+                    viewModel.openTwitchActivation()
                 },
                 onDismissStatus = { viewModel.clearAuthStatus() },
             )

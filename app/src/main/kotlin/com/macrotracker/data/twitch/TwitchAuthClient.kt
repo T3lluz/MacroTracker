@@ -4,40 +4,46 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.macrotracker.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.FormBody
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Twitch OAuth via Authorization Code + in-app WebView.
+ * Twitch OAuth via Device Code Grant (DCF).
  *
  * Twitch Developer Console:
  * 1. Confidential app with Client ID + Secret in `local.properties`
- * 2. OAuth Redirect URL **exactly**: [REDIRECT_URI]
+ * 2. Any HTTPS OAuth Redirect URL (required by the console; unused by DCF), e.g.
+ *    `https://localhost/twitch/oauth`
  * 3. Scope: `user:read:follows`
  *
- * The WebView intercepts the HTTPS localhost redirect (Chrome cannot load that host,
- * which is why an external browser shows "site can't be reached").
+ * Login opens twitch.tv/activate in Chrome Custom Tabs so SMS 2FA works.
+ * The app polls for the token — no http/https loopback redirect is needed.
  */
 @Singleton
 class TwitchAuthClient @Inject constructor(
@@ -56,28 +62,28 @@ class TwitchAuthClient @Inject constructor(
         private const val KEY_EXPIRES_AT = "twitch_expires_at_ms"
 
         const val SCOPE_USER_READ_FOLLOWS = "user:read:follows"
-        /** Must match an OAuth Redirect URL on the Twitch application (HTTPS required). */
+        /** Console placeholder only — Device Code Flow does not redirect here. */
         const val REDIRECT_URI = "https://localhost/twitch/oauth"
 
-        private const val AUTHORIZE_URL = "https://id.twitch.tv/oauth2/authorize"
+        private const val DEVICE_URL = "https://id.twitch.tv/oauth2/device"
         private const val TOKEN_URL = "https://id.twitch.tv/oauth2/token"
         private const val REVOKE_URL = "https://id.twitch.tv/oauth2/revoke"
         private const val VALIDATE_URL = "https://id.twitch.tv/oauth2/validate"
+        private const val DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
         private const val AUTH_TIMEOUT_MS = 5 * 60_000L
     }
 
     private val prefs by lazy { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val authMutex = Mutex()
-    private val pendingState = AtomicReference<String?>(null)
     private val pendingResult = AtomicReference<CompletableDeferred<TwitchAuthOutcome>?>(null)
+    private var pollJob: Job? = null
 
     private val _isAwaitingBrowser = MutableStateFlow(false)
     val isAwaitingBrowser: StateFlow<Boolean> = _isAwaitingBrowser
 
-    /** Non-null while the UI should show the in-app Twitch login WebView. */
-    private val _webLoginUrl = MutableStateFlow<String?>(null)
-    val webLoginUrl: StateFlow<String?> = _webLoginUrl
+    private val _deviceLogin = MutableStateFlow<TwitchDeviceLogin?>(null)
+    val deviceLogin: StateFlow<TwitchDeviceLogin?> = _deviceLogin
 
     fun clientId(): String = BuildConfig.TWITCH_CLIENT_ID.trim()
     fun clientSecret(): String = BuildConfig.TWITCH_CLIENT_SECRET.trim()
@@ -92,16 +98,11 @@ class TwitchAuthClient @Inject constructor(
         prefs.getString(KEY_DISPLAY_NAME, null)?.takeIf { it.isNotBlank() } ?: connectedLogin()
     fun connectedUserId(): String? = prefs.getString(KEY_USER_ID, null)?.takeIf { it.isNotBlank() }
 
-    fun isTwitchRedirect(uri: Uri?): Boolean {
-        if (uri == null) return false
-        val path = uri.path.orEmpty()
-        return uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals("localhost", ignoreCase = true) &&
-            (path == "/twitch/oauth" || path.startsWith("/twitch/oauth/"))
-    }
+    /** Kept for MainActivity deep-link stubs; Device Code Flow does not use redirects. */
+    fun isTwitchRedirect(uri: Uri?): Boolean = false
 
     /**
-     * Shows an in-app WebView (via [webLoginUrl]) and suspends until redirect, cancel, or timeout.
+     * Starts Device Code login: shows a code, opens twitch.tv/activate, polls until done.
      */
     suspend fun authorizeInteractively(): TwitchAuthOutcome {
         if (!isConfigured()) {
@@ -112,83 +113,63 @@ class TwitchAuthClient @Inject constructor(
         }
         return authMutex.withLock {
             cancelPendingLocked(TwitchAuthOutcome.Failed("Superseded by a new login"))
-            val state = randomState()
             val deferred = CompletableDeferred<TwitchAuthOutcome>()
-            pendingState.set(state)
             pendingResult.set(deferred)
             _isAwaitingBrowser.value = true
             try {
-                _webLoginUrl.value = buildAuthorizeUrl(state)
-                val outcome = withTimeoutOrNull(AUTH_TIMEOUT_MS) { deferred.await() }
+                val device = requestDeviceCode()
+                    ?: return@withLock TwitchAuthOutcome.Failed("Could not start Twitch login")
+                _deviceLogin.value = TwitchDeviceLogin(
+                    userCode = device.userCode,
+                    verificationUri = device.verificationUri,
+                )
+                launchCustomTabs(device.verificationUri)
+                pollJob = scope.launch {
+                    val outcome = try {
+                        pollForTokens(device)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(TAG, "device poll failed", e)
+                        TwitchAuthOutcome.Failed(e.message ?: "Twitch authorization failed")
+                    }
+                    deferred.complete(outcome)
+                }
+                withTimeoutOrNull(AUTH_TIMEOUT_MS) { deferred.await() }
                     ?: TwitchAuthOutcome.Failed("Twitch login timed out — try again")
-                outcome
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "authorizeInteractively failed", e)
                 TwitchAuthOutcome.Failed(e.message ?: "Twitch authorization failed")
             } finally {
-                pendingState.set(null)
+                pollJob?.cancel()
+                pollJob = null
                 pendingResult.set(null)
+                _deviceLogin.value = null
                 _isAwaitingBrowser.value = false
-                _webLoginUrl.value = null
             }
         }
     }
 
     fun cancelPendingLogin() {
+        pollJob?.cancel()
+        pollJob = null
         val deferred = pendingResult.getAndSet(null)
-        pendingState.set(null)
+        _deviceLogin.value = null
         _isAwaitingBrowser.value = false
-        _webLoginUrl.value = null
         deferred?.complete(TwitchAuthOutcome.Failed("Twitch login cancelled"))
     }
 
-    /**
-     * Called from [com.macrotracker.MainActivity] when Twitch redirects back into the app.
-     */
-    fun handleRedirectIntent(intent: Intent?): Boolean {
-        val uri = intent?.data ?: return false
-        if (!isTwitchRedirect(uri)) return false
-        // Consume so recomposition / redelivery doesn't re-handle.
-        intent.data = null
-        return handleRedirectUri(uri)
+    fun openVerificationInBrowser() {
+        val uri = _deviceLogin.value?.verificationUri ?: return
+        launchCustomTabs(uri)
     }
 
-    fun handleRedirectUri(uri: Uri): Boolean {
-        if (!isTwitchRedirect(uri)) return false
-        val deferred = pendingResult.get() ?: run {
-            Log.w(TAG, "Twitch redirect with no pending login")
-            return true
-        }
-        val expectedState = pendingState.get()
-        val returnedState = uri.getQueryParameter("state")
-        if (expectedState.isNullOrBlank() || returnedState != expectedState) {
-            deferred.complete(TwitchAuthOutcome.Failed("Twitch login state mismatch — try again"))
-            return true
-        }
-        val error = uri.getQueryParameter("error")
-        if (!error.isNullOrBlank()) {
-            val desc = uri.getQueryParameter("error_description")?.replace('+', ' ')
-            deferred.complete(
-                TwitchAuthOutcome.Failed(desc?.takeIf { it.isNotBlank() } ?: "Twitch login was denied"),
-            )
-            return true
-        }
-        val code = uri.getQueryParameter("code")
-        if (code.isNullOrBlank()) {
-            deferred.complete(TwitchAuthOutcome.Failed("Twitch returned no authorization code"))
-            return true
-        }
-        scope.launch {
-            val outcome = try {
-                exchangeCodeForSession(code)
-            } catch (e: Exception) {
-                Log.e(TAG, "code exchange failed", e)
-                TwitchAuthOutcome.Failed(e.message ?: "Could not finish Twitch login")
-            }
-            deferred.complete(outcome)
-        }
-        return true
-    }
+    /** No-op for Device Code Flow (kept so MainActivity call sites stay simple). */
+    fun handleRedirectIntent(intent: Intent?): Boolean = false
+
+    fun handleRedirectUri(uri: Uri): Boolean = false
 
     /** Returns a valid user access token, refreshing when needed. */
     suspend fun validAccessToken(): String? = withContext(Dispatchers.IO) {
@@ -296,71 +277,162 @@ class TwitchAuthClient @Inject constructor(
     }
 
     private fun cancelPendingLocked(outcome: TwitchAuthOutcome) {
+        pollJob?.cancel()
+        pollJob = null
         pendingResult.getAndSet(null)?.complete(outcome)
-        pendingState.set(null)
+        _deviceLogin.value = null
         _isAwaitingBrowser.value = false
-        _webLoginUrl.value = null
     }
 
-    private fun buildAuthorizeUrl(state: String): String =
-        AUTHORIZE_URL.toHttpUrl().newBuilder()
-            .addQueryParameter("client_id", clientId())
-            .addQueryParameter("redirect_uri", REDIRECT_URI)
-            .addQueryParameter("response_type", "code")
-            .addQueryParameter("scope", SCOPE_USER_READ_FOLLOWS)
-            .addQueryParameter("state", state)
-            .addQueryParameter("force_verify", "false")
+    private suspend fun requestDeviceCode(): DeviceCodeResponse? = withContext(Dispatchers.IO) {
+        val body = FormBody.Builder()
+            .add("client_id", clientId())
+            .add("scopes", SCOPE_USER_READ_FOLLOWS)
             .build()
-            .toString()
-
-    private suspend fun exchangeCodeForSession(code: String): TwitchAuthOutcome =
-        withContext(Dispatchers.IO) {
-            val body = FormBody.Builder()
-                .add("client_id", clientId())
-                .add("client_secret", clientSecret())
-                .add("code", code)
-                .add("grant_type", "authorization_code")
-                .add("redirect_uri", REDIRECT_URI)
-                .build()
-            val request = Request.Builder().url(TOKEN_URL).post(body).build()
+        val request = Request.Builder().url(DEVICE_URL).post(body).build()
+        try {
             okHttpClient.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    val message = parseOAuthError(raw)
-                        ?: "Twitch token exchange failed (${response.code})"
-                    // Common misconfig: redirect URI not registered exactly.
-                    if (message.contains("redirect", ignoreCase = true) || response.code == 400) {
-                        return@withContext TwitchAuthOutcome.Failed(
-                            "Twitch login misconfigured — in Twitch Console add OAuth Redirect URL: " +
-                                REDIRECT_URI,
-                        )
-                    }
-                    return@withContext TwitchAuthOutcome.Failed(message)
+                    Log.w(TAG, "device code failed ${response.code}: $raw")
+                    return@withContext null
                 }
                 val json = JSONObject(raw)
-                val access = json.optString("access_token")
-                if (access.isBlank()) {
-                    return@withContext TwitchAuthOutcome.Failed("Twitch returned no access token")
-                }
-                val refresh = json.optString("refresh_token").takeIf { it.isNotBlank() }
-                val expiresIn = json.optInt("expires_in", 14_400)
-                val profile = fetchProfile(access)
-                persistSession(
-                    access = access,
-                    refresh = refresh,
-                    expiresInSec = expiresIn,
-                    userId = profile?.userId,
-                    login = profile?.login,
-                    displayName = profile?.displayName,
-                )
-                TwitchAuthOutcome.Ready(
-                    accessToken = access,
-                    userId = profile?.userId,
-                    login = profile?.login,
-                    displayName = profile?.displayName,
+                val deviceCode = json.optString("device_code").takeIf { it.isNotBlank() }
+                    ?: return@withContext null
+                val userCode = json.optString("user_code").takeIf { it.isNotBlank() }
+                    ?: return@withContext null
+                val verificationUri = json.optString("verification_uri")
+                    .takeIf { it.isNotBlank() }
+                    ?: "https://www.twitch.tv/activate"
+                DeviceCodeResponse(
+                    deviceCode = deviceCode,
+                    userCode = userCode,
+                    verificationUri = verificationUri,
+                    expiresInSec = json.optInt("expires_in", 1800),
+                    intervalSec = json.optInt("interval", 5).coerceAtLeast(1),
                 )
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "requestDeviceCode failed", e)
+            null
         }
+    }
+
+    private suspend fun pollForTokens(device: DeviceCodeResponse): TwitchAuthOutcome {
+        var intervalMs = device.intervalSec * 1000L
+        val deadline = System.currentTimeMillis() +
+            minOf(device.expiresInSec * 1000L, AUTH_TIMEOUT_MS)
+        while (System.currentTimeMillis() < deadline) {
+            delay(intervalMs)
+            if (!currentCoroutineContext().isActive) {
+                return TwitchAuthOutcome.Failed("Twitch login cancelled")
+            }
+            when (val result = tryExchangeDeviceCode(device.deviceCode)) {
+                is DevicePollResult.Ready -> {
+                    val profile = fetchProfile(result.access)
+                    persistSession(
+                        access = result.access,
+                        refresh = result.refresh,
+                        expiresInSec = result.expiresInSec,
+                        userId = profile?.userId,
+                        login = profile?.login,
+                        displayName = profile?.displayName,
+                    )
+                    bringAppToForeground()
+                    return TwitchAuthOutcome.Ready(
+                        accessToken = result.access,
+                        userId = profile?.userId,
+                        login = profile?.login,
+                        displayName = profile?.displayName,
+                    )
+                }
+                is DevicePollResult.Pending -> Unit
+                is DevicePollResult.SlowDown -> {
+                    intervalMs = (intervalMs + 5_000L).coerceAtMost(30_000L)
+                }
+                is DevicePollResult.Failed -> return TwitchAuthOutcome.Failed(result.message)
+            }
+        }
+        return TwitchAuthOutcome.Failed("Twitch login timed out — try again")
+    }
+
+    private fun tryExchangeDeviceCode(deviceCode: String): DevicePollResult {
+        val bodyBuilder = FormBody.Builder()
+            .add("client_id", clientId())
+            .add("scopes", SCOPE_USER_READ_FOLLOWS)
+            .add("device_code", deviceCode)
+            .add("grant_type", DEVICE_GRANT)
+        if (clientSecret().isNotBlank()) {
+            bodyBuilder.add("client_secret", clientSecret())
+        }
+        val request = Request.Builder().url(TOKEN_URL).post(bodyBuilder.build()).build()
+        return try {
+            okHttpClient.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    val json = JSONObject(raw)
+                    val access = json.optString("access_token")
+                    if (access.isBlank()) {
+                        return DevicePollResult.Failed("Twitch returned no access token")
+                    }
+                    return DevicePollResult.Ready(
+                        access = access,
+                        refresh = json.optString("refresh_token").takeIf { it.isNotBlank() },
+                        expiresInSec = json.optInt("expires_in", 14_400),
+                    )
+                }
+                val message = parseOAuthError(raw)?.lowercase().orEmpty()
+                when {
+                    message.contains("authorization_pending") -> DevicePollResult.Pending
+                    message.contains("slow_down") -> DevicePollResult.SlowDown
+                    message.contains("access_denied") ->
+                        DevicePollResult.Failed("Twitch login was denied")
+                    message.contains("expired") ->
+                        DevicePollResult.Failed("Twitch login code expired — try again")
+                    message.contains("invalid device code") ->
+                        DevicePollResult.Failed("Twitch login code invalid — try again")
+                    else -> DevicePollResult.Failed(
+                        parseOAuthError(raw) ?: "Twitch login failed (${response.code})",
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "tryExchangeDeviceCode error", e)
+            DevicePollResult.Pending
+        }
+    }
+
+    private fun launchCustomTabs(url: String) {
+        val customTabs = CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .setUrlBarHidingEnabled(true)
+            .build()
+        customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            customTabs.launchUrl(context, url.toUri())
+        } catch (e: Exception) {
+            Log.w(TAG, "Custom Tabs unavailable — falling back to ACTION_VIEW", e)
+            val fallback = Intent(Intent.ACTION_VIEW, url.toUri())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(fallback)
+        }
+    }
+
+    private fun bringAppToForeground() {
+        try {
+            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                ?: return
+            launch.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
+            context.startActivity(launch)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not bring app to foreground after Twitch login", e)
+        }
+    }
 
     private fun persistSession(
         access: String,
@@ -425,15 +497,30 @@ class TwitchAuthClient @Inject constructor(
             val json = JSONObject(body)
             json.optString("message").takeIf { it.isNotBlank() }
                 ?: json.optString("error_description").takeIf { it.isNotBlank() }
+                ?: json.optString("error").takeIf { it.isNotBlank() }
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun randomState(): String {
-        val bytes = ByteArray(16)
-        SecureRandom().nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
+    private data class DeviceCodeResponse(
+        val deviceCode: String,
+        val userCode: String,
+        val verificationUri: String,
+        val expiresInSec: Int,
+        val intervalSec: Int,
+    )
+
+    private sealed class DevicePollResult {
+        data class Ready(
+            val access: String,
+            val refresh: String?,
+            val expiresInSec: Int,
+        ) : DevicePollResult()
+
+        data object Pending : DevicePollResult()
+        data object SlowDown : DevicePollResult()
+        data class Failed(val message: String) : DevicePollResult()
     }
 
     private data class TwitchProfile(
@@ -442,6 +529,11 @@ class TwitchAuthClient @Inject constructor(
         val displayName: String,
     )
 }
+
+data class TwitchDeviceLogin(
+    val userCode: String,
+    val verificationUri: String,
+)
 
 sealed class TwitchAuthOutcome {
     data class Ready(

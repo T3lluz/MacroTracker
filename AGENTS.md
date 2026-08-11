@@ -47,8 +47,8 @@ com.macrotracker/
                               15-min in-memory + SharedPrefs disk cache; F1RepositoryEntryPoint for widgets
     youtube/               ← YouTubeRepository via RSS feeds + optional Google OAuth subscription
                               import (AuthorizationClient / youtube.readonly); tracked channels in SharedPrefs
-    twitch/                ← TwitchRepository via Helix + Authorization Code OAuth (in-app WebView,
-                              redirect `https://localhost/twitch/oauth`, scope `user:read:follows`);
+    twitch/                ← TwitchRepository via Helix + Device Code OAuth (Custom Tabs →
+                              twitch.tv/activate, scope `user:read:follows`);
                               imports followed channels; live streams with 60s cache + auto-refresh
     calendar/              ← CalendarRepository (READ_CALENDAR permission)
   di/
@@ -189,7 +189,7 @@ Briefly tell the user:
 | Gemini / OpenAI / OpenRouter | OkHttp (`AiApiClient`) | Provider + key from Settings; OpenRouter model picker; BuildConfig fallback |
 | OpenF1 | Ktor (`HttpClient`) | Base URL `https://api.openf1.org/v1/`; browser User-Agent set in `AppModule` |
 | YouTube | RSS feed (OkHttp) + Data API v3 OAuth | Manual channels via RSS; Connect Google imports `subscriptions.list` into Watching |
-| Twitch | Helix (OkHttp) + Auth Code (in-app WebView) | Redirect `https://localhost/twitch/oauth`; imports follows; live board (60s cache) |
+| Twitch | Helix (OkHttp) + Device Code (Custom Tabs) | `twitch.tv/activate` (no runtime redirect); imports follows; live board (60s cache) |
 | Weather | HTTP (WeatherRepository) | AI summary via Gemini |
 | Health Connect | SDK | Read-only; lazy client; gracefully returns null if SDK unavailable |
 | GitHub Releases | OkHttp (`AppUpdateRepository`) | In-app APK updates + changelog |

@@ -18,9 +18,9 @@ YOUTUBE_API_KEY=
 
 # Twitch Helix (home Live board + Connect Twitch / import follows)
 # 1) https://dev.twitch.tv/console → Register Your Application (Confidential)
-# 2) OAuth Redirect URL — add EXACTLY (Twitch requires https):
+# 2) OAuth Redirect URL — Twitch Console requires HTTPS. Add any placeholder, e.g.:
 #      https://localhost/twitch/oauth
-#    (The app uses an in-app WebView that intercepts this URL — do not open it in Chrome.)
+#    (Unused at runtime — login uses Device Code Flow via twitch.tv/activate so SMS 2FA works.)
 # 3) Copy Client ID + Client Secret below, then rebuild
 #
 # GitHub Releases: also add these as Actions secrets on the repo (Settings → Secrets):

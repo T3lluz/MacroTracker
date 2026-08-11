@@ -108,6 +108,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.core.ktx)
+    implementation(libs.browser)
 
     // Room
     implementation(libs.room.runtime)

@@ -7,6 +7,7 @@ import com.macrotracker.data.twitch.FollowImportResult
 import com.macrotracker.data.twitch.TwitchAuthClient
 import com.macrotracker.data.twitch.TwitchAuthOutcome
 import com.macrotracker.data.twitch.TwitchChannel
+import com.macrotracker.data.twitch.TwitchDeviceLogin
 import com.macrotracker.data.twitch.TwitchRepository
 import com.macrotracker.data.twitch.TwitchStream
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,8 +41,10 @@ data class TwitchAuthUiState(
     val statusMessage: String? = null,
     val isError: Boolean = false,
     val isConfigured: Boolean = true,
-    /** True while Custom Tab login is waiting for Twitch to redirect back. */
+    /** True while waiting for the user to finish twitch.tv/activate. */
     val isAwaitingBrowser: Boolean = false,
+    /** Device-code login prompt (user enters this on Twitch). */
+    val deviceLogin: TwitchDeviceLogin? = null,
 )
 
 @HiltViewModel
@@ -83,9 +86,6 @@ class TwitchViewModel @Inject constructor(
     )
     val authState: StateFlow<TwitchAuthUiState> = _authState
 
-    /** In-app WebView login URL (null when not signing in). */
-    val webLoginUrl: StateFlow<String?> = authClient.webLoginUrl
-
     private var debounceJob: Job? = null
     private var authJob: Job? = null
     private var autoRefreshJob: Job? = null
@@ -97,6 +97,15 @@ class TwitchViewModel @Inject constructor(
                 _authState.value = _authState.value.copy(isAwaitingBrowser = awaiting)
             }
         }
+        viewModelScope.launch {
+            authClient.deviceLogin.collect { device ->
+                _authState.value = _authState.value.copy(deviceLogin = device)
+            }
+        }
+    }
+
+    fun openTwitchActivation() {
+        authClient.openVerificationInBrowser()
     }
 
     fun loadTrackedChannels() {
@@ -231,16 +240,13 @@ class TwitchViewModel @Inject constructor(
         startAuthAndImport(forceBrowser = false)
     }
 
-    fun onWebLoginRedirect(uri: android.net.Uri) {
-        authClient.handleRedirectUri(uri)
-    }
-
     fun cancelBrowserLogin() {
         authClient.cancelPendingLogin()
         authJob?.cancel()
         _authState.value = _authState.value.copy(
             isBusy = false,
             isAwaitingBrowser = false,
+            deviceLogin = null,
             statusMessage = "Twitch login cancelled",
             isError = false,
         )
@@ -375,6 +381,7 @@ class TwitchViewModel @Inject constructor(
             isError = true,
             isConfigured = authClient.isConfigured(),
             isAwaitingBrowser = false,
+            deviceLogin = null,
         )
     }
 
