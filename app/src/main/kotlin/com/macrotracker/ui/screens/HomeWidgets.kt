@@ -50,6 +50,7 @@ import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.MetricInfo
 import com.macrotracker.ui.components.WeatherCard
 import com.macrotracker.ui.components.WidgetConfig
+import com.macrotracker.ui.components.TwitchCard
 import com.macrotracker.ui.components.YoutubeCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
@@ -81,6 +82,7 @@ fun HomeWidgetItem(
     when (config.id) {
         "F1" -> HomeF1Widget(viewModel, isVisible = isVisible)
         "YOUTUBE" -> YoutubeCard()
+        "TWITCH" -> TwitchCard()
         "WEATHER" -> HomeWeatherWidget(
             viewModel = viewModel,
             onRequestPermission = onRequestLocationPermission,

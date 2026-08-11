@@ -6,4 +6,25 @@ sdk.dir=/path/to/Android/Sdk
 GEMINI_API_KEY=
 OPENAI_API_KEY=
 OPENROUTER_API_KEY=
+# Optional — unused for RSS/search. Google OAuth (AuthorizationClient) powers subscription import.
 YOUTUBE_API_KEY=
+
+# YouTube Google connect (no secrets in the app):
+# 1) Google Cloud Console → enable YouTube Data API v3
+# 2) OAuth consent screen (External / Testing OK for personal use; add your Google account as tester)
+# 3) Create OAuth client type Android:
+#      package: com.macrotracker
+#      SHA-1 (tester.jks): 0C:C3:12:0A:18:2C:5A:A1:8F:39:5F:11:DB:65:1C:7D:DF:33:91:6C
+
+# Twitch Helix (home Live board + Connect Twitch / import follows)
+# 1) https://dev.twitch.tv/console → Register Your Application (Confidential)
+# 2) OAuth Redirect URL — add EXACTLY (Twitch requires https):
+#      https://localhost/twitch/oauth
+#    (The app uses an in-app WebView that intercepts this URL — do not open it in Chrome.)
+# 3) Copy Client ID + Client Secret below, then rebuild
+#
+# GitHub Releases: also add these as Actions secrets on the repo (Settings → Secrets):
+#   TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET
+# CI writes them into local.properties before assembleRelease.
+TWITCH_CLIENT_ID=
+TWITCH_CLIENT_SECRET=

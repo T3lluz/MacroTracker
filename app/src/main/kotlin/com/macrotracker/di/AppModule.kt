@@ -8,6 +8,8 @@ import com.macrotracker.data.f1.F1Repository
 import com.macrotracker.data.f1.F1RepositoryImpl
 import com.macrotracker.data.local.MacroDao
 import com.macrotracker.data.local.MacroDatabase
+import com.macrotracker.data.twitch.TwitchRepository
+import com.macrotracker.data.twitch.TwitchRepositoryImpl
 import com.macrotracker.data.youtube.YouTubeRepository
 import com.macrotracker.data.youtube.YouTubeRepositoryImpl
 import dagger.Binds
@@ -85,4 +87,10 @@ abstract class F1DataModule {
 @InstallIn(SingletonComponent::class)
 abstract class YouTubeDataModule {
     @Binds @Singleton abstract fun bindYouTubeRepository(impl: YouTubeRepositoryImpl): YouTubeRepository
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class TwitchDataModule {
+    @Binds @Singleton abstract fun bindTwitchRepository(impl: TwitchRepositoryImpl): TwitchRepository
 }

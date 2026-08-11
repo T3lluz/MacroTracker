@@ -1,15 +1,23 @@
 package com.macrotracker.ui.viewmodel
 
+import android.app.Activity
+import android.app.PendingIntent
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.macrotracker.data.youtube.AuthorizeOutcome
+import com.macrotracker.data.youtube.SubscriptionImportResult
+import com.macrotracker.data.youtube.YouTubeGoogleAuthClient
+import com.macrotracker.data.youtube.YouTubeRepository
 import com.macrotracker.data.youtube.YoutubeChannel
 import com.macrotracker.data.youtube.YoutubeVideo
-import com.macrotracker.data.youtube.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -30,9 +38,18 @@ sealed class ChannelSearchState {
     data class Error(val message: String) : ChannelSearchState()
 }
 
+data class YouTubeGoogleUiState(
+    val isConnected: Boolean = false,
+    val email: String? = null,
+    val isBusy: Boolean = false,
+    val statusMessage: String? = null,
+    val isError: Boolean = false,
+)
+
 @HiltViewModel
 class YouTubeViewModel @Inject constructor(
     private val youtubeRepository: YouTubeRepository,
+    private val googleAuthClient: YouTubeGoogleAuthClient,
 ) : ViewModel() {
 
     companion object {
@@ -64,7 +81,22 @@ class YouTubeViewModel @Inject constructor(
     private val _suggestionsLoading = MutableStateFlow(false)
     val suggestionsLoading: StateFlow<Boolean> = _suggestionsLoading
 
+    private val _googleState = MutableStateFlow(
+        YouTubeGoogleUiState(
+            isConnected = youtubeRepository.isGoogleConnected(),
+            email = youtubeRepository.googleAccountEmail(),
+        ),
+    )
+    val googleState: StateFlow<YouTubeGoogleUiState> = _googleState
+
+    /** One-shot: UI should launch the PendingIntent for Google consent. */
+    private val _consentRequests = MutableSharedFlow<PendingIntent>(extraBufferCapacity = 1)
+    val consentRequests: SharedFlow<PendingIntent> = _consentRequests
+
     private var debounceJob: Job? = null
+    private var authJob: Job? = null
+    /** After consent returns, continue with import (connect or sync). */
+    private var pendingImportAfterConsent: Boolean = true
 
     init {
         loadTrackedChannels()
@@ -158,7 +190,6 @@ class YouTubeViewModel @Inject constructor(
         clearSearchSuggestions()
     }
 
-
     fun addChannel(channel: YoutubeChannel) {
         youtubeRepository.addTrackedChannel(channel)
         loadTrackedChannels()
@@ -177,4 +208,150 @@ class YouTubeViewModel @Inject constructor(
     }
 
     fun isChannelTracked(channelId: String) = youtubeRepository.isChannelTracked(channelId)
+
+    fun clearGoogleStatus() {
+        _googleState.value = _googleState.value.copy(statusMessage = null, isError = false)
+    }
+
+    /** Connect Google and import subscriptions (launches consent UI if needed). */
+    fun connectGoogle(activity: Activity) {
+        startAuthAndImport(activity, importAfter = true)
+    }
+
+    /** Re-authorize (silent when possible) and merge any new subscriptions. */
+    fun syncSubscriptions(activity: Activity) {
+        startAuthAndImport(activity, importAfter = true)
+    }
+
+    fun disconnectGoogle(activity: Activity) {
+        if (_googleState.value.isBusy) return
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            setGoogleBusy(true)
+            googleAuthClient.revoke(activity)
+            youtubeRepository.markGoogleDisconnected()
+            _googleState.value = YouTubeGoogleUiState(
+                isConnected = false,
+                email = null,
+                statusMessage = "Disconnected — your watching list was kept",
+                isError = false,
+            )
+        }
+    }
+
+    /**
+     * Handles the consent Activity result. Always parse [data] when present — Google often
+     * returns RESULT_CANCELED with a DEVELOPER_ERROR ApiException inside the Intent.
+     */
+    fun onConsentResult(activity: Activity, data: Intent?, resultCode: Int = Activity.RESULT_OK) {
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            setGoogleBusy(true)
+            if (data != null) {
+                when (val outcome = googleAuthClient.completeAuthorization(activity, data)) {
+                    is AuthorizeOutcome.Ready -> {
+                        handleAuthReady(outcome)
+                        return@launch
+                    }
+                    is AuthorizeOutcome.NeedsConsent -> {
+                        setGoogleError("Google sign-in incomplete — try again")
+                        return@launch
+                    }
+                    is AuthorizeOutcome.Failed -> {
+                        // Prefer real API error over generic "cancelled"
+                        setGoogleError(outcome.message)
+                        return@launch
+                    }
+                }
+            }
+            if (resultCode != Activity.RESULT_OK) {
+                setGoogleError("Sign-in was cancelled")
+            } else {
+                setGoogleError("Google sign-in returned no data")
+            }
+        }
+    }
+
+    private fun startAuthAndImport(activity: Activity, importAfter: Boolean) {
+        if (_googleState.value.isBusy) return
+        pendingImportAfterConsent = importAfter
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            setGoogleBusy(true, status = if (youtubeRepository.isGoogleConnected()) {
+                "Syncing subscriptions…"
+            } else {
+                "Connecting Google…"
+            })
+            when (val outcome = googleAuthClient.authorize(activity)) {
+                is AuthorizeOutcome.Ready -> handleAuthReady(outcome)
+                is AuthorizeOutcome.NeedsConsent -> {
+                    _consentRequests.emit(outcome.pendingIntent)
+                    // Keep busy until consent returns.
+                }
+                is AuthorizeOutcome.Failed -> setGoogleError(outcome.message)
+            }
+        }
+    }
+
+    private suspend fun handleAuthReady(outcome: AuthorizeOutcome.Ready) {
+        youtubeRepository.markGoogleConnected(outcome.email)
+        _googleState.value = _googleState.value.copy(
+            isConnected = true,
+            email = outcome.email,
+            isBusy = pendingImportAfterConsent,
+            statusMessage = if (pendingImportAfterConsent) "Importing subscriptions…" else null,
+            isError = false,
+        )
+        if (!pendingImportAfterConsent) {
+            setGoogleBusy(false)
+            return
+        }
+        youtubeRepository.importSubscriptions(outcome.accessToken)
+            .onSuccess { result ->
+                loadTrackedChannels()
+                loadLatestVideos(forceRefresh = true)
+                _googleState.value = YouTubeGoogleUiState(
+                    isConnected = true,
+                    email = outcome.email,
+                    isBusy = false,
+                    statusMessage = formatImportMessage(result),
+                    isError = false,
+                )
+            }
+            .onFailure { e ->
+                setGoogleError(e.message ?: "Could not import subscriptions")
+                // Still connected — user can retry sync.
+                _googleState.value = _googleState.value.copy(
+                    isConnected = true,
+                    email = outcome.email,
+                )
+            }
+    }
+
+    private fun formatImportMessage(result: SubscriptionImportResult): String = when {
+        result.totalSubscriptions == 0 ->
+            "Connected — no subscriptions found on this account"
+        result.importedCount == 0 ->
+            "Synced — all ${result.totalSubscriptions} subscriptions already in Watching"
+        else ->
+            "Imported ${result.importedCount} of ${result.totalSubscriptions} subscriptions"
+    }
+
+    private fun setGoogleBusy(busy: Boolean, status: String? = null) {
+        _googleState.value = _googleState.value.copy(
+            isBusy = busy,
+            statusMessage = status ?: _googleState.value.statusMessage,
+            isError = if (busy) false else _googleState.value.isError,
+        )
+    }
+
+    private fun setGoogleError(message: String) {
+        _googleState.value = _googleState.value.copy(
+            isBusy = false,
+            statusMessage = message,
+            isError = true,
+            isConnected = youtubeRepository.isGoogleConnected(),
+            email = youtubeRepository.googleAccountEmail(),
+        )
+    }
 }

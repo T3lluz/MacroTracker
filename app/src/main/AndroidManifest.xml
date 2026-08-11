@@ -95,6 +95,16 @@
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
+            <!-- Twitch OAuth redirect (Authorization Code) — must match Twitch Console exactly -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="localhost"
+                    android:pathPrefix="/twitch/oauth" />
+            </intent-filter>
         </activity>
 
         <!-- Required activity-alias so Health Connect can resolve the permission request -->

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +69,7 @@ import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.viewmodel.HomeViewModel
+import com.macrotracker.ui.viewmodel.TwitchViewModel
 import com.macrotracker.ui.viewmodel.YouTubeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -78,6 +80,7 @@ fun HomeScreen(
     onNavigateToHealth: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
     youtubeViewModel: YouTubeViewModel = hiltViewModel(),
+    twitchViewModel: TwitchViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -94,6 +97,7 @@ fun HomeScreen(
         listOf(
             Triple("F1", "Formula 1", Icons.Default.Flag),
             Triple("YOUTUBE", "YouTube Feed", Icons.Default.PlayArrow),
+            Triple("TWITCH", "Twitch Live", Icons.Default.Videocam),
             Triple("WEATHER", "Weather", Icons.Default.Cloud),
             Triple("CALENDAR", "Calendar", Icons.Default.CalendarMonth),
             Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
@@ -167,6 +171,9 @@ fun HomeScreen(
                     if ("YOUTUBE" in visibleIds) {
                         youtubeViewModel.loadLatestVideos(forceRefresh = false)
                     }
+                    if ("TWITCH" in visibleIds) {
+                        twitchViewModel.loadLiveStreams(forceRefresh = false)
+                    }
                 }
             }
         }
@@ -197,6 +204,9 @@ fun HomeScreen(
             )
             if ("YOUTUBE" in visibleIds) {
                 youtubeViewModel.loadLatestVideos(forceRefresh = true)
+            }
+            if ("TWITCH" in visibleIds) {
+                twitchViewModel.loadLiveStreams(forceRefresh = true)
             }
         },
         modifier = Modifier.fillMaxSize().background(Background),
@@ -229,6 +239,9 @@ fun HomeScreen(
                 )
                 if ("YOUTUBE" in visibleWidgetIds) {
                     youtubeViewModel.loadLatestVideos(forceRefresh = false)
+                }
+                if ("TWITCH" in visibleWidgetIds) {
+                    twitchViewModel.loadLiveStreams(forceRefresh = false)
                 }
             }
         }

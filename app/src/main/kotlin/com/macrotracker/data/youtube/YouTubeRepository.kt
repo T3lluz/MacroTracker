@@ -18,6 +18,8 @@ interface YouTubeRepository {
     suspend fun searchChannels(query: String): Result<List<YoutubeChannel>>
     fun getTrackedChannels(): List<YoutubeChannel>
     fun addTrackedChannel(channel: YoutubeChannel)
+    /** Adds missing channels; returns how many were newly added. */
+    fun addTrackedChannels(channels: List<YoutubeChannel>): Int
     fun removeTrackedChannel(channelId: String)
     fun isChannelTracked(channelId: String): Boolean
     fun invalidateCache()
@@ -25,13 +27,30 @@ interface YouTubeRepository {
     suspend fun fetchChannelThumbnails(channelIds: List<String>): Map<String, String>
     /** Fetches the avatar thumbnail URL for a single channel. */
     suspend fun fetchChannelThumbnail(channelId: String): String
+    /**
+     * Imports the signed-in user's YouTube subscriptions into the watching list.
+     * Merges with existing channels (does not remove anything).
+     */
+    suspend fun importSubscriptions(accessToken: String): Result<SubscriptionImportResult>
+    fun isGoogleConnected(): Boolean
+    fun googleAccountEmail(): String?
+    fun markGoogleConnected(email: String?)
+    fun markGoogleDisconnected()
     /** The epoch-ms timestamp of when videos were last actually fetched from the network (0 if never). */
     val lastFetchTimeMs: Long
 }
 
+data class SubscriptionImportResult(
+    val importedCount: Int,
+    val totalSubscriptions: Int,
+    val watchingCount: Int,
+)
+
 @Singleton
 class YouTubeRepositoryImpl @Inject constructor(
     private val rssFeedService: YouTubeRssFeedService,
+    private val subscriptionsApi: YouTubeSubscriptionsApi,
+    private val googleAuthClient: YouTubeGoogleAuthClient,
     @ApplicationContext private val context: Context,
 ) : YouTubeRepository {
 
@@ -66,18 +85,30 @@ class YouTubeRepositoryImpl @Inject constructor(
                 thumbnailUrl = prefs.getString("$KEY_CHANNEL_THUMB_PREFIX$id", "") ?: "",
                 isTracked = true,
             )
-        }
+        }.sortedBy { it.title.lowercase() }
     }
 
     override fun addTrackedChannel(channel: YoutubeChannel) {
+        addTrackedChannels(listOf(channel))
+    }
+
+    override fun addTrackedChannels(channels: List<YoutubeChannel>): Int {
+        if (channels.isEmpty()) return 0
         val ids = prefs.getStringSet(KEY_TRACKED_CHANNELS, emptySet())?.toMutableSet() ?: mutableSetOf()
-        ids.add(channel.channelId)
+        var added = 0
         prefs.edit {
+            for (channel in channels) {
+                val isNew = ids.add(channel.channelId)
+                if (isNew) added++
+                putString("$KEY_CHANNEL_TITLE_PREFIX${channel.channelId}", channel.title)
+                if (channel.thumbnailUrl.isNotBlank()) {
+                    putString("$KEY_CHANNEL_THUMB_PREFIX${channel.channelId}", channel.thumbnailUrl)
+                }
+            }
             putStringSet(KEY_TRACKED_CHANNELS, ids)
-            putString("$KEY_CHANNEL_TITLE_PREFIX${channel.channelId}", channel.title)
-            putString("$KEY_CHANNEL_THUMB_PREFIX${channel.channelId}", channel.thumbnailUrl)
         }
-        invalidateCache()
+        if (added > 0) invalidateCache()
+        return added
     }
 
     override fun removeTrackedChannel(channelId: String) {
@@ -94,6 +125,31 @@ class YouTubeRepositoryImpl @Inject constructor(
     override fun isChannelTracked(channelId: String): Boolean {
         val ids = prefs.getStringSet(KEY_TRACKED_CHANNELS, emptySet()) ?: emptySet()
         return ids.contains(channelId)
+    }
+
+    override fun isGoogleConnected(): Boolean = googleAuthClient.isConnected()
+
+    override fun googleAccountEmail(): String? = googleAuthClient.connectedEmail()
+
+    override fun markGoogleConnected(email: String?) {
+        googleAuthClient.markConnected(email)
+    }
+
+    override fun markGoogleDisconnected() {
+        googleAuthClient.markDisconnected()
+    }
+
+    override suspend fun importSubscriptions(accessToken: String): Result<SubscriptionImportResult> {
+        return subscriptionsApi.listMine(accessToken).map { channels ->
+            val imported = addTrackedChannels(channels)
+            SubscriptionImportResult(
+                importedCount = imported,
+                totalSubscriptions = channels.size,
+                watchingCount = getTrackedChannels().size,
+            )
+        }.onFailure { e ->
+            Log.e(TAG, "importSubscriptions failed", e)
+        }
     }
 
     override suspend fun getLatestVideosForTrackedChannels(): Result<List<YoutubeVideo>> =

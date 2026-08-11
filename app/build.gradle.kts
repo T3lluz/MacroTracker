@@ -40,6 +40,10 @@ android {
         buildConfigField("String", "OPENROUTER_API_KEY", "\"$openRouterKey\"")
         val youtubeKey = localProperties.getProperty("YOUTUBE_API_KEY", "")
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
+        val twitchClientId = localProperties.getProperty("TWITCH_CLIENT_ID", "")
+        buildConfigField("String", "TWITCH_CLIENT_ID", "\"$twitchClientId\"")
+        val twitchClientSecret = localProperties.getProperty("TWITCH_CLIENT_SECRET", "")
+        buildConfigField("String", "TWITCH_CLIENT_SECRET", "\"$twitchClientSecret\"")
     }
 
     signingConfigs {
@@ -144,6 +148,10 @@ dependencies {
 
     // Location
     implementation(libs.play.services.location)
+
+    // Google Identity (YouTube OAuth via AuthorizationClient)
+    implementation(libs.play.services.auth)
+    implementation(libs.coroutines.play.services)
 
     // Glance (App Widgets)
     implementation(libs.glance.appwidget)

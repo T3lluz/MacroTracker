@@ -71,6 +71,33 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/ensure-unique-version.sh
 
+      # Bake API keys into BuildConfig (same as local.properties on a dev machine).
+      # Twitch Connect needs TWITCH_CLIENT_ID (+ SECRET for confidential apps / search).
+      # YouTube Connect Google does NOT use these keys — it uses package com.macrotracker
+      # + app/tester.jks SHA-1 registered in Google Cloud Console.
+      - name: Write local.properties for BuildConfig keys
+        env:
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TWITCH_CLIENT_ID:-}" ]; then
+            echo "::warning::TWITCH_CLIENT_ID secret is empty — Twitch Connect will fail in this APK"
+          fi
+          {
+            echo "sdk.dir=${ANDROID_HOME}"
+            echo "TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID:-}"
+            echo "TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET:-}"
+            echo "YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}"
+            echo "GEMINI_API_KEY=${GEMINI_API_KEY:-}"
+            echo "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
+            echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}"
+          } > local.properties
+
       - name: Build release APK
         run: ./gradlew assembleRelease --build-cache
 

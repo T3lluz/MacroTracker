@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simplified Twitch glitch mark (purple speech-bubble / chat icon) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <path
+        android:fillColor="#9146FF"
+        android:pathData="M6,4h32v22l-8,8H22l-4,4h-4v-4H6V4z M10,8v18h6v4l4,-4h8l4,-4V8H10z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,12h3v9h-3z M17,12h3v9h-3z" />
+</vector>

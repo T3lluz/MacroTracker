@@ -1,6 +1,13 @@
 package com.macrotracker.ui.components
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -41,8 +48,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.automirrored.outlined.ViewList
@@ -110,6 +120,7 @@ import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.LastUpdatedText
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.ChannelSearchState
+import com.macrotracker.ui.viewmodel.YouTubeGoogleUiState
 import com.macrotracker.ui.viewmodel.YouTubeUiState
 import com.macrotracker.ui.viewmodel.YouTubeViewModel
 import kotlinx.coroutines.launch
@@ -132,6 +143,16 @@ private enum class YtHubTab(val label: String) {
     CHANNELS("Channels"),
 }
 
+/** Walk ContextWrappers — ModalBottomSheet does not expose the Activity as LocalContext. */
+private fun Context.findComponentActivity(): ComponentActivity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is ComponentActivity) return current
+        current = current.baseContext
+    }
+    return current as? ComponentActivity
+}
+
 // ── Main card ─────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,10 +161,12 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
     val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val activity = remember(context) { context.findComponentActivity() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val youtubeState by viewModel.youtubeState.collectAsState()
     val trackedChannels by viewModel.trackedChannels.collectAsState()
+    val googleState by viewModel.googleState.collectAsState()
     val successVideos = remember(youtubeState) {
         (youtubeState as? YouTubeUiState.Success)?.videos.orEmpty()
     }
@@ -158,10 +181,26 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
     var selectedTabName by rememberSaveable { mutableStateOf(YtHubTab.FEED.name) }
     val selectedTab = YtHubTab.entries.find { it.name == selectedTabName } ?: YtHubTab.FEED
 
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val host = activity ?: return@rememberLauncherForActivityResult
+        // Parse Intent even when cancelled — config errors often arrive as RESULT_CANCELED.
+        viewModel.onConsentResult(host, result.data, result.resultCode)
+    }
+
     // Lazy-load feed when the card is first composed (not in ViewModel init).
     LaunchedEffect(Unit) {
         if (youtubeState is YouTubeUiState.Idle) {
             viewModel.loadLatestVideos()
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.consentRequests.collect { pendingIntent ->
+            consentLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
+            )
         }
     }
 
@@ -390,10 +429,17 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                             }
                             key == -3 || youtubeState is YouTubeUiState.NoChannels -> {
                                 NoChannelsPrompt(
+                                    googleState = googleState,
                                     onOpenSettings = {
                                         haptics.tick()
                                         settingsStartTab = 1
                                         showSettings = true
+                                    },
+                                    onConnectGoogle = {
+                                        activity?.let { host ->
+                                            haptics.click()
+                                            viewModel.connectGoogle(host)
+                                        }
                                     },
                                 )
                             }
@@ -408,16 +454,20 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                                 )
                             }
                             selectedTab == YtHubTab.CHANNELS -> {
-                                YoutubeChannelsHub(
-                                    viewModel = viewModel,
-                                    trackedChannels = trackedChannels,
-                                    onOpenSearch = {
-                                        haptics.tick()
-                                        settingsStartTab = 1
-                                        showSettings = true
-                                    },
-                                    haptics = haptics,
-                                )
+                                if (activity != null) {
+                                    YoutubeChannelsHub(
+                                        viewModel = viewModel,
+                                        trackedChannels = trackedChannels,
+                                        googleState = googleState,
+                                        activity = activity,
+                                        onOpenSearch = {
+                                            haptics.tick()
+                                            settingsStartTab = 1
+                                            showSettings = true
+                                        },
+                                        haptics = haptics,
+                                    )
+                                }
                             }
                             else -> Unit
                         }
@@ -434,7 +484,7 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
         }
     }
 
-    if (showSettings) {
+    if (showSettings && activity != null) {
         ModalBottomSheet(
             onDismissRequest = { showSettings = false },
             sheetState = sheetState,
@@ -443,6 +493,7 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
         ) {
             YouTubeSettingsSheet(
                 viewModel = viewModel,
+                activity = activity,
                 initialTab = settingsStartTab,
                 onDismiss = {
                     scope.launch { sheetState.hide() }.invokeOnCompletion { showSettings = false }
@@ -491,7 +542,7 @@ private fun YoutubeCollapsedGlance(
                         color = TextPrimary,
                     )
                     Text(
-                        "Open hub to search & add creators",
+                        "Open hub to connect Google or search",
                         fontSize = 12.sp,
                         color = TextSecondary,
                     )
@@ -543,12 +594,33 @@ private fun YoutubeCollapsedGlance(
 private fun YoutubeChannelsHub(
     viewModel: YouTubeViewModel,
     trackedChannels: List<YoutubeChannel>,
+    googleState: YouTubeGoogleUiState,
+    activity: ComponentActivity,
     onOpenSearch: () -> Unit,
     haptics: HapticHelper,
 ) {
     val recentlyAdded by viewModel.recentlyAdded.collectAsState()
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        YouTubeGoogleAccountCard(
+            googleState = googleState,
+            onConnect = {
+                haptics.click()
+                viewModel.connectGoogle(activity)
+            },
+            onSync = {
+                haptics.tick()
+                viewModel.syncSubscriptions(activity)
+            },
+            onDisconnect = {
+                haptics.reject()
+                viewModel.disconnectGoogle(activity)
+            },
+            onDismissStatus = { viewModel.clearGoogleStatus() },
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -590,10 +662,18 @@ private fun YoutubeChannelsHub(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (trackedChannels.isEmpty()) {
-            NoChannelsPrompt(onOpenSettings = onOpenSearch)
+            NoChannelsPrompt(
+                googleState = googleState,
+                onOpenSettings = onOpenSearch,
+                onConnectGoogle = {
+                    haptics.click()
+                    viewModel.connectGoogle(activity)
+                },
+                compact = true,
+            )
         } else {
             trackedChannels.forEach { channel ->
                 key(channel.channelId) {
@@ -1992,29 +2072,245 @@ private fun ChannelPill(
 // ── Empty/error states ────────────────────────────────────────────────────────
 
 @Composable
-private fun NoChannelsPrompt(onOpenSettings: () -> Unit) {
+private fun NoChannelsPrompt(
+    googleState: YouTubeGoogleUiState,
+    onOpenSettings: () -> Unit,
+    onConnectGoogle: () -> Unit,
+    compact: Boolean = false,
+) {
     val haptics = rememberHaptics()
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = if (compact) 8.dp else 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier.size(56.dp).clip(CircleShape).background(YtRed.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.VideoLibrary, null, tint = YtRed, modifier = Modifier.size(30.dp))
+        if (!compact) {
+            Box(
+                modifier = Modifier.size(56.dp).clip(CircleShape).background(YtRed.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.VideoLibrary, null, tint = YtRed, modifier = Modifier.size(30.dp))
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                "No channels tracked",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+            )
+            Text(
+                "Import your YouTube subscriptions or search for channels",
+                fontSize = 12.sp,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+            )
+        } else {
+            Text(
+                "Import subscriptions or search to add channels",
+                fontSize = 12.sp,
+                color = TextSecondary,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
         }
-        Spacer(Modifier.height(12.dp))
-        Text("No channels tracked", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        Text("Browse or search to add your favourite channels", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
-        Button(
-            onClick = { haptics.click(); onOpenSettings() },
-            colors = ButtonDefaults.buttonColors(containerColor = YtRed),
-            shape = RoundedCornerShape(10.dp),
+        if (!googleState.isConnected) {
+            Button(
+                onClick = {
+                    if (!googleState.isBusy) {
+                        haptics.click()
+                        onConnectGoogle()
+                    }
+                },
+                enabled = !googleState.isBusy,
+                colors = ButtonDefaults.buttonColors(containerColor = YtRed),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                if (googleState.isBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White,
+                    )
+                } else {
+                    Icon(Icons.Outlined.AccountCircle, null, modifier = Modifier.size(16.dp))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    if (googleState.isBusy) "Connecting…" else "Connect Google",
+                    fontSize = 13.sp,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = { haptics.click(); onOpenSettings() }) {
+                Text("Search channels", color = TextSecondary, fontSize = 13.sp)
+            }
+        } else {
+            Button(
+                onClick = { haptics.click(); onOpenSettings() },
+                colors = ButtonDefaults.buttonColors(containerColor = YtRed),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Add Channels", fontSize = 13.sp)
+            }
+        }
+        googleState.statusMessage?.let { msg ->
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                msg,
+                fontSize = 11.sp,
+                color = if (googleState.isError) Error else TextSecondary,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun YouTubeGoogleAccountCard(
+    googleState: YouTubeGoogleUiState,
+    onConnect: () -> Unit,
+    onSync: () -> Unit,
+    onDisconnect: () -> Unit,
+    onDismissStatus: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(YtSurface)
+            .border(1.dp, YtHairline.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Add Channels", fontSize = 13.sp)
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(YtRed.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (googleState.isBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = YtRed,
+                    )
+                } else {
+                    Icon(
+                        Icons.Outlined.AccountCircle,
+                        contentDescription = null,
+                        tint = YtRed,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (googleState.isConnected) "Google connected" else "YouTube account",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                )
+                Text(
+                    when {
+                        googleState.isConnected && !googleState.email.isNullOrBlank() ->
+                            googleState.email
+                        googleState.isConnected ->
+                            "Subscriptions ready to sync"
+                        else ->
+                            "Import channels you subscribe to"
+                    },
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (googleState.isConnected) {
+                IconButton(
+                    onClick = onSync,
+                    enabled = !googleState.isBusy,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Sync,
+                        contentDescription = "Sync subscriptions",
+                        tint = if (googleState.isBusy) TextSecondary.copy(alpha = 0.4f) else TextSecondary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = onDisconnect,
+                    enabled = !googleState.isBusy,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.LinkOff,
+                        contentDescription = "Disconnect Google",
+                        tint = if (googleState.isBusy) TextSecondary.copy(alpha = 0.4f) else Error.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (googleState.isBusy) YtRed.copy(alpha = 0.45f) else YtRed)
+                        .clickable(enabled = !googleState.isBusy, onClick = onConnect)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (googleState.isBusy) "…" else "Connect",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = !googleState.statusMessage.isNullOrBlank(),
+            enter = MacroMotion.expandEnter,
+            exit = MacroMotion.expandExit,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (googleState.isError) Error.copy(alpha = 0.12f)
+                        else YtRed.copy(alpha = 0.08f),
+                    )
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    googleState.statusMessage.orEmpty(),
+                    fontSize = 11.sp,
+                    color = if (googleState.isError) Error else TextSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = onDismissStatus,
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Dismiss",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -2034,6 +2330,7 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
 @Composable
 private fun YouTubeSettingsSheet(
     viewModel: YouTubeViewModel,
+    activity: ComponentActivity,
     onDismiss: () -> Unit,
     initialTab: Int = 0,
 ) {
@@ -2041,6 +2338,7 @@ private fun YouTubeSettingsSheet(
     val trackedChannels    by viewModel.trackedChannels.collectAsState()
     val channelSearchState by viewModel.channelSearchState.collectAsState()
     val recentlyAdded      by viewModel.recentlyAdded.collectAsState()
+    val googleState        by viewModel.googleState.collectAsState()
 
     var activeTab   by remember { mutableIntStateOf(initialTab.coerceIn(0, 1)) }
     var searchQuery by remember { mutableStateOf("") }
@@ -2058,6 +2356,23 @@ private fun YouTubeSettingsSheet(
                 Text("YouTube Channels", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = TextSecondary) }
             }
+            Spacer(Modifier.height(14.dp))
+            YouTubeGoogleAccountCard(
+                googleState = googleState,
+                onConnect = {
+                    haptics.click()
+                    viewModel.connectGoogle(activity)
+                },
+                onSync = {
+                    haptics.tick()
+                    viewModel.syncSubscriptions(activity)
+                },
+                onDisconnect = {
+                    haptics.reject()
+                    viewModel.disconnectGoogle(activity)
+                },
+                onDismissStatus = { viewModel.clearGoogleStatus() },
+            )
             Spacer(Modifier.height(14.dp))
             HorizontalDivider(color = Border.copy(alpha = 0.4f))
             Spacer(Modifier.height(14.dp))
@@ -2095,7 +2410,15 @@ private fun YouTubeSettingsSheet(
 
         // ── Tab content ───────────────────────────────────────────────────
         when (activeTab) {
-            0 -> WatchingTab(trackedChannels, recentlyAdded, viewModel, haptics)
+            0 -> WatchingTab(
+                trackedChannels = trackedChannels,
+                recentlyAdded = recentlyAdded,
+                googleState = googleState,
+                viewModel = viewModel,
+                haptics = haptics,
+                activity = activity,
+                onOpenSearch = { haptics.tick(); activeTab = 1 },
+            )
             1 -> SearchTab(searchQuery, onQueryChange = { searchQuery = it }, channelSearchState, recentlyAdded, viewModel, haptics)
         }
     }
@@ -2108,17 +2431,23 @@ private fun YouTubeSettingsSheet(
 private fun WatchingTab(
     trackedChannels: List<YoutubeChannel>,
     recentlyAdded: Set<String>,
+    googleState: YouTubeGoogleUiState,
     viewModel: YouTubeViewModel,
     haptics: HapticHelper,
+    activity: ComponentActivity,
+    onOpenSearch: () -> Unit,
 ) {
     if (trackedChannels.isEmpty()) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp, top = 8.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Outlined.VideoLibrary, null, tint = TextSecondary, modifier = Modifier.size(36.dp))
-                Spacer(Modifier.height(8.dp))
-                Text("Nothing tracked yet", fontSize = 14.sp, color = TextSecondary)
-                Text("Go to Search to add channels", fontSize = 12.sp, color = TextSecondary.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
-            }
+            NoChannelsPrompt(
+                googleState = googleState,
+                onOpenSettings = onOpenSearch,
+                onConnectGoogle = {
+                    haptics.click()
+                    viewModel.connectGoogle(activity)
+                },
+                compact = true,
+            )
         }
         return
     }

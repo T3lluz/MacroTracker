@@ -16,7 +16,11 @@ GEMINI_API_KEY=...
 OPENAI_API_KEY=...
 OPENROUTER_API_KEY=...
 YOUTUBE_API_KEY=...
+TWITCH_CLIENT_ID=...
+TWITCH_CLIENT_SECRET=...   # optional locally; required for confidential Twitch apps / CI search
 ```
+**GitHub Releases:** `.github/workflows/build-apk.yml` writes the same keys from repo Actions secrets into `local.properties` before `assembleRelease`. Required for Twitch in published APKs: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`. Optional mirrors of local keys: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`. YouTube **Connect Google** does not use BuildConfig keys — it needs Google Cloud Console (YouTube Data API v3 + Android OAuth client for package `com.macrotracker` + `tester.jks` SHA-1); CI already signs releases with `app/tester.jks`.
+
 At runtime, Settings lets the user pick **Gemini**, **OpenAI**, or **OpenRouter** and enter the matching API key. For OpenRouter, Settings also shows a curated cheap-model picker with list prices. Stored keys take priority over build-time keys. `NutritionAiRepository` / `WeatherAiRepository` / widget insights all route through `AiApiClient` based on `SettingsRepository.aiProvider`.
 
 ## Architecture Overview
@@ -41,11 +45,15 @@ com.macrotracker/
                               hammering Health Connect IPC on rapid ViewModel refreshes
     f1/                    ← F1Repository via Ktor + OpenF1 API (https://api.openf1.org/v1/);
                               15-min in-memory + SharedPrefs disk cache; F1RepositoryEntryPoint for widgets
-    youtube/               ← YouTubeRepository via RSS feeds (no API key); tracked channels in SharedPrefs
+    youtube/               ← YouTubeRepository via RSS feeds + optional Google OAuth subscription
+                              import (AuthorizationClient / youtube.readonly); tracked channels in SharedPrefs
+    twitch/                ← TwitchRepository via Helix + Authorization Code OAuth (in-app WebView,
+                              redirect `https://localhost/twitch/oauth`, scope `user:read:follows`);
+                              imports followed channels; live streams with 60s cache + auto-refresh
     calendar/              ← CalendarRepository (READ_CALENDAR permission)
   di/
     AppModule.kt           ← all @Provides (DB, DAO, OkHttpClient, KtorClient);
-                              @Binds abstract modules for F1 and YouTube interface → impl
+                              @Binds abstract modules for F1, YouTube, and Twitch interface → impl
   ui/
     screens/               ← one file per tab screen (HomeScreen, HealthScreen, AIScreen,
                              SettingsScreen) + sub-screens (StatsScreen, HelpScreen, CameraScanScreen)
@@ -56,6 +64,8 @@ com.macrotracker/
                               comparison — used directly by HealthScreen, NOT via DashboardScreen);
                               YouTubeViewModel (YouTube feed + channel search — consumed by YoutubeCard
                               component directly via hiltViewModel(), not from a screen ViewModel);
+                              TwitchViewModel (live streams + follow import — consumed by TwitchCard
+                              via hiltViewModel());
                               F1UiState.kt (dedicated file for the F1 sealed interface used by HomeViewModel)
 navigation/            ← Screen.kt (sealed class, 4 bottom-nav tabs) + OnboardingRoutes (const routes)
                          + DailyDashNavHost.kt
@@ -81,7 +91,7 @@ navigation/            ← Screen.kt (sealed class, 4 bottom-nav tabs) + Onboard
 ## Key Patterns
 
 ### Dependency Injection
-Hilt throughout. `AppModule.kt` is the only `@Provides` module. Concrete implementations are bound to interfaces via separate abstract `@Binds` modules (`F1DataModule`, `YouTubeDataModule`). **Glance widgets cannot receive injected deps normally** — they use `EntryPointAccessors`, e.g. `F1RepositoryEntryPoint`.
+Hilt throughout. `AppModule.kt` is the only `@Provides` module. Concrete implementations are bound to interfaces via separate abstract `@Binds` modules (`F1DataModule`, `YouTubeDataModule`, `TwitchDataModule`). **Glance widgets cannot receive injected deps normally** — they use `EntryPointAccessors`, e.g. `F1RepositoryEntryPoint`.
 
 ### UI State
 Each screen's ViewModel exposes sealed-class state via `StateFlow`. Example pattern from `HomeViewModel`:
@@ -112,7 +122,7 @@ Sub-screens (`stats`, `help`, `camera_scan`) are composed inside `DailyDashNavHo
 ### Home Screen Widgets (draggable)
 Widget order and visibility are persisted as a single colon-and-comma encoded string in SharedPrefs:
 ```
-"WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true"
+"WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true,TWITCH:true"
 ```
 `DraggableWidgetColumn` + `WidgetEditor` read/write this via `SettingsRepository`.
 
@@ -178,7 +188,8 @@ Briefly tell the user:
 |---|---|---|
 | Gemini / OpenAI / OpenRouter | OkHttp (`AiApiClient`) | Provider + key from Settings; OpenRouter model picker; BuildConfig fallback |
 | OpenF1 | Ktor (`HttpClient`) | Base URL `https://api.openf1.org/v1/`; browser User-Agent set in `AppModule` |
-| YouTube | RSS feed (OkHttp) | No API key; tracked channels in SharedPrefs |
+| YouTube | RSS feed (OkHttp) + Data API v3 OAuth | Manual channels via RSS; Connect Google imports `subscriptions.list` into Watching |
+| Twitch | Helix (OkHttp) + Auth Code (in-app WebView) | Redirect `https://localhost/twitch/oauth`; imports follows; live board (60s cache) |
 | Weather | HTTP (WeatherRepository) | AI summary via Gemini |
 | Health Connect | SDK | Read-only; lazy client; gracefully returns null if SDK unavailable |
 | GitHub Releases | OkHttp (`AppUpdateRepository`) | In-app APK updates + changelog |

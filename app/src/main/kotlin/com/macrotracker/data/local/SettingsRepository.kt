@@ -87,7 +87,7 @@ class SettingsRepository @Inject constructor(
 
     // Layout preferences for Home Screen
     private val _homeWidgetOrder = MutableStateFlow(
-        prefs.getString("home_widget_order", "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true") ?: "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true"
+        prefs.getString("home_widget_order", "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true,TWITCH:true") ?: "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true,TWITCH:true"
     )
     val homeWidgetOrder: StateFlow<String> = _homeWidgetOrder
 
