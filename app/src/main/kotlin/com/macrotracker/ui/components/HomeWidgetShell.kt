@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,21 +33,55 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LocalTickersPaused
 
-/** Recessed well that sits inside a [MacroCard] without competing with the card chrome. */
-private val ScrollBoxSurface = Color(0xFF0C121C)
-
 /** Default cap so expanded hubs stay on-screen instead of stretching the home list. */
 val WidgetScrollBoxMaxHeight = 340.dp
+
+/** Tile width shared by collapsed YouTube / Twitch horizontal strips. */
+val WidgetCompactTileWidth = 168.dp
+
+/**
+ * While a horizontal child list is scrolling, leftover vertical nested scroll
+ * is consumed so a diagonal drag does not move the home list.
+ */
+@Composable
+fun rememberWidgetCrossAxisScrollLock(): NestedScrollConnection {
+    return remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (kotlin.math.abs(consumed.x) < 0.5f) return Offset.Zero
+                return Offset(x = 0f, y = available.y)
+            }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                if (kotlin.math.abs(consumed.x) < 40f) return Velocity.Zero
+                return Velocity(x = 0f, y = available.y)
+            }
+        }
+    }
+}
 
 /**
  * Shared motion primitives for home-screen widgets.
@@ -147,30 +182,54 @@ fun WidgetExpandFooter(
 /**
  * Bounded nested list for long expanded widget content.
  *
- * Shrinks to the content height, caps at [maxHeight], and scrolls inside the
- * home [androidx.compose.foundation.lazy.LazyColumn] instead of stretching it.
- * Edge fades + a thin thumb appear only when there is overflow.
+ * Flush with the parent section (no inset well). Caps at [maxHeight], scrolls
+ * internally, and consumes leftover nested scroll so the home list does not
+ * move while this list is being dragged — including at the ends.
+ * Edge fades punch through to whatever sits behind (card, weather gradient).
  */
 @Composable
 fun WidgetScrollBox(
     modifier: Modifier = Modifier,
     maxHeight: Dp = WidgetScrollBoxMaxHeight,
-    shape: RoundedCornerShape = RoundedCornerShape(10.dp),
-    containerColor: Color = ScrollBoxSurface,
-    borderColor: Color = Border.copy(alpha = 0.55f),
-    fadeColor: Color = ScrollBoxSurface,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(0.dp),
+    containerColor: Color = Color.Transparent,
+    borderColor: Color = Color.Transparent,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = rememberScrollState()
+    val nestedScroll = remember(scroll) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (scroll.maxValue <= 0) return Offset.Zero
+                return Offset(x = 0f, y = available.y)
+            }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                if (scroll.maxValue <= 0) return Velocity.Zero
+                return Velocity(x = 0f, y = available.y)
+            }
+        }
+    }
+    val hasFill = containerColor.alpha > 0.01f
+    val hasBorder = borderColor.alpha > 0.01f
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(max = maxHeight)
             .clip(shape)
-            .background(containerColor)
-            .border(0.5.dp, borderColor, shape)
+            .then(if (hasFill) Modifier.background(containerColor) else Modifier)
+            .then(if (hasBorder) Modifier.border(0.5.dp, borderColor, shape) else Modifier)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .nestedScroll(nestedScroll)
             .drawWithContent {
                 drawContent()
                 drawScrollChrome(
@@ -178,7 +237,6 @@ fun WidgetScrollBox(
                     canScrollForward = scroll.canScrollForward,
                     scrollValue = scroll.value,
                     scrollMax = scroll.maxValue,
-                    fadeColor = fadeColor,
                 )
             },
     ) {
@@ -198,32 +256,33 @@ private fun ContentDrawScope.drawScrollChrome(
     canScrollForward: Boolean,
     scrollValue: Int,
     scrollMax: Int,
-    fadeColor: Color,
 ) {
-    val fadeH = 28.dp.toPx()
+    val fadeH = 22.dp.toPx()
     if (canScrollBackward) {
         drawRect(
             brush = Brush.verticalGradient(
-                colors = listOf(fadeColor, fadeColor.copy(alpha = 0f)),
+                colors = listOf(Color.Black, Color.Transparent),
                 startY = 0f,
                 endY = fadeH,
             ),
             size = Size(size.width, fadeH),
+            blendMode = BlendMode.DstOut,
         )
     }
     if (canScrollForward) {
         drawRect(
             brush = Brush.verticalGradient(
-                colors = listOf(fadeColor.copy(alpha = 0f), fadeColor),
+                colors = listOf(Color.Transparent, Color.Black),
                 startY = size.height - fadeH,
                 endY = size.height,
             ),
             topLeft = Offset(0f, size.height - fadeH),
             size = Size(size.width, fadeH),
+            blendMode = BlendMode.DstOut,
         )
     }
     if (canScrollBackward || canScrollForward) {
-        val inset = 6.dp.toPx()
+        val inset = 4.dp.toPx()
         val trackH = (size.height - inset * 2).coerceAtLeast(1f)
         val thumbH = if (scrollMax > 0) {
             (size.height / (size.height + scrollMax) * trackH).coerceIn(16.dp.toPx(), trackH)
@@ -237,9 +296,9 @@ private fun ContentDrawScope.drawScrollChrome(
             0f
         }
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.22f),
-            topLeft = Offset(size.width - 5.dp.toPx(), y),
-            size = Size(2.5.dp.toPx(), thumbH),
+            color = Color.White.copy(alpha = 0.28f),
+            topLeft = Offset(size.width - 3.dp.toPx(), y),
+            size = Size(2.dp.toPx(), thumbH),
             cornerRadius = CornerRadius(2.dp.toPx()),
         )
     }

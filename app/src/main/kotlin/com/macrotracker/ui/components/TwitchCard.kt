@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -82,6 +83,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -615,7 +617,9 @@ private fun CompactLiveFeed(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (streams.size > 1) {
             Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 LiveFilterChip(
@@ -640,11 +644,13 @@ private fun CompactLiveFeed(
                 }
             }
         }
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .nestedScroll(rememberWidgetCrossAxisScrollLock()),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            filtered.take(8).forEach { stream ->
+            items(filtered, key = { it.userId }) { stream ->
                 CompactLiveTile(
                     stream = stream,
                     onClick = {
@@ -662,7 +668,7 @@ private fun CompactLiveTile(stream: TwitchStream, onClick: () -> Unit) {
     val context = LocalContext.current
     Column(
         modifier = Modifier
-            .width(168.dp)
+            .width(WidgetCompactTileWidth)
             .clip(TwSharp)
             .background(TwCardBg)
             .clickable(onClick = onClick),
@@ -726,7 +732,7 @@ private fun CompactLiveSkeleton() {
         repeat(3) {
             Box(
                 modifier = Modifier
-                    .width(168.dp)
+                    .width(WidgetCompactTileWidth)
                     .height(130.dp)
                     .clip(TwSharp)
                     .background(TwSurface),
@@ -750,7 +756,9 @@ private fun LiveStreamFeed(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (trackedChannels.isNotEmpty()) {
             Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 LiveFilterChip(
@@ -815,9 +823,6 @@ private fun LiveStreamFeed(
             if (rest.isNotEmpty()) {
                 WidgetScrollBox(
                     maxHeight = 360.dp,
-                    containerColor = TwCardBg,
-                    borderColor = TwHairline.copy(alpha = 0.7f),
-                    fadeColor = TwCardBg,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     rest.forEach { stream ->
@@ -1126,9 +1131,6 @@ private fun TwitchChannelsHub(
         } else {
             WidgetScrollBox(
                 maxHeight = 360.dp,
-                containerColor = TwCardBg,
-                borderColor = TwHairline.copy(alpha = 0.7f),
-                fadeColor = TwCardBg,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 trackedChannels.forEach { channel ->

@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,6 +92,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -677,9 +679,6 @@ private fun YoutubeChannelsHub(
         } else {
             WidgetScrollBox(
                 maxHeight = 360.dp,
-                containerColor = YtCardBg,
-                borderColor = YtHairline.copy(alpha = 0.7f),
-                fadeColor = YtCardBg,
             ) {
                 trackedChannels.forEach { channel ->
                     key(channel.channelId) {
@@ -720,11 +719,7 @@ private fun CompactVideoFeed(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(YtSurface)
-            .padding(10.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (videos.isEmpty()) {
@@ -843,42 +838,39 @@ private fun CompactVideoFeed(
                 Text("No videos from this channel yet", color = TextSecondary, fontSize = 13.sp)
             }
         } else {
-            val previewVideos = displayedVideos.take(YT_COMPACT_PREVIEW_COUNT)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Max),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                previewVideos.forEach { video ->
-                    key(video.videoId) {
-                        CompactVideoTile(
-                            video = video,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            onClick = {
-                                haptics.tick()
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        "https://www.youtube.com/watch?v=${video.videoId}".toUri(),
-                                    ),
-                                )
-                            },
-                        )
-                    }
-                }
-                repeat(YT_COMPACT_PREVIEW_COUNT - previewVideos.size) { index ->
-                    key("yt-empty-slot-$index") {
-                        CompactVideoTilePlaceholder(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                        )
-                    }
-                }
-            }
+            CompactVideoStrip(
+                videos = displayedVideos,
+                onVideoClick = { video ->
+                    haptics.tick()
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            "https://www.youtube.com/watch?v=${video.videoId}".toUri(),
+                        ),
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactVideoStrip(
+    videos: List<YoutubeVideo>,
+    onVideoClick: (YoutubeVideo) -> Unit,
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .nestedScroll(rememberWidgetCrossAxisScrollLock()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(videos, key = { it.videoId }) { video ->
+            CompactVideoTile(
+                video = video,
+                modifier = Modifier.width(WidgetCompactTileWidth),
+                onClick = { onVideoClick(video) },
+            )
         }
     }
 }
@@ -886,11 +878,7 @@ private fun CompactVideoFeed(
 @Composable
 private fun CompactVideoFeedSkeleton() {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(YtSurface)
-            .padding(10.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
@@ -921,17 +909,10 @@ private fun CompactVideoFeedSkeleton() {
                 )
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Max),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            repeat(YT_COMPACT_PREVIEW_COUNT) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(3) {
                 CompactVideoTilePlaceholder(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.width(WidgetCompactTileWidth),
                     showSpinner = it == 0,
                 )
             }
@@ -1175,7 +1156,6 @@ private fun CompactChannelAvatar(
 
 private const val YT_INITIAL_PAGE = 4
 private const val YT_PAGE_SIZE    = 5
-private const val YT_COMPACT_PREVIEW_COUNT = 2
 /**
  * Min caption block under thumbnails.
  * Sized for 2 title lines + a YouTube-style meta line (channel · views · time)
@@ -1388,9 +1368,6 @@ private fun VideoFeed(
 
                     WidgetScrollBox(
                         maxHeight = 380.dp,
-                        containerColor = YtCardBg,
-                        borderColor = YtHairline.copy(alpha = 0.7f),
-                        fadeColor = YtCardBg,
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         paginatedGroups.forEach { (channel, channelVideos) ->
@@ -1440,9 +1417,6 @@ private fun VideoFeed(
                     val hasMore = feedVideos.size > visibleCount
                     WidgetScrollBox(
                         maxHeight = 380.dp,
-                        containerColor = YtCardBg,
-                        borderColor = YtHairline.copy(alpha = 0.7f),
-                        fadeColor = YtCardBg,
                     ) {
                         VideoGrid(
                             videos = paged,
@@ -1467,9 +1441,6 @@ private fun VideoFeed(
 
                     WidgetScrollBox(
                         maxHeight = 380.dp,
-                        containerColor = YtCardBg,
-                        borderColor = YtHairline.copy(alpha = 0.7f),
-                        fadeColor = YtCardBg,
                     ) {
                         paged.forEachIndexed { idx, video ->
                             key(video.videoId) {
@@ -1517,9 +1488,6 @@ private fun VideoFeed(
                             Spacer(Modifier.height(10.dp))
                             WidgetScrollBox(
                                 maxHeight = 360.dp,
-                                containerColor = YtCardBg,
-                                borderColor = YtHairline.copy(alpha = 0.7f),
-                                fadeColor = YtCardBg,
                             ) {
                                 restVideos.forEachIndexed { idx, video ->
                                     key(video.videoId) {

@@ -1481,9 +1481,6 @@ fun DriverStandingsList(data: F1Standings) {
 
         if (rest.isNotEmpty()) {
             WidgetScrollBox(
-                containerColor = RowSurface,
-                borderColor = Hairline.copy(alpha = 0.7f),
-                fadeColor = RowSurface,
                 verticalArrangement = Arrangement.Top,
             ) {
                 rest.forEachIndexed { index, driver ->
@@ -1738,11 +1735,7 @@ fun ConstructorStandingsList(data: F1Standings) {
         }
 
         if (rest.isNotEmpty()) {
-            WidgetScrollBox(
-                containerColor = RowSurface,
-                borderColor = Hairline.copy(alpha = 0.7f),
-                fadeColor = RowSurface,
-            ) {
+            WidgetScrollBox {
                 rest.forEachIndexed { i, team ->
                     val tc = safeTeamColor(team.teamColor)
                     val gap = leader?.let { (it.points - team.points).toInt() }
@@ -1958,9 +1951,6 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
         if (ordered.isNotEmpty()) {
             WidgetScrollBox(
                 maxHeight = 380.dp,
-                containerColor = RowSurface,
-                borderColor = Hairline.copy(alpha = 0.7f),
-                fadeColor = RowSurface,
             ) {
                 if (remaining.isNotEmpty()) {
                     SectionHeader("Remaining")
@@ -2217,11 +2207,7 @@ fun QualiResultsList(results: List<QualiResult>, raceName: String?) {
         val q2Only = results.filter { it.q2Time != null && it.q3Time == null }
         val q1Only = results.filter { it.q1Time != null && it.q2Time == null }
 
-        WidgetScrollBox(
-            containerColor = RowSurface,
-            borderColor = Hairline.copy(alpha = 0.7f),
-            fadeColor = RowSurface,
-        ) {
+        WidgetScrollBox {
             if (q3Drivers.isNotEmpty()) {
                 SectionHeader("Q3")
                 q3Drivers.forEach { r -> QualiRow(r, bestTime = r.q3Time, accentColor = safeTeamColor(r.teamColor)) }
@@ -2339,11 +2325,7 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
         val points = results.filter { it.position in 4..10 }
         val rest = results.filter { it.position > 10 }
         if (points.isNotEmpty() || rest.isNotEmpty()) {
-            WidgetScrollBox(
-                containerColor = RowSurface,
-                borderColor = Hairline.copy(alpha = 0.7f),
-                fadeColor = RowSurface,
-            ) {
+            WidgetScrollBox {
                 if (points.isNotEmpty()) {
                     SectionHeader("Points")
                     points.forEachIndexed { index, result ->

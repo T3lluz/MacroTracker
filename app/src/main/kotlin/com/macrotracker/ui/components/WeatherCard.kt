@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -636,6 +637,7 @@ private fun WeatherExpandedForecast(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .nestedScroll(rememberWidgetCrossAxisScrollLock())
                     .horizontalScroll(hourlyScroll),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -656,29 +658,24 @@ private fun WeatherExpandedForecast(
                 color = Color.White.copy(alpha = 0.9f),
                 modifier = Modifier.padding(bottom = 10.dp),
             )
-            Column(
-                modifier = Modifier.fillMaxWidth(),
+            WidgetScrollBox(
+                maxHeight = 320.dp,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                WidgetScrollBox(
-                    maxHeight = 320.dp,
-                    fadeColor = Color(0xFF0C121C),
-                ) {
-                    weather.dailyForecasts.forEach { daily ->
-                        val key = daily.dateFull
-                        DailyForecastRow(
-                            daily = daily,
-                            expanded = expandedDayKey == key,
-                            accent = accent,
-                            tempUnit = tempUnit,
-                            windUnit = windUnit,
-                            onToggle = {
-                                val opening = expandedDayKey != key
-                                expandedDayKey = if (opening) key else null
-                                if (opening) haptics.toggleOn() else haptics.toggleOff()
-                            },
-                        )
-                    }
+                weather.dailyForecasts.forEach { daily ->
+                    val key = daily.dateFull
+                    DailyForecastRow(
+                        daily = daily,
+                        expanded = expandedDayKey == key,
+                        accent = accent,
+                        tempUnit = tempUnit,
+                        windUnit = windUnit,
+                        onToggle = {
+                            val opening = expandedDayKey != key
+                            expandedDayKey = if (opening) key else null
+                            if (opening) haptics.toggleOn() else haptics.toggleOff()
+                        },
+                    )
                 }
             }
         }

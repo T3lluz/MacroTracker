@@ -66,6 +66,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -1127,9 +1128,6 @@ private fun IssuesTab(
             )
         } else {
             WidgetScrollBox(
-                containerColor = GhSurface,
-                borderColor = GhHairline.copy(alpha = 0.7f),
-                fadeColor = GhSurface,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 filtered.take(30).forEach { issue ->
@@ -1187,9 +1185,6 @@ private fun PullsTab(
             )
         } else {
             WidgetScrollBox(
-                containerColor = GhSurface,
-                borderColor = GhHairline.copy(alpha = 0.7f),
-                fadeColor = GhSurface,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 filtered.take(30).forEach { pr ->
@@ -1212,9 +1207,6 @@ private fun ActivityTab(activity: List<GitHubActivity>, haptics: HapticHelper) {
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         WidgetScrollBox(
-            containerColor = GhSurface,
-            borderColor = GhHairline.copy(alpha = 0.7f),
-            fadeColor = GhSurface,
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             activity.take(30).forEach { item ->
@@ -1255,9 +1247,6 @@ private fun ReposTab(
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         WidgetScrollBox(
-            containerColor = GhSurface,
-            borderColor = GhHairline.copy(alpha = 0.7f),
-            fadeColor = GhSurface,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             repos.take(40).forEach { repo ->
@@ -1292,9 +1281,6 @@ private fun InboxTab(
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         WidgetScrollBox(
-            containerColor = GhSurface,
-            borderColor = GhHairline.copy(alpha = 0.7f),
-            fadeColor = GhSurface,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             notifications.take(30).forEach { item ->
@@ -1614,9 +1600,6 @@ private fun RepoDetail(
         if (commits.isNotEmpty()) {
             SectionLabel("COMMITS")
             WidgetScrollBox(
-                containerColor = GhSurface,
-                borderColor = GhHairline.copy(alpha = 0.7f),
-                fadeColor = GhSurface,
                 maxHeight = 200.dp,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -1632,9 +1615,6 @@ private fun RepoDetail(
         if (runs.isNotEmpty()) {
             SectionLabel("ACTIONS")
             WidgetScrollBox(
-                containerColor = GhSurface,
-                borderColor = GhHairline.copy(alpha = 0.7f),
-                fadeColor = GhSurface,
                 maxHeight = 180.dp,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -2303,7 +2283,10 @@ private fun MetaChip(
 @Composable
 private fun FilterRow(content: @Composable () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        modifier = Modifier
+            .fillMaxWidth()
+            .nestedScroll(rememberWidgetCrossAxisScrollLock())
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         content = { content() },
     )
