@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MonitorHeart
@@ -68,6 +69,7 @@ import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.viewmodel.GitHubViewModel
 import com.macrotracker.ui.viewmodel.HomeViewModel
 import com.macrotracker.ui.viewmodel.TwitchViewModel
 import com.macrotracker.ui.viewmodel.YouTubeViewModel
@@ -81,6 +83,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     youtubeViewModel: YouTubeViewModel = hiltViewModel(),
     twitchViewModel: TwitchViewModel = hiltViewModel(),
+    githubViewModel: GitHubViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -96,6 +99,7 @@ fun HomeScreen(
     val defaultHomeWidgets = remember {
         listOf(
             Triple("F1", "Formula 1", Icons.Default.Flag),
+            Triple("GITHUB", "GitHub", Icons.Default.Code),
             Triple("YOUTUBE", "YouTube Feed", Icons.Default.PlayArrow),
             Triple("TWITCH", "Twitch Live", Icons.Default.Videocam),
             Triple("WEATHER", "Weather", Icons.Default.Cloud),
@@ -174,6 +178,9 @@ fun HomeScreen(
                     if ("TWITCH" in visibleIds) {
                         twitchViewModel.loadLiveStreams(forceRefresh = false)
                     }
+                    if ("GITHUB" in visibleIds) {
+                        githubViewModel.loadDashboard(forceRefresh = false)
+                    }
                 }
             }
         }
@@ -207,6 +214,9 @@ fun HomeScreen(
             }
             if ("TWITCH" in visibleIds) {
                 twitchViewModel.loadLiveStreams(forceRefresh = true)
+            }
+            if ("GITHUB" in visibleIds) {
+                githubViewModel.loadDashboard(forceRefresh = true)
             }
         },
         modifier = Modifier.fillMaxSize().background(Background),
@@ -242,6 +252,9 @@ fun HomeScreen(
                 }
                 if ("TWITCH" in visibleWidgetIds) {
                     twitchViewModel.loadLiveStreams(forceRefresh = false)
+                }
+                if ("GITHUB" in visibleWidgetIds) {
+                    githubViewModel.loadDashboard(forceRefresh = false)
                 }
             }
         }

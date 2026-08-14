@@ -85,9 +85,25 @@ class SettingsRepository @Inject constructor(
     private val _activeCaloriesEnabled = MutableStateFlow(healthPrefs.getBoolean("active_calories_enabled", true))
     val activeCaloriesEnabled: StateFlow<Boolean> = _activeCaloriesEnabled
 
+    private val _githubOwner = MutableStateFlow(
+        prefs.getString(KEY_GITHUB_OWNER, DEFAULT_GITHUB_OWNER) ?: DEFAULT_GITHUB_OWNER,
+    )
+    val githubOwner: StateFlow<String> = _githubOwner
+
+    private val _githubRepo = MutableStateFlow(
+        prefs.getString(KEY_GITHUB_REPO, DEFAULT_GITHUB_REPO) ?: DEFAULT_GITHUB_REPO,
+    )
+    val githubRepo: StateFlow<String> = _githubRepo
+
+    private val _githubToken = MutableStateFlow(prefs.getString(KEY_GITHUB_TOKEN, "") ?: "")
+    val githubToken: StateFlow<String> = _githubToken
+
     // Layout preferences for Home Screen
     private val _homeWidgetOrder = MutableStateFlow(
-        prefs.getString("home_widget_order", "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true,TWITCH:true") ?: "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true,TWITCH:true"
+        prefs.getString(
+            "home_widget_order",
+            "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,GITHUB:true,YOUTUBE:true,TWITCH:true",
+        ) ?: "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,GITHUB:true,YOUTUBE:true,TWITCH:true",
     )
     val homeWidgetOrder: StateFlow<String> = _homeWidgetOrder
 
@@ -150,6 +166,24 @@ class SettingsRepository @Inject constructor(
     fun setOnboardingCompleted(completed: Boolean = true) {
         prefs.edit { putBoolean(KEY_ONBOARDING_COMPLETED, completed) }
         _onboardingCompleted.value = completed
+    }
+
+    fun saveGithubRepo(owner: String, repo: String) {
+        val o = owner.trim()
+        val r = repo.trim().removeSuffix(".git")
+        if (o.isBlank() || r.isBlank()) return
+        prefs.edit {
+            putString(KEY_GITHUB_OWNER, o)
+            putString(KEY_GITHUB_REPO, r)
+        }
+        _githubOwner.value = o
+        _githubRepo.value = r
+    }
+
+    fun saveGithubToken(token: String) {
+        val trimmed = token.trim()
+        prefs.edit { putString(KEY_GITHUB_TOKEN, trimmed) }
+        _githubToken.value = trimmed
     }
 
     fun updateHomeWidgetOrder(order: String) {
@@ -221,6 +255,11 @@ class SettingsRepository @Inject constructor(
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         const val KEY_TEMP_UNIT = "temp_unit"
         const val KEY_WIND_UNIT = "wind_unit"
+        const val KEY_GITHUB_OWNER = "github_owner"
+        const val KEY_GITHUB_REPO = "github_repo"
+        const val KEY_GITHUB_TOKEN = "github_token"
+        const val DEFAULT_GITHUB_OWNER = "T3lluz"
+        const val DEFAULT_GITHUB_REPO = "MacroTracker"
 
         /** Prepend Daily Health for installs that predate the widget. */
         fun migrateHealthWidgetOrder(order: String): String {

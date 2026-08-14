@@ -73,12 +73,16 @@ jobs:
 
       # Bake API keys into BuildConfig (same as local.properties on a dev machine).
       # Twitch Connect needs TWITCH_CLIENT_ID (+ SECRET for confidential apps / search).
+      # GitHub Connect needs GH_OAUTH_CLIENT_ID (OAuth App Client ID — Device Flow, no secret).
+      # Actions forbids secret names starting with GITHUB_, so the repo secret is
+      # GH_OAUTH_CLIENT_ID and we write it as GITHUB_CLIENT_ID in local.properties.
       # YouTube Connect Google does NOT use these keys — it uses package com.macrotracker
       # + app/tester.jks SHA-1 registered in Google Cloud Console.
       - name: Write local.properties for BuildConfig keys
         env:
           TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
           TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -88,10 +92,14 @@ jobs:
           if [ -z "${TWITCH_CLIENT_ID:-}" ]; then
             echo "::warning::TWITCH_CLIENT_ID secret is empty — Twitch Connect will fail in this APK"
           fi
+          if [ -z "${GITHUB_CLIENT_ID:-}" ]; then
+            echo "::warning::GH_OAUTH_CLIENT_ID secret is empty — GitHub Connect will fail in this APK"
+          fi
           {
             echo "sdk.dir=${ANDROID_HOME}"
             echo "TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID:-}"
             echo "TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET:-}"
+            echo "GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}"
             echo "YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}"
             echo "GEMINI_API_KEY=${GEMINI_API_KEY:-}"
             echo "OPENAI_API_KEY=${OPENAI_API_KEY:-}"

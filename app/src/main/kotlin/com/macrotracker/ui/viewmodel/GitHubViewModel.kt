@@ -1,0 +1,201 @@
+package com.macrotracker.ui.viewmodel
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.macrotracker.data.github.GitHubAuthClient
+import com.macrotracker.data.github.GitHubAuthOutcome
+import com.macrotracker.data.github.GitHubNeedsAuthException
+import com.macrotracker.data.github.GitHubRepository
+import com.macrotracker.data.local.SettingsRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import java.time.Instant
+import javax.inject.Inject
+
+@HiltViewModel
+class GitHubViewModel @Inject constructor(
+    private val gitHubRepository: GitHubRepository,
+    private val authClient: GitHubAuthClient,
+    private val settings: SettingsRepository,
+) : ViewModel() {
+
+    companion object {
+        private const val TAG = "GitHubViewModel"
+    }
+
+    private val _state = MutableStateFlow<GitHubUiState>(GitHubUiState.Idle)
+    val state: StateFlow<GitHubUiState> = _state
+
+    private val _authState = MutableStateFlow(
+        GitHubAuthUiState(
+            isConnected = authClient.isConnected(),
+            login = authClient.connectedLogin(),
+            displayName = authClient.connectedName(),
+            isConfigured = authClient.isConfigured(),
+        ),
+    )
+    val authState: StateFlow<GitHubAuthUiState> = _authState
+
+    private var loadJob: Job? = null
+    private var authJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            authClient.isAwaitingBrowser.collect { awaiting ->
+                _authState.value = _authState.value.copy(isAwaitingBrowser = awaiting)
+            }
+        }
+        viewModelScope.launch {
+            authClient.deviceLogin.collect { device ->
+                _authState.value = _authState.value.copy(deviceLogin = device)
+            }
+        }
+    }
+
+    fun loadDashboard(forceRefresh: Boolean = false) {
+        if (!forceRefresh && loadJob?.isActive == true) return
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            if (!gitHubRepository.hasToken()) {
+                _state.value = GitHubUiState.NeedsAuth
+                return@launch
+            }
+
+            val cached = gitHubRepository.getCachedDashboard()
+            val cachedAt = gitHubRepository.lastFetchTimeMs
+                .takeIf { it > 0L }
+                ?.let(Instant::ofEpochMilli)
+            val current = _state.value
+            if (cached != null) {
+                _state.value = GitHubUiState.Success(cached, lastUpdatedAt = cachedAt)
+            } else if (current !is GitHubUiState.Success || forceRefresh) {
+                _state.value = GitHubUiState.Loading
+            }
+
+            gitHubRepository.getDashboard(forceRefresh)
+                .onSuccess { snapshot ->
+                    val fetchedAt = gitHubRepository.lastFetchTimeMs
+                        .takeIf { it > 0L }
+                        ?.let(Instant::ofEpochMilli)
+                        ?: Instant.now()
+                    _state.value = GitHubUiState.Success(snapshot, lastUpdatedAt = fetchedAt)
+                    _authState.value = _authState.value.copy(
+                        isConnected = true,
+                        login = snapshot.user.login,
+                        displayName = snapshot.user.name ?: snapshot.user.login,
+                    )
+                }
+                .onFailure { error ->
+                    Log.e(TAG, "Failed to load GitHub dashboard", error)
+                    if (error is GitHubNeedsAuthException) {
+                        _authState.value = _authState.value.copy(
+                            isConnected = authClient.isConnected(),
+                            login = authClient.connectedLogin(),
+                            displayName = authClient.connectedName(),
+                        )
+                        _state.value = GitHubUiState.NeedsAuth
+                        return@onFailure
+                    }
+                    if (_state.value !is GitHubUiState.Success) {
+                        _state.value = GitHubUiState.Error(
+                            error.message ?: "Couldn’t load GitHub data",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun connectGitHub() {
+        if (_authState.value.isBusy) return
+        if (!authClient.isConfigured()) {
+            setAuthError(
+                "GitHub Client ID missing — add GITHUB_CLIENT_ID to local.properties and rebuild",
+            )
+            return
+        }
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            setAuthBusy(true, status = "Sign in with GitHub…")
+            when (val outcome = authClient.authorizeInteractively()) {
+                is GitHubAuthOutcome.Ready -> {
+                    _authState.value = _authState.value.copy(
+                        isConnected = true,
+                        login = outcome.login,
+                        displayName = outcome.name ?: outcome.login,
+                        isBusy = false,
+                        isAwaitingBrowser = false,
+                        deviceLogin = null,
+                        statusMessage = outcome.login?.let { "Connected as @$it" } ?: "Connected",
+                        isError = false,
+                    )
+                    loadDashboard(forceRefresh = true)
+                }
+                is GitHubAuthOutcome.Failed -> {
+                    if (outcome.message.contains("cancelled", ignoreCase = true)) {
+                        _authState.value = _authState.value.copy(
+                            isBusy = false,
+                            isAwaitingBrowser = false,
+                            deviceLogin = null,
+                            statusMessage = outcome.message,
+                            isError = false,
+                        )
+                    } else {
+                        setAuthError(outcome.message)
+                    }
+                }
+            }
+        }
+    }
+
+    fun cancelBrowserLogin() {
+        authClient.cancelPendingLogin()
+        authJob?.cancel()
+        _authState.value = _authState.value.copy(
+            isBusy = false,
+            isAwaitingBrowser = false,
+            deviceLogin = null,
+            statusMessage = "GitHub login cancelled",
+            isError = false,
+        )
+    }
+
+    fun openActivation() {
+        authClient.openVerificationInBrowser()
+    }
+
+    fun disconnect() {
+        if (_authState.value.isBusy) return
+        authJob?.cancel()
+        authClient.revoke()
+        settings.saveGithubToken("")
+        gitHubRepository.invalidateCache()
+        _authState.value = GitHubAuthUiState(
+            isConnected = false,
+            isConfigured = authClient.isConfigured(),
+            statusMessage = "Disconnected",
+        )
+        _state.value = GitHubUiState.NeedsAuth
+    }
+
+    private fun setAuthBusy(busy: Boolean, status: String? = null) {
+        _authState.value = _authState.value.copy(
+            isBusy = busy,
+            statusMessage = status ?: _authState.value.statusMessage,
+            isError = false,
+        )
+    }
+
+    private fun setAuthError(message: String) {
+        _authState.value = _authState.value.copy(
+            isBusy = false,
+            isAwaitingBrowser = false,
+            deviceLogin = null,
+            statusMessage = message,
+            isError = true,
+        )
+    }
+}

@@ -10,6 +10,8 @@ Single-module Android app (Kotlin + Jetpack Compose). The **app label is "DailyD
 ./gradlew assembleDebug      # standard debug build
 ./gradlew installDebug       # build + deploy to connected device
 ```
+**Do not assemble, install, or run the app to verify UI.** The user keeps an Android emulator in the same directory as this project and checks changes themselves.
+
 API keys go in `local.properties` (never committed):
 ```
 GEMINI_API_KEY=...
@@ -18,8 +20,10 @@ OPENROUTER_API_KEY=...
 YOUTUBE_API_KEY=...
 TWITCH_CLIENT_ID=...
 TWITCH_CLIENT_SECRET=...   # optional locally; required for confidential Twitch apps / CI search
+GITHUB_CLIENT_ID=...       # GitHub OAuth App Client ID for the home GitHub card (Device Flow; no secret in the APK)
+GITHUB_TOKEN=...           # optional PAT fallback if OAuth Client ID is not set
 ```
-**GitHub Releases:** `.github/workflows/build-apk.yml` writes the same keys from repo Actions secrets into `local.properties` before `assembleRelease`. Required for Twitch in published APKs: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`. Optional mirrors of local keys: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`. YouTube **Connect Google** does not use BuildConfig keys — it needs Google Cloud Console (YouTube Data API v3 + Android OAuth client for package `com.macrotracker` + `tester.jks` SHA-1); CI already signs releases with `app/tester.jks`.
+**GitHub Releases:** `.github/workflows/build-apk.yml` writes the same keys from repo Actions secrets into `local.properties` before `assembleRelease`. Required for Twitch in published APKs: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`. Required for GitHub Connect in published APKs: Actions secret `GH_OAUTH_CLIENT_ID` (OAuth App Client ID — **not** a PAT and **not** the automatic Actions `GITHUB_TOKEN`; GitHub forbids secrets named `GITHUB_*`). CI writes it as `GITHUB_CLIENT_ID` in `local.properties`. Optional mirrors of local keys: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`. YouTube **Connect Google** does not use BuildConfig keys — it needs Google Cloud Console (YouTube Data API v3 + Android OAuth client for package `com.macrotracker` + `tester.jks` SHA-1); CI already signs releases with `app/tester.jks`.
 
 At runtime, Settings lets the user pick **Gemini**, **OpenAI**, or **OpenRouter** and enter the matching API key. For OpenRouter, Settings also shows a curated cheap-model picker with list prices. Stored keys take priority over build-time keys. `NutritionAiRepository` / `WeatherAiRepository` / widget insights all route through `AiApiClient` based on `SettingsRepository.aiProvider`.
 
@@ -50,10 +54,15 @@ com.macrotracker/
     twitch/                ← TwitchRepository via Helix + Device Code OAuth (Custom Tabs →
                               twitch.tv/activate, scope `user:read:follows`);
                               imports followed channels; live streams with 60s cache + auto-refresh
+    github/                ← GitHubRepository via REST (OkHttp); authenticated user dashboard
+                              (issues/PRs/activity/repos across every repo the account can see);
+                              5-min memory + SharedPrefs disk cache; GitHubAuthClient Device Code
+                              OAuth (Custom Tabs → github.com/login/device, scopes `repo read:user`);
+                              leftover PAT / BuildConfig.GITHUB_TOKEN is an optional fallback
     calendar/              ← CalendarRepository (READ_CALENDAR permission)
   di/
     AppModule.kt           ← all @Provides (DB, DAO, OkHttpClient, KtorClient);
-                              @Binds abstract modules for F1, YouTube, and Twitch interface → impl
+                              @Binds abstract modules for F1, YouTube, Twitch, and GitHub interface → impl
   ui/
     screens/               ← one file per tab screen (HomeScreen, HealthScreen, AIScreen,
                              SettingsScreen) + sub-screens (StatsScreen, HelpScreen, CameraScanScreen)
@@ -66,7 +75,9 @@ com.macrotracker/
                               component directly via hiltViewModel(), not from a screen ViewModel);
                               TwitchViewModel (live streams + follow import — consumed by TwitchCard
                               via hiltViewModel());
-                              F1UiState.kt (dedicated file for the F1 sealed interface used by HomeViewModel)
+                              GitHubViewModel (account dashboard — consumed by GitHubCard via
+                              hiltViewModel());
+                              F1UiState.kt / GitHubUiState.kt (dedicated files for sealed UI state)
 navigation/            ← Screen.kt (sealed class, 4 bottom-nav tabs) + OnboardingRoutes (const routes)
                          + DailyDashNavHost.kt
     components/            ← shared Composables (MacroCard, PillNavigationBar, DraggableWidgetColumn,
@@ -91,7 +102,7 @@ navigation/            ← Screen.kt (sealed class, 4 bottom-nav tabs) + Onboard
 ## Key Patterns
 
 ### Dependency Injection
-Hilt throughout. `AppModule.kt` is the only `@Provides` module. Concrete implementations are bound to interfaces via separate abstract `@Binds` modules (`F1DataModule`, `YouTubeDataModule`, `TwitchDataModule`). **Glance widgets cannot receive injected deps normally** — they use `EntryPointAccessors`, e.g. `F1RepositoryEntryPoint`.
+Hilt throughout. `AppModule.kt` is the only `@Provides` module. Concrete implementations are bound to interfaces via separate abstract `@Binds` modules (`F1DataModule`, `YouTubeDataModule`, `TwitchDataModule`, `GitHubDataModule`). **Glance widgets cannot receive injected deps normally** — they use `EntryPointAccessors`, e.g. `F1RepositoryEntryPoint`.
 
 ### UI State
 Each screen's ViewModel exposes sealed-class state via `StateFlow`. Example pattern from `HomeViewModel`:
@@ -122,9 +133,9 @@ Sub-screens (`stats`, `help`, `camera_scan`) are composed inside `DailyDashNavHo
 ### Home Screen Widgets (draggable)
 Widget order and visibility are persisted as a single colon-and-comma encoded string in SharedPrefs:
 ```
-"WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,YOUTUBE:true,TWITCH:true"
+"WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,GITHUB:true,YOUTUBE:true,TWITCH:true"
 ```
-`DraggableWidgetColumn` + `WidgetEditor` read/write this via `SettingsRepository`.
+`DraggableWidgetColumn` + `WidgetEditor` read/write this via `SettingsRepository`. **`GITHUB`** is the home GitHub hub (`GitHubCard`): account-wide issues, PRs, activity, and repos for the connected GitHub user (not a single project). Connect with Device Code OAuth on the Account tab (`repo` + `read:user`).
 
 The **Health screen** uses the same draggable pattern with a separate key (`healthWidgetOrder`):
 ```
@@ -192,6 +203,7 @@ Briefly tell the user:
 | Twitch | Helix (OkHttp) + Device Code (Custom Tabs) | `twitch.tv/activate` (no runtime redirect); imports follows; live board (60s cache) |
 | Weather | HTTP (WeatherRepository) | AI summary via Gemini |
 | Health Connect | SDK | Read-only; lazy client; gracefully returns null if SDK unavailable |
+| GitHub (home card) | OkHttp (`GitHubRepository` + `GitHubAuthClient`) | Device Code OAuth (Custom Tabs → github.com/login/device); REST `/user`, search issues/PRs `involves:@me`, `/user/repos`, `/users/{login}/events`; scopes `repo read:user` |
 | GitHub Releases | OkHttp (`AppUpdateRepository`) | In-app APK updates + changelog |
 
 ### Compose Strong Skipping

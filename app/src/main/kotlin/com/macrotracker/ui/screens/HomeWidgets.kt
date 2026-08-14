@@ -42,6 +42,7 @@ import com.macrotracker.ui.components.BodyStats
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.CalendarCard
 import com.macrotracker.ui.components.F1Card
+import com.macrotracker.ui.components.GitHubCard
 import com.macrotracker.ui.components.HealthMetricUiState
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
@@ -81,6 +82,7 @@ fun HomeWidgetItem(
 ) {
     when (config.id) {
         "F1" -> HomeF1Widget(viewModel, isVisible = isVisible)
+        "GITHUB" -> GitHubCard(isVisible = isVisible)
         "YOUTUBE" -> YoutubeCard()
         "TWITCH" -> TwitchCard()
         "WEATHER" -> HomeWeatherWidget(

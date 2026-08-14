@@ -44,6 +44,10 @@ android {
         buildConfigField("String", "TWITCH_CLIENT_ID", "\"$twitchClientId\"")
         val twitchClientSecret = localProperties.getProperty("TWITCH_CLIENT_SECRET", "")
         buildConfigField("String", "TWITCH_CLIENT_SECRET", "\"$twitchClientSecret\"")
+        val githubClientId = localProperties.getProperty("GITHUB_CLIENT_ID", "")
+        buildConfigField("String", "GITHUB_CLIENT_ID", "\"$githubClientId\"")
+        val githubToken = localProperties.getProperty("GITHUB_TOKEN", "")
+        buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
     }
 
     signingConfigs {

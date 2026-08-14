@@ -28,3 +28,21 @@ YOUTUBE_API_KEY=
 # CI writes them into local.properties before assembleRelease.
 TWITCH_CLIENT_ID=
 TWITCH_CLIENT_SECRET=
+
+# GitHub OAuth (home GitHub card — Connect GitHub via Device Code, same as Twitch)
+# 1) https://github.com/settings/developers → OAuth Apps → New OAuth App
+# 2) Application name: DailyDash
+#    Homepage URL: https://github.com/T3lluz/MacroTracker
+#    Authorization callback URL (required by GitHub, unused at runtime):
+#      https://localhost/github/oauth
+# 3) After creating the app, enable Device Flow if that checkbox is shown
+# 4) Copy Client ID below (Client Secret is NOT needed in the APK)
+# 5) Rebuild, then tap Connect GitHub on the home card
+#
+# GitHub Releases: add Actions secret GH_OAUTH_CLIENT_ID (OAuth App Client ID).
+# GitHub forbids secrets named GITHUB_*; CI writes this as GITHUB_CLIENT_ID.
+GITHUB_CLIENT_ID=
+
+# Optional PAT fallback only. Prefer OAuth above. Runtime leftover PAT in SharedPrefs
+# still works until you Disconnect. Classic scopes: repo + read:user
+GITHUB_TOKEN=
