@@ -63,7 +63,7 @@ class GitHubAuthClient @Inject constructor(
         private const val KEY_REFRESH = "github_refresh_token"
         private const val KEY_EXPIRES_AT = "github_expires_at_ms"
 
-        const val SCOPES = "repo read:user"
+        const val SCOPES = "repo read:user notifications"
         const val REDIRECT_URI = "https://localhost/github/oauth"
 
         private const val DEVICE_URL = "https://github.com/login/device/code"

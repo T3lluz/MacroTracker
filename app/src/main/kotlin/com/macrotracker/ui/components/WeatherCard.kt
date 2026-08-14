@@ -660,20 +660,25 @@ private fun WeatherExpandedForecast(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                weather.dailyForecasts.forEach { daily ->
-                    val key = daily.dateFull
-                    DailyForecastRow(
-                        daily = daily,
-                        expanded = expandedDayKey == key,
-                        accent = accent,
-                        tempUnit = tempUnit,
-                        windUnit = windUnit,
-                        onToggle = {
-                            val opening = expandedDayKey != key
-                            expandedDayKey = if (opening) key else null
-                            if (opening) haptics.toggleOn() else haptics.toggleOff()
-                        },
-                    )
+                WidgetScrollBox(
+                    maxHeight = 320.dp,
+                    fadeColor = Color(0xFF0C121C),
+                ) {
+                    weather.dailyForecasts.forEach { daily ->
+                        val key = daily.dateFull
+                        DailyForecastRow(
+                            daily = daily,
+                            expanded = expandedDayKey == key,
+                            accent = accent,
+                            tempUnit = tempUnit,
+                            windUnit = windUnit,
+                            onToggle = {
+                                val opening = expandedDayKey != key
+                                expandedDayKey = if (opening) key else null
+                                if (opening) haptics.toggleOn() else haptics.toggleOff()
+                            },
+                        )
+                    }
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.macrotracker.ui.viewmodel
 
 import com.macrotracker.data.github.GitHubDeviceLogin
+import com.macrotracker.data.github.GitHubRepoFocus
 import com.macrotracker.data.github.GitHubSnapshot
 import java.time.Instant
 
@@ -13,6 +14,13 @@ sealed interface GitHubUiState {
         val lastUpdatedAt: Instant? = null,
     ) : GitHubUiState
     data class Error(val message: String) : GitHubUiState
+}
+
+sealed interface GitHubRepoFocusUiState {
+    data object Idle : GitHubRepoFocusUiState
+    data object Loading : GitHubRepoFocusUiState
+    data class Ready(val focus: GitHubRepoFocus) : GitHubRepoFocusUiState
+    data class Error(val message: String) : GitHubRepoFocusUiState
 }
 
 data class GitHubAuthUiState(

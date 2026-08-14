@@ -40,8 +40,15 @@ class GitHubViewModel @Inject constructor(
     )
     val authState: StateFlow<GitHubAuthUiState> = _authState
 
+    private val _focusRepo = MutableStateFlow(settings.githubFocusRepo.value)
+    val focusRepo: StateFlow<String> = _focusRepo
+
+    private val _repoFocus = MutableStateFlow<GitHubRepoFocusUiState>(GitHubRepoFocusUiState.Idle)
+    val repoFocus: StateFlow<GitHubRepoFocusUiState> = _repoFocus
+
     private var loadJob: Job? = null
     private var authJob: Job? = null
+    private var focusJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -53,6 +60,24 @@ class GitHubViewModel @Inject constructor(
             authClient.deviceLogin.collect { device ->
                 _authState.value = _authState.value.copy(deviceLogin = device)
             }
+        }
+    }
+
+    fun selectRepo(fullName: String) {
+        val next = fullName.trim()
+        if (_focusRepo.value == next) {
+            if (next.isNotBlank() && _repoFocus.value is GitHubRepoFocusUiState.Idle) {
+                loadRepoFocus(next)
+            }
+            return
+        }
+        settings.saveGithubFocusRepo(next)
+        _focusRepo.value = next
+        if (next.isBlank()) {
+            focusJob?.cancel()
+            _repoFocus.value = GitHubRepoFocusUiState.Idle
+        } else {
+            loadRepoFocus(next)
         }
     }
 
@@ -88,6 +113,8 @@ class GitHubViewModel @Inject constructor(
                         login = snapshot.user.login,
                         displayName = snapshot.user.name ?: snapshot.user.login,
                     )
+                    val focus = _focusRepo.value
+                    if (focus.isNotBlank()) loadRepoFocus(focus, forceRefresh)
                 }
                 .onFailure { error ->
                     Log.e(TAG, "Failed to load GitHub dashboard", error)
@@ -179,6 +206,41 @@ class GitHubViewModel @Inject constructor(
             statusMessage = "Disconnected",
         )
         _state.value = GitHubUiState.NeedsAuth
+        focusJob?.cancel()
+        _repoFocus.value = GitHubRepoFocusUiState.Idle
+    }
+
+    fun loadRepoFocus(fullName: String, forceRefresh: Boolean = false) {
+        val key = fullName.trim()
+        if (key.isBlank()) {
+            _repoFocus.value = GitHubRepoFocusUiState.Idle
+            return
+        }
+        val me = _authState.value.login
+            ?: (_state.value as? GitHubUiState.Success)?.data?.user?.login
+            ?: return
+        if (!forceRefresh && focusJob?.isActive == true) return
+        focusJob?.cancel()
+        focusJob = viewModelScope.launch {
+            val current = _repoFocus.value
+            if (current !is GitHubRepoFocusUiState.Ready ||
+                !current.focus.repo.fullName.equals(key, ignoreCase = true)
+            ) {
+                _repoFocus.value = GitHubRepoFocusUiState.Loading
+            }
+            gitHubRepository.getRepoFocus(key, me, forceRefresh)
+                .onSuccess { focus ->
+                    _repoFocus.value = GitHubRepoFocusUiState.Ready(focus)
+                }
+                .onFailure { error ->
+                    Log.e(TAG, "Failed to load GitHub repo $key", error)
+                    if (_repoFocus.value !is GitHubRepoFocusUiState.Ready) {
+                        _repoFocus.value = GitHubRepoFocusUiState.Error(
+                            error.message ?: "Couldn’t load $key",
+                        )
+                    }
+                }
+        }
     }
 
     private fun setAuthBusy(busy: Boolean, status: String? = null) {

@@ -1480,18 +1480,25 @@ fun DriverStandingsList(data: F1Standings) {
         }
 
         if (rest.isNotEmpty()) {
-            rest.forEachIndexed { index, driver ->
-                DriverStandingRow(
-                    driver = driver,
-                    leader = leader,
-                    expanded = expanded == driver.driverAcronym,
-                    onToggle = {
-                        haptics.tick()
-                        expanded = if (expanded == driver.driverAcronym) null else driver.driverAcronym
-                    },
-                )
-                if (index < rest.lastIndex) {
-                    HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 8.dp))
+            WidgetScrollBox(
+                containerColor = RowSurface,
+                borderColor = Hairline.copy(alpha = 0.7f),
+                fadeColor = RowSurface,
+                verticalArrangement = Arrangement.Top,
+            ) {
+                rest.forEachIndexed { index, driver ->
+                    DriverStandingRow(
+                        driver = driver,
+                        leader = leader,
+                        expanded = expanded == driver.driverAcronym,
+                        onToggle = {
+                            haptics.tick()
+                            expanded = if (expanded == driver.driverAcronym) null else driver.driverAcronym
+                        },
+                    )
+                    if (index < rest.lastIndex) {
+                        HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
             }
         }
@@ -1731,7 +1738,11 @@ fun ConstructorStandingsList(data: F1Standings) {
         }
 
         if (rest.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            WidgetScrollBox(
+                containerColor = RowSurface,
+                borderColor = Hairline.copy(alpha = 0.7f),
+                fadeColor = RowSurface,
+            ) {
                 rest.forEachIndexed { i, team ->
                     val tc = safeTeamColor(team.teamColor)
                     val gap = leader?.let { (it.points - team.points).toInt() }
@@ -1944,24 +1955,31 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
             // Next race detail (track + sessions) stays open — no expand required.
             NextRaceOpenDetail(nextRace)
         }
-        if (remaining.isNotEmpty()) {
-            SectionHeader("Remaining")
-        } else if (upcoming.isEmpty()) {
-            SectionHeader("Season complete")
-        }
-        var showedCompletedHeader = false
-        ordered.forEachIndexed { idx, race ->
-            val past   = isPast(race.raceDate)
-            val days   = daysUntil(race.raceDate)
-            val isNext = false
-            val isExp  = expandedRound == race.round
-            val sprint = race.sprintDate != null
-            if (past && !showedCompletedHeader) {
-                SectionHeader("Completed")
-                showedCompletedHeader = true
-            }
+        if (ordered.isNotEmpty()) {
+            WidgetScrollBox(
+                maxHeight = 380.dp,
+                containerColor = RowSurface,
+                borderColor = Hairline.copy(alpha = 0.7f),
+                fadeColor = RowSurface,
+            ) {
+                if (remaining.isNotEmpty()) {
+                    SectionHeader("Remaining")
+                } else if (upcoming.isEmpty()) {
+                    SectionHeader("Season complete")
+                }
+                var showedCompletedHeader = false
+                ordered.forEachIndexed { idx, race ->
+                    val past   = isPast(race.raceDate)
+                    val days   = daysUntil(race.raceDate)
+                    val isNext = false
+                    val isExp  = expandedRound == race.round
+                    val sprint = race.sprintDate != null
+                    if (past && !showedCompletedHeader) {
+                        SectionHeader("Completed")
+                        showedCompletedHeader = true
+                    }
 
-            Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2053,6 +2071,8 @@ fun RaceScheduleList(schedule: List<RaceScheduleEntry>) {
                 }
                 if (idx < ordered.lastIndex) {
                     HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 52.dp))
+                }
+                    }
                 }
             }
         }
@@ -2197,21 +2217,27 @@ fun QualiResultsList(results: List<QualiResult>, raceName: String?) {
         val q2Only = results.filter { it.q2Time != null && it.q3Time == null }
         val q1Only = results.filter { it.q1Time != null && it.q2Time == null }
 
-        if (q3Drivers.isNotEmpty()) {
-            SectionHeader("Q3")
-            q3Drivers.forEach { r -> QualiRow(r, bestTime = r.q3Time, accentColor = safeTeamColor(r.teamColor)) }
-        }
-        if (q2Only.isNotEmpty()) {
-            SectionHeader("Q2")
-            q2Only.forEach { r -> QualiRow(r, bestTime = r.q2Time, accentColor = safeTeamColor(r.teamColor)) }
-        }
-        if (q1Only.isNotEmpty()) {
-            SectionHeader("Q1")
-            q1Only.forEach { r -> QualiRow(r, bestTime = r.q1Time, accentColor = safeTeamColor(r.teamColor)) }
-        }
-        if (q3Drivers.isEmpty() && q2Only.isEmpty() && q1Only.isEmpty()) {
-            SectionHeader("Grid")
-            results.forEach { r -> QualiRow(r, bestTime = r.q1Time, accentColor = safeTeamColor(r.teamColor)) }
+        WidgetScrollBox(
+            containerColor = RowSurface,
+            borderColor = Hairline.copy(alpha = 0.7f),
+            fadeColor = RowSurface,
+        ) {
+            if (q3Drivers.isNotEmpty()) {
+                SectionHeader("Q3")
+                q3Drivers.forEach { r -> QualiRow(r, bestTime = r.q3Time, accentColor = safeTeamColor(r.teamColor)) }
+            }
+            if (q2Only.isNotEmpty()) {
+                SectionHeader("Q2")
+                q2Only.forEach { r -> QualiRow(r, bestTime = r.q2Time, accentColor = safeTeamColor(r.teamColor)) }
+            }
+            if (q1Only.isNotEmpty()) {
+                SectionHeader("Q1")
+                q1Only.forEach { r -> QualiRow(r, bestTime = r.q1Time, accentColor = safeTeamColor(r.teamColor)) }
+            }
+            if (q3Drivers.isEmpty() && q2Only.isEmpty() && q1Only.isEmpty()) {
+                SectionHeader("Grid")
+                results.forEach { r -> QualiRow(r, bestTime = r.q1Time, accentColor = safeTeamColor(r.teamColor)) }
+            }
         }
     }
 }
@@ -2312,21 +2338,29 @@ fun LastRaceResultsList(results: List<RaceResult>, raceName: String?) {
 
         val points = results.filter { it.position in 4..10 }
         val rest = results.filter { it.position > 10 }
-        if (points.isNotEmpty()) {
-            SectionHeader("Points")
-            points.forEachIndexed { index, result ->
-                RaceResultRow(result)
-                if (index < points.lastIndex) {
-                    HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 36.dp))
+        if (points.isNotEmpty() || rest.isNotEmpty()) {
+            WidgetScrollBox(
+                containerColor = RowSurface,
+                borderColor = Hairline.copy(alpha = 0.7f),
+                fadeColor = RowSurface,
+            ) {
+                if (points.isNotEmpty()) {
+                    SectionHeader("Points")
+                    points.forEachIndexed { index, result ->
+                        RaceResultRow(result)
+                        if (index < points.lastIndex) {
+                            HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 36.dp))
+                        }
+                    }
                 }
-            }
-        }
-        if (rest.isNotEmpty()) {
-            SectionHeader("Outside points")
-            rest.forEachIndexed { index, result ->
-                RaceResultRow(result)
-                if (index < rest.lastIndex) {
-                    HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 36.dp))
+                if (rest.isNotEmpty()) {
+                    SectionHeader("Outside points")
+                    rest.forEachIndexed { index, result ->
+                        RaceResultRow(result)
+                        if (index < rest.lastIndex) {
+                            HorizontalDivider(color = Hairline, thickness = 0.5.dp, modifier = Modifier.padding(start = 36.dp))
+                        }
+                    }
                 }
             }
         }

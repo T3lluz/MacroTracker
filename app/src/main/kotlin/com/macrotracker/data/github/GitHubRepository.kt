@@ -26,6 +26,11 @@ class GitHubNeedsAuthException : IOException("Connect GitHub to load your issues
 
 interface GitHubRepository {
     suspend fun getDashboard(forceRefresh: Boolean = false): Result<GitHubSnapshot>
+    suspend fun getRepoFocus(
+        fullName: String,
+        me: String,
+        forceRefresh: Boolean = false,
+    ): Result<GitHubRepoFocus>
     fun getCachedDashboard(): GitHubSnapshot?
     fun hasToken(): Boolean
     fun invalidateCache()
@@ -43,11 +48,12 @@ class GitHubRepositoryImpl @Inject constructor(
     companion object {
         private const val TAG = "GitHubRepository"
         private const val CACHE_DURATION_MS = 5 * 60 * 1000L
+        private const val FOCUS_CACHE_MS = 2 * 60 * 1000L
         private const val PREFS = "github_dashboard_cache"
         private const val KEY_SNAPSHOT = "snapshot_json"
         private const val KEY_FETCH_TIME = "fetch_time"
         private const val KEY_CACHE_USER = "cache_user"
-        private const val CACHE_VERSION = 2
+        private const val CACHE_VERSION = 3
         private const val KEY_CACHE_VERSION = "cache_version"
         private const val API = "https://api.github.com"
     }
@@ -55,10 +61,12 @@ class GitHubRepositoryImpl @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     private val fetchMutex = Mutex()
+    private val focusMutex = Mutex()
 
     @Volatile private var cached: GitHubSnapshot? = null
     @Volatile private var lastFetchTime: Long = 0L
     @Volatile private var cachedUserKey: String = ""
+    private val focusCache = LinkedHashMap<String, Pair<Long, GitHubRepoFocus>>()
 
     override val lastFetchTimeMs: Long get() = lastFetchTime
     override fun getCachedDashboard(): GitHubSnapshot? = cached
@@ -75,6 +83,7 @@ class GitHubRepositoryImpl @Inject constructor(
         cached = null
         lastFetchTime = 0L
         cachedUserKey = ""
+        focusCache.clear()
         prefs.edit {
             remove(KEY_SNAPSHOT)
             remove(KEY_FETCH_TIME)
@@ -137,11 +146,14 @@ class GitHubRepositoryImpl @Inject constructor(
         }
         val reposDeferred = async {
             runCatching {
-                get("$API/user/repos?sort=pushed&per_page=30&affiliation=owner,collaborator,organization_member", token)
+                get("$API/user/repos?sort=pushed&per_page=50&affiliation=owner,collaborator,organization_member", token)
             }.getOrNull()
         }
         val eventsDeferred = async {
             runCatching { get("$API/users/$login/events?per_page=50", token) }.getOrNull()
+        }
+        val notifDeferred = async {
+            runCatching { fetchNotifications(token) }.getOrElse { emptyList<GitHubNotification>() to true }
         }
 
         val issuePage = issuesSearch.await()
@@ -149,6 +161,7 @@ class GitHubRepositoryImpl @Inject constructor(
         val reviewPage = reviewSearch.await()
         val reposResp = reposDeferred.await()
         val eventsResp = eventsDeferred.await()
+        val (notifications, notifNeedReconnect) = notifDeferred.await()
 
         val reviewKeys = reviewPage?.items
             ?.map { it.repoFullName to it.number }
@@ -189,12 +202,86 @@ class GitHubRepositoryImpl @Inject constructor(
             issues = issuePage?.items.orEmpty().filter { !it.isPullRequest },
             pullRequests = pulls.values.toList(),
             activity = eventsResp?.let { parseEvents(it.body) }.orEmpty(),
-            repos = reposResp?.let { parseRepos(it.body) }.orEmpty(),
+            repos = reposResp?.let { parseRepos(it.body) }.orEmpty().sortedByRecent(),
+            notifications = notifications,
             issueTotal = issuePage?.totalCount ?: 0,
             pullTotal = prPage?.totalCount ?: 0,
             reviewRequestedCount = reviewPage?.totalCount ?: reviewKeys.size,
+            unreadNotificationCount = notifications.count { it.unread },
+            notificationsNeedReconnect = notifNeedReconnect,
             rateLimitRemaining = remaining,
             rateLimitLimit = limit,
+        )
+    }
+
+    override suspend fun getRepoFocus(
+        fullName: String,
+        me: String,
+        forceRefresh: Boolean,
+    ): Result<GitHubRepoFocus> {
+        val token = resolveToken()
+        if (token.isBlank()) return Result.failure(GitHubNeedsAuthException())
+        val key = fullName.trim()
+        if (key.split('/').size != 2) {
+            return Result.failure(IOException("Invalid repository"))
+        }
+        return focusMutex.withLock {
+            val now = System.currentTimeMillis()
+            val cachedFocus = focusCache[key]
+            if (!forceRefresh && cachedFocus != null && now - cachedFocus.first < FOCUS_CACHE_MS) {
+                return@withLock Result.success(cachedFocus.second)
+            }
+            try {
+                withContext(Dispatchers.IO) { fetchRepoFocus(key, me, token) }
+                    .also { focus ->
+                        if (focusCache.size > 12) {
+                            val oldest = focusCache.keys.firstOrNull()
+                            if (oldest != null) focusCache.remove(oldest)
+                        }
+                        focusCache[key] = System.currentTimeMillis() to focus
+                    }
+                    .let { Result.success(it) }
+            } catch (e: Exception) {
+                Log.e(TAG, "GitHub repo focus fetch failed: ${e.message}", e)
+                cachedFocus?.second?.let { Result.success(it) } ?: Result.failure(e)
+            }
+        }
+    }
+
+    private suspend fun fetchRepoFocus(fullName: String, me: String, token: String): GitHubRepoFocus = coroutineScope {
+        val base = "$API/repos/$fullName"
+
+        val repoDeferred = async { runCatching { get(base, token) }.getOrNull() }
+        val issuesDeferred = async { runCatching { get("$base/issues?state=open&per_page=30", token) }.getOrNull() }
+        val pullsDeferred = async { runCatching { get("$base/pulls?state=open&per_page=30", token) }.getOrNull() }
+        val eventsDeferred = async { runCatching { getOptional("$base/events?per_page=30", token) }.getOrNull() }
+        val commitsDeferred = async { runCatching { getOptional("$base/commits?per_page=12", token) }.getOrNull() }
+        val runsDeferred = async { runCatching { getOptional("$base/actions/runs?per_page=8", token) }.getOrNull() }
+        val releaseDeferred = async { runCatching { getOptional("$base/releases/latest", token) }.getOrNull() }
+
+        val repoResp = repoDeferred.await() ?: throw IOException("Couldn’t load $fullName")
+        val repo = parseRepo(JSONObject(repoResp.body))
+            ?: throw IOException("Couldn’t load $fullName")
+        val issueItems = issuesDeferred.await()?.let { parseIssueArray(JSONArray(it.body), me) }.orEmpty()
+        val issues = issueItems.filter { !it.isPullRequest }.map {
+            if (it.repoFullName.isBlank()) it.copy(repoFullName = fullName) else it
+        }
+        val pulls = pullsDeferred.await()
+            ?.let { parseRepoPulls(JSONArray(it.body), me, fullName) }
+            .orEmpty()
+        val activity = eventsDeferred.await()?.let { parseEvents(it.body) }.orEmpty()
+        val commits = commitsDeferred.await()?.let { parseCommits(it.body) }.orEmpty()
+        val runs = runsDeferred.await()?.let { parseWorkflowRuns(it.body) }.orEmpty()
+        val release = releaseDeferred.await()?.let { parseRelease(it.body) }
+
+        GitHubRepoFocus(
+            repo = repo,
+            issues = issues,
+            pullRequests = pulls,
+            activity = activity,
+            commits = commits,
+            workflowRuns = runs,
+            latestRelease = release,
         )
     }
 
@@ -268,6 +355,67 @@ class GitHubRepositoryImpl @Inject constructor(
             val body = response.body?.string()?.takeIf { it.isNotBlank() }
                 ?: throw IOException("Empty GitHub response")
             return GhResponse(body, remaining, limit)
+        }
+    }
+
+    private fun getOptional(url: String, token: String): GhResponse? {
+        val builder = Request.Builder()
+            .url(url)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("User-Agent", "DailyDash/${BuildConfig.VERSION_NAME}")
+            .get()
+        if (token.isNotBlank()) {
+            builder.header("Authorization", "Bearer $token")
+        }
+        return try {
+            okHttpClient.newCall(builder.build()).execute().use { response ->
+                if (response.code == 401) {
+                    if (authClient.isConnected()) authClient.markDisconnected()
+                    throw GitHubNeedsAuthException()
+                }
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string()?.takeIf { it.isNotBlank() } ?: return@use null
+                GhResponse(
+                    body = body,
+                    remaining = response.header("X-RateLimit-Remaining")?.toIntOrNull(),
+                    limit = response.header("X-RateLimit-Limit")?.toIntOrNull(),
+                )
+            }
+        } catch (e: GitHubNeedsAuthException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Optional GitHub GET failed: ${e.message}")
+            null
+        }
+    }
+
+    /** Returns notifications and whether the token is missing the notifications scope. */
+    private fun fetchNotifications(token: String): Pair<List<GitHubNotification>, Boolean> {
+        val url = "$API/notifications?all=true&per_page=30"
+        val builder = Request.Builder()
+            .url(url)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("User-Agent", "DailyDash/${BuildConfig.VERSION_NAME}")
+            .header("Authorization", "Bearer $token")
+            .get()
+        return try {
+            okHttpClient.newCall(builder.build()).execute().use { response ->
+                when (response.code) {
+                    401 -> throw GitHubNeedsAuthException()
+                    403 -> return@use emptyList<GitHubNotification>() to true
+                    404, 429 -> return@use emptyList<GitHubNotification>() to false
+                }
+                if (!response.isSuccessful) return@use emptyList<GitHubNotification>() to false
+                val body = response.body?.string().orEmpty()
+                parseNotifications(body) to false
+            }
+        } catch (e: GitHubNeedsAuthException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Notifications fetch failed: ${e.message}")
+            emptyList<GitHubNotification>() to false
         }
     }
 
@@ -345,23 +493,166 @@ class GitHubRepositoryImpl @Inject constructor(
         val out = ArrayList<GitHubRepo>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            val ownerObj = o.optJSONObject("owner")
-            out += GitHubRepo(
-                owner = ownerObj.str("login") ?: "",
-                name = o.str("name") ?: continue,
-                fullName = o.str("full_name") ?: continue,
-                description = o.str("description"),
-                htmlUrl = o.str("html_url") ?: continue,
-                language = o.str("language"),
-                stars = o.optInt("stargazers_count"),
-                forks = o.optInt("forks_count"),
-                openIssuesCount = o.optInt("open_issues_count"),
-                isPrivate = o.optBoolean("private", false),
-                pushedAt = o.str("pushed_at"),
-                ownerAvatarUrl = ownerObj.str("avatar_url"),
+            parseRepo(o)?.let { out += it }
+        }
+        return out
+    }
+
+    private fun parseRepo(o: JSONObject): GitHubRepo? {
+        val ownerObj = o.optJSONObject("owner")
+        return GitHubRepo(
+            owner = ownerObj.str("login") ?: "",
+            name = o.str("name") ?: return null,
+            fullName = o.str("full_name") ?: return null,
+            description = o.str("description"),
+            htmlUrl = o.str("html_url") ?: return null,
+            language = o.str("language"),
+            stars = o.optInt("stargazers_count"),
+            forks = o.optInt("forks_count"),
+            openIssuesCount = o.optInt("open_issues_count"),
+            isPrivate = o.optBoolean("private", false),
+            pushedAt = o.str("pushed_at"),
+            updatedAt = o.str("updated_at"),
+            defaultBranch = o.str("default_branch"),
+            license = o.optJSONObject("license").str("spdx_id") ?: o.optJSONObject("license").str("name"),
+            homepage = o.str("homepage"),
+            ownerAvatarUrl = ownerObj.str("avatar_url"),
+        )
+    }
+
+    private fun parseRepoPulls(arr: JSONArray, me: String, repoFullName: String): List<GitHubPullRequest> {
+        val out = ArrayList<GitHubPullRequest>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val user = o.optJSONObject("user")
+            val reviewers = o.optJSONArray("requested_reviewers")
+            var reviewRequested = false
+            if (reviewers != null) {
+                for (j in 0 until reviewers.length()) {
+                    if (reviewers.optJSONObject(j).str("login").equals(me, ignoreCase = true)) {
+                        reviewRequested = true
+                        break
+                    }
+                }
+            }
+            out += GitHubPullRequest(
+                number = o.optInt("number"),
+                title = o.str("title") ?: "",
+                state = o.str("state") ?: "open",
+                htmlUrl = o.str("html_url") ?: "",
+                repoFullName = repoFullName,
+                userLogin = user.str("login") ?: "unknown",
+                userAvatarUrl = user.str("avatar_url"),
+                draft = o.optBoolean("draft", false),
+                mergedAt = o.str("merged_at"),
+                labels = parseLabels(o.optJSONArray("labels")),
+                createdAt = o.str("created_at") ?: "",
+                updatedAt = o.str("updated_at") ?: "",
+                reviewRequested = reviewRequested,
+                authoredByMe = user.str("login").equals(me, ignoreCase = true),
             )
         }
         return out
+    }
+
+    private fun parseCommits(body: String): List<GitHubCommit> {
+        val arr = JSONArray(body)
+        val out = ArrayList<GitHubCommit>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val sha = o.str("sha") ?: continue
+            val commit = o.optJSONObject("commit")
+            val message = commit.str("message")?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+            val author = o.optJSONObject("author")
+            out += GitHubCommit(
+                sha = sha,
+                message = message.ifBlank { sha.take(7) },
+                htmlUrl = o.str("html_url") ?: "https://github.com",
+                authorLogin = author.str("login") ?: commit?.optJSONObject("author").str("name"),
+                authorAvatarUrl = author.str("avatar_url"),
+                committedAt = commit?.optJSONObject("committer").str("date")
+                    ?: commit?.optJSONObject("author").str("date"),
+            )
+        }
+        return out
+    }
+
+    private fun parseWorkflowRuns(body: String): List<GitHubWorkflowRun> {
+        val root = JSONObject(body)
+        val arr = root.optJSONArray("workflow_runs") ?: return emptyList()
+        val out = ArrayList<GitHubWorkflowRun>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            out += GitHubWorkflowRun(
+                id = o.optLong("id"),
+                name = o.str("name") ?: "Workflow",
+                displayTitle = o.str("display_title") ?: o.str("name") ?: "Workflow",
+                status = o.str("status") ?: "",
+                conclusion = o.str("conclusion"),
+                htmlUrl = o.str("html_url") ?: "",
+                headBranch = o.str("head_branch"),
+                updatedAt = o.str("updated_at") ?: o.str("created_at"),
+            )
+        }
+        return out
+    }
+
+    private fun parseRelease(body: String): GitHubRelease? {
+        val o = JSONObject(body)
+        val tag = o.str("tag_name") ?: return null
+        return GitHubRelease(
+            tagName = tag,
+            name = o.str("name"),
+            htmlUrl = o.str("html_url") ?: return null,
+            publishedAt = o.str("published_at"),
+            prerelease = o.optBoolean("prerelease", false),
+        )
+    }
+
+    private fun parseNotifications(body: String): List<GitHubNotification> {
+        val arr = JSONArray(body)
+        val out = ArrayList<GitHubNotification>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val subject = o.optJSONObject("subject")
+            val repo = o.optJSONObject("repository")
+            val repoName = repo.str("full_name") ?: continue
+            val type = subject.str("type") ?: "Notice"
+            val apiUrl = subject.str("url")
+            val id = o.str("id") ?: continue
+            out += GitHubNotification(
+                id = id,
+                unread = o.optBoolean("unread", false),
+                reason = o.str("reason") ?: "",
+                title = subject.str("title") ?: type,
+                type = type,
+                repoFullName = repoName,
+                updatedAt = o.str("updated_at") ?: "",
+                htmlUrl = notificationHtmlUrl(apiUrl, type, repoName),
+            )
+        }
+        return out
+    }
+
+    private fun notificationHtmlUrl(apiUrl: String?, type: String, repoFullName: String): String? {
+        if (apiUrl.isNullOrBlank()) return "https://github.com/$repoFullName"
+        val path = apiUrl.removePrefix("https://api.github.com/repos/")
+        return when (type) {
+            "PullRequest" -> {
+                val n = path.substringAfter("/pulls/").substringBefore('/')
+                "https://github.com/$repoFullName/pull/$n".takeIf { n.isNotBlank() && n != path }
+            }
+            "Issue" -> {
+                val n = path.substringAfter("/issues/").substringBefore('/')
+                "https://github.com/$repoFullName/issues/$n".takeIf { n.isNotBlank() && n != path }
+            }
+            "Commit" -> {
+                val sha = path.substringAfter("/commits/")
+                "https://github.com/$repoFullName/commit/$sha".takeIf { sha.isNotBlank() && sha != path }
+            }
+            "Release" -> "https://github.com/$repoFullName/releases"
+            else -> "https://github.com/$repoFullName"
+        }
     }
 
     private fun parseEvents(body: String): List<GitHubActivity> {

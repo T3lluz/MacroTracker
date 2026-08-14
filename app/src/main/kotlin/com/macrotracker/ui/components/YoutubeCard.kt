@@ -675,17 +675,24 @@ private fun YoutubeChannelsHub(
                 compact = true,
             )
         } else {
-            trackedChannels.forEach { channel ->
-                key(channel.channelId) {
-                    ChannelListRow(
-                        channel = channel,
-                        isTracked = true,
-                        justAdded = recentlyAdded.contains(channel.channelId),
-                        onToggle = {
-                            haptics.reject()
-                            viewModel.removeChannel(channel.channelId)
-                        },
-                    )
+            WidgetScrollBox(
+                maxHeight = 360.dp,
+                containerColor = YtCardBg,
+                borderColor = YtHairline.copy(alpha = 0.7f),
+                fadeColor = YtCardBg,
+            ) {
+                trackedChannels.forEach { channel ->
+                    key(channel.channelId) {
+                        ChannelListRow(
+                            channel = channel,
+                            isTracked = true,
+                            justAdded = recentlyAdded.contains(channel.channelId),
+                            onToggle = {
+                                haptics.reject()
+                                viewModel.removeChannel(channel.channelId)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -1379,7 +1386,13 @@ private fun VideoFeed(
                     val totalGrouped = remember(allGroups) { allGroups.sumOf { it.second.size } }
                     val shownGrouped = remember(paginatedGroups) { paginatedGroups.sumOf { it.second.size } }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    WidgetScrollBox(
+                        maxHeight = 380.dp,
+                        containerColor = YtCardBg,
+                        borderColor = YtHairline.copy(alpha = 0.7f),
+                        fadeColor = YtCardBg,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         paginatedGroups.forEach { (channel, channelVideos) ->
                             key(channel.channelId) {
                                 ChannelSectionHeader(channel = channel, videoCount = channelVideos.size)
@@ -1423,10 +1436,14 @@ private fun VideoFeed(
                     }
                 }
                 layout == YtLayout.GRID -> {
-                    // ── Grid layout with pagination ───────────────────────
                     val paged   = feedVideos.take(visibleCount)
                     val hasMore = feedVideos.size > visibleCount
-                    Column {
+                    WidgetScrollBox(
+                        maxHeight = 380.dp,
+                        containerColor = YtCardBg,
+                        borderColor = YtHairline.copy(alpha = 0.7f),
+                        fadeColor = YtCardBg,
+                    ) {
                         VideoGrid(
                             videos = paged,
                             onVideoClick = { video ->
@@ -1445,25 +1462,15 @@ private fun VideoFeed(
                     }
                 }
                 previewCount > 0 -> {
-                    // ── List layout below compact preview (no duplicate hero) ─
                     val paged   = feedVideos.take(visibleCount)
                     val hasMore = feedVideos.size > visibleCount
 
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.22f))
-                            Text(
-                                "More videos",
-                                fontSize = 10.sp,
-                                color = TextSecondary.copy(alpha = 0.4f),
-                            )
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.22f))
-                        }
-                        Spacer(Modifier.height(4.dp))
+                    WidgetScrollBox(
+                        maxHeight = 380.dp,
+                        containerColor = YtCardBg,
+                        borderColor = YtHairline.copy(alpha = 0.7f),
+                        fadeColor = YtCardBg,
+                    ) {
                         paged.forEachIndexed { idx, video ->
                             key(video.videoId) {
                                 VideoCard(
@@ -1489,7 +1496,6 @@ private fun VideoFeed(
                     }
                 }
                 else -> {
-                    // ── List layout: hero + paginated rest ────────────────
                     val heroVideo  = feedVideos.first()
                     val restQuota  = (visibleCount - 1).coerceAtLeast(0)
                     val restVideos = feedVideos.drop(1).take(restQuota)
@@ -1507,44 +1513,37 @@ private fun VideoFeed(
                                 },
                             )
                         }
-                        if (restVideos.isNotEmpty()) {
+                        if (restVideos.isNotEmpty() || hasMore) {
                             Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            WidgetScrollBox(
+                                maxHeight = 360.dp,
+                                containerColor = YtCardBg,
+                                borderColor = YtHairline.copy(alpha = 0.7f),
+                                fadeColor = YtCardBg,
                             ) {
-                                HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.22f))
-                                Text(
-                                    "More videos",
-                                    fontSize = 10.sp,
-                                    color = TextSecondary.copy(alpha = 0.4f),
-                                )
-                                HorizontalDivider(modifier = Modifier.weight(1f), color = Border.copy(alpha = 0.22f))
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            restVideos.forEachIndexed { idx, video ->
-                                key(video.videoId) {
-                                    VideoCard(
-                                        video = video,
-                                        onClick = {
-                                            haptics.tick()
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
-                                            )
-                                        },
-                                    )
-                                    if (idx < restVideos.size - 1) {
-                                        HorizontalDivider(color = Border.copy(alpha = 0.18f))
+                                restVideos.forEachIndexed { idx, video ->
+                                    key(video.videoId) {
+                                        VideoCard(
+                                            video = video,
+                                            onClick = {
+                                                haptics.tick()
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=${video.videoId}".toUri())
+                                                )
+                                            },
+                                        )
+                                        if (idx < restVideos.size - 1) {
+                                            HorizontalDivider(color = Border.copy(alpha = 0.18f))
+                                        }
                                     }
                                 }
+                                if (hasMore) {
+                                    ShowMoreButton(
+                                        remaining = feedVideos.size - 1 - restQuota,
+                                        onClick = { haptics.tick(); visibleCount += YT_PAGE_SIZE },
+                                    )
+                                }
                             }
-                        }
-                        if (hasMore) {
-                            ShowMoreButton(
-                                remaining = feedVideos.size - 1 - restQuota,
-                                onClick = { haptics.tick(); visibleCount += YT_PAGE_SIZE },
-                            )
                         }
                     }
                 }

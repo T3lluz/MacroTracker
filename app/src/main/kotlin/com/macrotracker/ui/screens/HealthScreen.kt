@@ -80,6 +80,7 @@ import com.macrotracker.ui.components.HealthConnectCard
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroLogItem
+import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.WidgetEditor
@@ -704,11 +705,13 @@ fun HealthScreen(
                                 )
                             } else {
                                 val reversedLogs = remember(logs) { logs.asReversed().take(20) }
-                                reversedLogs.forEach { log ->
-                                    MacroLogItem(
-                                        log = log,
-                                        onDelete = { healthViewModel.deleteLog(it) },
-                                    )
+                                WidgetScrollBox {
+                                    reversedLogs.forEach { log ->
+                                        MacroLogItem(
+                                            log = log,
+                                            onDelete = { healthViewModel.deleteLog(it) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -911,11 +914,13 @@ private fun MacroTrendsSection(
                     fontSize = 13.sp,
                 )
             } else {
-                selectedLogs.forEach { log ->
-                    MacroLogItem(
-                        log = log,
-                        onDelete = onDeleteLog,
-                    )
+                WidgetScrollBox {
+                    selectedLogs.forEach { log ->
+                        MacroLogItem(
+                            log = log,
+                            onDelete = onDeleteLog,
+                        )
+                    }
                 }
             }
         }

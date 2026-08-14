@@ -1,9 +1,14 @@
 package com.macrotracker.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,13 +30,18 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -65,21 +77,32 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.macrotracker.R
 import com.macrotracker.data.github.GitHubActivity
+import com.macrotracker.data.github.GitHubCommit
 import com.macrotracker.data.github.GitHubIssue
 import com.macrotracker.data.github.GitHubLabel
+import com.macrotracker.data.github.GitHubNotification
 import com.macrotracker.data.github.GitHubPullRequest
+import com.macrotracker.data.github.GitHubRelease
 import com.macrotracker.data.github.GitHubRepo
+import com.macrotracker.data.github.GitHubRepoFocus
 import com.macrotracker.data.github.GitHubSnapshot
+import com.macrotracker.data.github.GitHubWorkflowRun
 import com.macrotracker.data.github.compactCount
 import com.macrotracker.data.github.isOpen
+import com.macrotracker.data.github.lastTouchedAt
 import com.macrotracker.data.github.openIssueCount
 import com.macrotracker.data.github.openPrCount
 import com.macrotracker.data.github.parseGitHubInstant
+import com.macrotracker.data.github.repoNamed
+import com.macrotracker.data.github.sortedByRecent
 import com.macrotracker.data.github.statusKey
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.MacroMotion
@@ -90,6 +113,7 @@ import com.macrotracker.ui.util.LastUpdatedText
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.util.rememberRelativeTime
 import com.macrotracker.ui.viewmodel.GitHubAuthUiState
+import com.macrotracker.ui.viewmodel.GitHubRepoFocusUiState
 import com.macrotracker.ui.viewmodel.GitHubUiState
 import com.macrotracker.ui.viewmodel.GitHubViewModel
 
@@ -108,9 +132,77 @@ private val Pill = RoundedCornerShape(20.dp)
 private enum class GhTab(val label: String) {
     ISSUES("Issues"),
     PRS("PRs"),
+    INBOX("Inbox"),
     ACTIVITY("Activity"),
     REPOS("Repos"),
     ACCOUNT("Account"),
+}
+
+private data class GhHub(
+    val login: String,
+    val issues: List<GitHubIssue>,
+    val pulls: List<GitHubPullRequest>,
+    val activity: List<GitHubActivity>,
+    val notifications: List<GitHubNotification>,
+    val repos: List<GitHubRepo>,
+    val selectedFullName: String,
+    val selectedRepo: GitHubRepo?,
+    val focus: GitHubRepoFocus?,
+    val openIssues: Int,
+    val openPrs: Int,
+    val unread: Int,
+    val reviews: Int,
+    val notificationsNeedReconnect: Boolean,
+)
+
+private fun githubHub(
+    data: GitHubSnapshot,
+    focusRepo: String,
+    focusState: GitHubRepoFocusUiState,
+): GhHub {
+    val repos = data.repos.sortedByRecent()
+    val focus = (focusState as? GitHubRepoFocusUiState.Ready)?.focus
+        ?.takeIf { it.repo.fullName.equals(focusRepo, ignoreCase = true) }
+    val selected = focus?.repo ?: data.repoNamed(focusRepo)
+    val focused = focusRepo.isNotBlank()
+    val issues = if (focused) {
+        focus?.issues ?: data.issues.filter { it.repoFullName.equals(focusRepo, ignoreCase = true) }
+    } else {
+        data.issues
+    }
+    val pulls = if (focused) {
+        focus?.pullRequests
+            ?: data.pullRequests.filter { it.repoFullName.equals(focusRepo, ignoreCase = true) }
+    } else {
+        data.pullRequests
+    }
+    val activity = if (focused) {
+        focus?.activity
+            ?: data.activity.filter { it.repoFullName.equals(focusRepo, ignoreCase = true) }
+    } else {
+        data.activity
+    }
+    val notifications = if (focused) {
+        data.notifications.filter { it.repoFullName.equals(focusRepo, ignoreCase = true) }
+    } else {
+        data.notifications
+    }
+    return GhHub(
+        login = data.user.login,
+        issues = issues,
+        pulls = pulls,
+        activity = activity,
+        notifications = notifications,
+        repos = repos,
+        selectedFullName = focusRepo,
+        selectedRepo = selected,
+        focus = focus,
+        openIssues = if (focused) issues.count { it.isOpen } else data.openIssueCount(),
+        openPrs = if (focused) pulls.count { it.isOpen || it.draft } else data.openPrCount(),
+        unread = notifications.count { it.unread },
+        reviews = if (focused) pulls.count { it.reviewRequested } else data.reviewRequestedCount,
+        notificationsNeedReconnect = data.notificationsNeedReconnect,
+    )
 }
 
 private enum class IssueFilter(val label: String) { ALL("All"), ASSIGNED("Assigned") }
@@ -125,6 +217,8 @@ fun GitHubCard(
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val authState by viewModel.authState.collectAsState()
+    val focusRepo by viewModel.focusRepo.collectAsState()
+    val repoFocusState by viewModel.repoFocus.collectAsState()
 
     var expanded by rememberSaveable { mutableStateOf(false) }
     var selectedTabName by rememberSaveable { mutableStateOf(GhTab.ISSUES.name) }
@@ -136,12 +230,19 @@ fun GitHubCard(
 
     val success = state as? GitHubUiState.Success
     val data = success?.data
+    val hub = remember(data, focusRepo, repoFocusState) {
+        data?.let { githubHub(it, focusRepo, repoFocusState) }
+    }
     val headerSub = when {
-        data != null -> {
-            val issues = data.openIssueCount()
-            val prs = data.openPrCount()
+        hub != null -> {
             buildString {
-                append("@${data.user.login}")
+                if (hub.selectedRepo != null) {
+                    append(hub.selectedRepo.name)
+                } else {
+                    append("@${hub.login}")
+                }
+                val issues = hub.openIssues
+                val prs = hub.openPrs
                 if (issues > 0 || prs > 0) {
                     append(" · ")
                     if (prs > 0) append("$prs PR${if (prs != 1) "s" else ""}")
@@ -203,7 +304,7 @@ fun GitHubCard(
                 IconButton(
                     onClick = {
                         haptics.tick()
-                        val url = data?.user?.htmlUrl ?: "https://github.com"
+                        val url = hub?.selectedRepo?.htmlUrl ?: data?.user?.htmlUrl ?: "https://github.com"
                         context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
                     },
                     modifier = Modifier.size(36.dp),
@@ -254,10 +355,18 @@ fun GitHubCard(
                             }
                         }
                         is GitHubUiState.Error -> GhError((state as GitHubUiState.Error).message)
-                        is GitHubUiState.Success -> GitHubCollapsedGlance(
-                            data = (state as GitHubUiState.Success).data,
-                            haptics = haptics,
-                        )
+                        is GitHubUiState.Success -> {
+                            val currentHub = hub
+                            if (currentHub == null) {
+                                GhLoading()
+                            } else {
+                                GitHubCollapsedGlance(
+                                    hub = currentHub,
+                                    haptics = haptics,
+                                    onSelectRepo = { viewModel.selectRepo(it) },
+                                )
+                            }
+                        }
                     }
                     WidgetExpandFooter(
                         expanded = false,
@@ -275,8 +384,18 @@ fun GitHubCard(
                 WidgetExpandSection(visible = expanded && isVisible) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Spacer(Modifier.height(14.dp))
-                        val openIss = data?.openIssueCount() ?: 0
-                        val openPrs = data?.openPrCount() ?: 0
+                        val openIss = hub?.openIssues ?: 0
+                        val openPrs = hub?.openPrs ?: 0
+                        val unread = hub?.unread ?: 0
+
+                        if (hub != null) {
+                            RepoPicker(
+                                repos = hub.repos,
+                                selectedFullName = hub.selectedFullName,
+                                onSelect = { haptics.tick(); viewModel.selectRepo(it) },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
 
                         Row(
                             modifier = Modifier
@@ -288,11 +407,13 @@ fun GitHubCard(
                                 val badge = when (tab) {
                                     GhTab.ISSUES -> openIss.takeIf { it > 0 }?.toString()
                                     GhTab.PRS -> openPrs.takeIf { it > 0 }?.toString()
+                                    GhTab.INBOX -> unread.takeIf { it > 0 }?.toString()
                                     else -> null
                                 }
                                 val badgeColor = when (tab) {
                                     GhTab.ISSUES -> GhOpen
                                     GhTab.PRS -> GhMerged
+                                    GhTab.INBOX -> GhReview
                                     GhTab.ACTIVITY -> GhReview
                                     else -> GhAccent
                                 }
@@ -338,8 +459,8 @@ fun GitHubCard(
                                     haptics = haptics,
                                 )
                                 else -> {
-                                    val snap = (state as? GitHubUiState.Success)?.data
-                                    if (snap == null) {
+                                    val currentHub = hub
+                                    if (currentHub == null) {
                                         GhLoading()
                                     } else {
                                         AnimatedContent(
@@ -355,12 +476,32 @@ fun GitHubCard(
                                             label = "ghTab",
                                         ) { tab ->
                                             when (tab) {
-                                                GhTab.ISSUES -> IssuesTab(snap.issues, haptics)
-                                                GhTab.PRS -> PullsTab(snap.pullRequests, haptics)
-                                                GhTab.ACTIVITY -> ActivityTab(snap.activity, haptics)
-                                                GhTab.REPOS -> ReposTab(snap.repos, haptics)
+                                                GhTab.ISSUES -> IssuesTab(
+                                                    issues = currentHub.issues,
+                                                    focusedRepo = currentHub.selectedRepo?.name,
+                                                    haptics = haptics,
+                                                )
+                                                GhTab.PRS -> PullsTab(
+                                                    pulls = currentHub.pulls,
+                                                    focusedRepo = currentHub.selectedRepo?.name,
+                                                    haptics = haptics,
+                                                )
+                                                GhTab.INBOX -> InboxTab(
+                                                    notifications = currentHub.notifications,
+                                                    needReconnect = currentHub.notificationsNeedReconnect,
+                                                    haptics = haptics,
+                                                )
+                                                GhTab.ACTIVITY -> ActivityTab(currentHub.activity, haptics)
+                                                GhTab.REPOS -> ReposTab(
+                                                    repos = currentHub.repos,
+                                                    selectedFullName = currentHub.selectedFullName,
+                                                    focus = currentHub.focus,
+                                                    focusLoading = repoFocusState is GitHubRepoFocusUiState.Loading,
+                                                    onSelectRepo = { viewModel.selectRepo(it) },
+                                                    haptics = haptics,
+                                                )
                                                 GhTab.ACCOUNT -> AccountTab(
-                                                    snapshot = snap,
+                                                    snapshot = data,
                                                     authState = authState,
                                                     onConnect = { viewModel.connectGitHub() },
                                                     onDisconnect = { viewModel.disconnect() },
@@ -514,108 +655,447 @@ private fun ConnectPrompt(onConnect: () -> Unit) {
 }
 
 @Composable
-private fun GitHubCollapsedGlance(data: GitHubSnapshot, haptics: HapticHelper) {
+private fun GitHubCollapsedGlance(
+    hub: GhHub,
+    haptics: HapticHelper,
+    onSelectRepo: (String) -> Unit,
+) {
     val context = LocalContext.current
-    val reviewPr = data.pullRequests.firstOrNull { it.reviewRequested }
-    val assigned = data.issues.firstOrNull { it.assignedToMe } ?: data.issues.firstOrNull()
-    val latest = data.activity.firstOrNull()
+    val pulse = remember(hub) { collapsedPulse(hub) }
+    val stats = remember(hub) { collapsedStats(hub) }
+    val recentRepos = remember(hub.repos) { hub.repos.take(3) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        RepoPicker(
+            repos = hub.repos,
+            selectedFullName = hub.selectedFullName,
+            onSelect = onSelectRepo,
+            compact = true,
+        )
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            MetaChip(dotColor = GhMerged, text = "${data.openPrCount()} PRs")
-            MetaChip(dotColor = GhOpen, text = "${data.openIssueCount()} issues")
-            if (data.reviewRequestedCount > 0) {
-                MetaChip(dotColor = GhReview, text = "${data.reviewRequestedCount} review")
-            }
-            MetaChip(text = "${data.repos.size} repos")
-        }
-
-        if (latest != null) {
-            ActivityRow(latest, compact = true) {
-                haptics.tick()
-                latest.htmlUrl?.let {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri()))
-                }
+            stats.forEach { stat ->
+                GlanceStat(
+                    value = stat.value,
+                    label = stat.label,
+                    color = stat.color,
+                    icon = stat.icon,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
-        if (reviewPr != null || assigned != null) {
+        if (pulse.isNotEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(Sharp)
-                    .background(GhSurface)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .background(GhSurface),
             ) {
-                Text(
-                    "NEEDS ATTENTION",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.7.sp,
-                    color = TextSecondary,
-                )
-                if (reviewPr != null) {
-                    AttentionLine(
-                        key = "review",
-                        text = "#${reviewPr.number}  ${reviewPr.title}",
-                        repo = reviewPr.repoFullName,
-                    ) {
+                pulse.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        HorizontalDivider(color = GhHairline.copy(alpha = 0.55f), thickness = 0.5.dp)
+                    }
+                    PulseLine(item) {
                         haptics.tick()
-                        context.startActivity(Intent(Intent.ACTION_VIEW, reviewPr.htmlUrl.toUri()))
+                        item.url?.let {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri()))
+                        } ?: item.selectRepo?.let(onSelectRepo)
                     }
                 }
-                if (assigned != null) {
-                    AttentionLine(
-                        key = if (assigned.isOpen) "open" else "closed",
-                        text = "#${assigned.number}  ${assigned.title}",
-                        repo = assigned.repoFullName,
-                    ) {
-                        haptics.tick()
-                        context.startActivity(Intent(Intent.ACTION_VIEW, assigned.htmlUrl.toUri()))
-                    }
+            }
+        }
+
+        if (recentRepos.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                recentRepos.forEach { repo ->
+                    RecentRepoChip(
+                        repo = repo,
+                        selected = repo.fullName.equals(hub.selectedFullName, ignoreCase = true),
+                        onClick = {
+                            haptics.tick()
+                            onSelectRepo(
+                                if (repo.fullName.equals(hub.selectedFullName, ignoreCase = true)) ""
+                                else repo.fullName,
+                            )
+                        },
+                    )
                 }
             }
         }
     }
 }
 
+private data class GhStat(
+    val value: String,
+    val label: String,
+    val color: Color,
+    val icon: Int,
+)
+
+private data class GhPulse(
+    val key: String,
+    val title: String,
+    val meta: String,
+    val at: String?,
+    val url: String? = null,
+    val selectRepo: String? = null,
+    val avatarUrl: String? = null,
+    val tag: String? = null,
+    val tagColor: Color? = null,
+)
+
+private fun collapsedStats(hub: GhHub): List<GhStat> {
+    val mine = hub.pulls.count { it.authoredByMe }
+    val ci = hub.focus?.workflowRuns?.firstOrNull()
+    val release = hub.focus?.latestRelease
+    val selected = hub.selectedRepo
+    val third = when {
+        hub.reviews > 0 -> GhStat(
+            "${hub.reviews}",
+            if (hub.reviews == 1) "Review" else "Reviews",
+            GhReview,
+            R.drawable.ic_gh_review,
+        )
+        ci != null -> {
+            val pending = ci.status.equals("in_progress", true) || ci.status.equals("queued", true)
+            val failed = ci.conclusion.equals("failure", true)
+            val ok = ci.conclusion.equals("success", true)
+            GhStat(
+                when {
+                    pending -> "…"
+                    ok -> "✓"
+                    failed -> "✕"
+                    else -> ci.conclusion?.take(3)?.uppercase() ?: "CI"
+                },
+                ci.name.take(10),
+                statusColor(ci.statusKey()),
+                when {
+                    pending -> R.drawable.ic_gh_dot
+                    failed -> R.drawable.ic_gh_x
+                    else -> R.drawable.ic_gh_check
+                },
+            )
+        }
+        mine > 0 -> GhStat("$mine", if (mine == 1) "Mine" else "Mine", GhOpen, R.drawable.ic_gh_pr)
+        else -> GhStat("${hub.repos.size}", "Repos", GhAccent, R.drawable.ic_gh_repo)
+    }
+    val fourth = when {
+        hub.unread > 0 -> GhStat("${hub.unread}", "Inbox", GhReview, R.drawable.ic_gh_inbox)
+        release != null -> GhStat(
+            release.tagName.removePrefix("v").take(6),
+            "Release",
+            GhAccent,
+            R.drawable.ic_gh_tag,
+        )
+        selected != null -> GhStat(
+            compactCount(selected.stars),
+            "Stars",
+            Color(0xFFE3B341),
+            R.drawable.ic_gh_star,
+        )
+        else -> GhStat("${hub.activity.size}", "Events", TextSecondary, R.drawable.ic_gh_commit)
+    }
+    return listOf(
+        GhStat("${hub.openPrs}", if (hub.openPrs == 1) "PR" else "PRs", GhMerged, R.drawable.ic_gh_pr),
+        GhStat("${hub.openIssues}", if (hub.openIssues == 1) "Issue" else "Issues", GhOpen, R.drawable.ic_gh_issue),
+        third,
+        fourth,
+    )
+}
+
+private fun collapsedPulse(hub: GhHub): List<GhPulse> {
+    val out = ArrayList<GhPulse>(3)
+    val seen = HashSet<String>()
+
+    fun add(item: GhPulse) {
+        if (out.size >= 3) return
+        val id = item.url ?: "${item.title}|${item.meta}|${item.at}"
+        if (!seen.add(id)) return
+        out += item
+    }
+
+    hub.pulls.firstOrNull { it.reviewRequested }?.let { pr ->
+        add(
+            GhPulse(
+                key = "review",
+                title = "#${pr.number}  ${pr.title}",
+                meta = pr.repoFullName,
+                at = pr.updatedAt,
+                url = pr.htmlUrl,
+                avatarUrl = pr.userAvatarUrl,
+                tag = "REVIEW",
+                tagColor = GhReview,
+            ),
+        )
+    }
+    hub.notifications.firstOrNull { it.unread }?.let { n ->
+        add(
+            GhPulse(
+                key = "review",
+                title = n.title,
+                meta = "${n.repoFullName} · ${notificationReason(n.reason)}",
+                at = n.updatedAt,
+                url = n.htmlUrl,
+                tag = n.type.take(8).uppercase(),
+                tagColor = GhAccent,
+            ),
+        )
+    }
+    hub.issues.firstOrNull { it.assignedToMe }?.let { issue ->
+        add(
+            GhPulse(
+                key = if (issue.isOpen) "open" else "closed",
+                title = "#${issue.number}  ${issue.title}",
+                meta = issue.repoFullName,
+                at = issue.updatedAt,
+                url = issue.htmlUrl,
+                avatarUrl = issue.userAvatarUrl,
+                tag = if (issue.assignedToMe) "ASSIGNED" else null,
+                tagColor = GhAccent,
+            ),
+        )
+    }
+
+    val hotRun = hub.focus?.workflowRuns?.firstOrNull { run ->
+        run.conclusion.equals("failure", true) ||
+            run.status.equals("in_progress", true) ||
+            run.status.equals("queued", true)
+    }
+    hotRun?.let { run ->
+        val key = run.statusKey()
+        add(
+            GhPulse(
+                key = key,
+                title = run.displayTitle.ifBlank { run.name },
+                meta = listOfNotNull(run.name, run.headBranch).joinToString(" · "),
+                at = run.updatedAt,
+                url = run.htmlUrl,
+                tag = key.uppercase().take(8),
+                tagColor = statusColor(key),
+            ),
+        )
+    }
+    hub.focus?.commits?.firstOrNull()?.let { commit ->
+        add(
+            GhPulse(
+                key = "open",
+                title = commit.message,
+                meta = listOfNotNull(commit.sha.take(7), commit.authorLogin).joinToString(" · "),
+                at = commit.committedAt,
+                url = commit.htmlUrl,
+                avatarUrl = commit.authorAvatarUrl,
+                tag = "COMMIT",
+                tagColor = GhAccent,
+            ),
+        )
+    }
+
+    hub.activity.forEach { act ->
+        add(
+            GhPulse(
+                key = if (act.type == "PushEvent") "open" else "review",
+                title = act.title,
+                meta = act.repoFullName,
+                at = act.createdAt,
+                url = act.htmlUrl,
+                avatarUrl = act.actorAvatarUrl,
+                tag = act.type.removeSuffix("Event").uppercase().take(8),
+                tagColor = GhAccent,
+            ),
+        )
+    }
+
+    if (out.size < 3) {
+        hub.pulls.firstOrNull { !it.reviewRequested }?.let { pr ->
+            add(
+                GhPulse(
+                    key = pr.statusKey(),
+                    title = "#${pr.number}  ${pr.title}",
+                    meta = pr.repoFullName,
+                    at = pr.updatedAt,
+                    url = pr.htmlUrl,
+                    avatarUrl = pr.userAvatarUrl,
+                    tag = pr.statusKey().uppercase(),
+                    tagColor = statusColor(pr.statusKey()),
+                ),
+            )
+        }
+    }
+    if (out.size < 3) {
+        hub.issues.firstOrNull { !it.assignedToMe }?.let { issue ->
+            add(
+                GhPulse(
+                    key = if (issue.isOpen) "open" else "closed",
+                    title = "#${issue.number}  ${issue.title}",
+                    meta = issue.repoFullName,
+                    at = issue.updatedAt,
+                    url = issue.htmlUrl,
+                    avatarUrl = issue.userAvatarUrl,
+                ),
+            )
+        }
+    }
+
+    return out.take(3)
+}
+
 @Composable
-private fun AttentionLine(key: String, text: String, repo: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun GlanceStat(
+    value: String,
+    label: String,
+    color: Color,
+    icon: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(Sharp)
+            .background(GhSurface)
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        StatusDot(key)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(13.dp),
+            )
+            Text(
+                value,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun PulseLine(item: GhPulse, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (!item.avatarUrl.isNullOrBlank()) {
+            GhAvatar(item.avatarUrl, item.title, size = 22.dp)
+        } else {
+            StatusDot(item.key)
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text,
+                item.title,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
                 color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (repo.isNotBlank()) {
-                Text(repo, fontSize = 11.sp, color = TextSecondary, maxLines = 1)
+            if (item.meta.isNotBlank()) {
+                Text(
+                    item.meta,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
-        StatusTag(key.uppercase(), statusColor(key))
+        item.tag?.let { StatusTag(it, item.tagColor ?: GhAccent) }
+        GhRelative(item.at)
     }
 }
 
 @Composable
-private fun IssuesTab(issues: List<GitHubIssue>, haptics: HapticHelper) {
+private fun RecentRepoChip(
+    repo: GitHubRepo,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val touched = remember(repo.pushedAt, repo.updatedAt) { repo.lastTouchedAt() }
+    val fresh = remember(touched) {
+        touched != null && ChronoUnit.HOURS.between(touched, Instant.now()) < 1
+    }
+    Row(
+        modifier = Modifier
+            .clip(Pill)
+            .background(if (selected) GhAccent.copy(alpha = 0.16f) else GhChip)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        selected -> GhAccent
+                        fresh -> GhOpen
+                        else -> GhDraft
+                    },
+                ),
+        )
+        Text(
+            repo.name,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+        )
+        GhRelative(repo.pushedAt ?: repo.updatedAt)
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.7.sp,
+        color = TextSecondary,
+    )
+}
+
+@Composable
+private fun IssuesTab(
+    issues: List<GitHubIssue>,
+    focusedRepo: String?,
+    haptics: HapticHelper,
+) {
     val context = LocalContext.current
     var filterName by rememberSaveable { mutableStateOf(IssueFilter.ALL.name) }
     val filter = IssueFilter.entries.find { it.name == filterName } ?: IssueFilter.ALL
@@ -641,12 +1121,22 @@ private fun IssuesTab(issues: List<GitHubIssue>, haptics: HapticHelper) {
             }
         }
         if (filtered.isEmpty()) {
-            EmptyHint("No open issues across your repos")
+            EmptyHint(
+                if (focusedRepo != null) "No open issues in $focusedRepo"
+                else "No open issues across your repos",
+            )
         } else {
-            filtered.take(30).forEach { issue ->
-                IssueRow(issue) {
-                    haptics.tick()
-                    context.startActivity(Intent(Intent.ACTION_VIEW, issue.htmlUrl.toUri()))
+            WidgetScrollBox(
+                containerColor = GhSurface,
+                borderColor = GhHairline.copy(alpha = 0.7f),
+                fadeColor = GhSurface,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                filtered.take(30).forEach { issue ->
+                    IssueRow(issue) {
+                        haptics.tick()
+                        context.startActivity(Intent(Intent.ACTION_VIEW, issue.htmlUrl.toUri()))
+                    }
                 }
             }
         }
@@ -654,7 +1144,11 @@ private fun IssuesTab(issues: List<GitHubIssue>, haptics: HapticHelper) {
 }
 
 @Composable
-private fun PullsTab(pulls: List<GitHubPullRequest>, haptics: HapticHelper) {
+private fun PullsTab(
+    pulls: List<GitHubPullRequest>,
+    focusedRepo: String?,
+    haptics: HapticHelper,
+) {
     val context = LocalContext.current
     var filterName by rememberSaveable { mutableStateOf(PrFilter.ALL.name) }
     val filter = PrFilter.entries.find { it.name == filterName } ?: PrFilter.ALL
@@ -687,12 +1181,22 @@ private fun PullsTab(pulls: List<GitHubPullRequest>, haptics: HapticHelper) {
             }
         }
         if (filtered.isEmpty()) {
-            EmptyHint("No open pull requests across your repos")
+            EmptyHint(
+                if (focusedRepo != null) "No open pull requests in $focusedRepo"
+                else "No open pull requests across your repos",
+            )
         } else {
-            filtered.take(30).forEach { pr ->
-                PullRow(pr) {
-                    haptics.tick()
-                    context.startActivity(Intent(Intent.ACTION_VIEW, pr.htmlUrl.toUri()))
+            WidgetScrollBox(
+                containerColor = GhSurface,
+                borderColor = GhHairline.copy(alpha = 0.7f),
+                fadeColor = GhSurface,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                filtered.take(30).forEach { pr ->
+                    PullRow(pr) {
+                        haptics.tick()
+                        context.startActivity(Intent(Intent.ACTION_VIEW, pr.htmlUrl.toUri()))
+                    }
                 }
             }
         }
@@ -707,11 +1211,18 @@ private fun ActivityTab(activity: List<GitHubActivity>, haptics: HapticHelper) {
         return
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        activity.take(30).forEach { item ->
-            ActivityRow(item) {
-                haptics.tick()
-                item.htmlUrl?.let {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri()))
+        WidgetScrollBox(
+            containerColor = GhSurface,
+            borderColor = GhHairline.copy(alpha = 0.7f),
+            fadeColor = GhSurface,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            activity.take(30).forEach { item ->
+                ActivityRow(item) {
+                    haptics.tick()
+                    item.htmlUrl?.let {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri()))
+                    }
                 }
             }
         }
@@ -719,20 +1230,544 @@ private fun ActivityTab(activity: List<GitHubActivity>, haptics: HapticHelper) {
 }
 
 @Composable
-private fun ReposTab(repos: List<GitHubRepo>, haptics: HapticHelper) {
-    val context = LocalContext.current
+private fun ReposTab(
+    repos: List<GitHubRepo>,
+    selectedFullName: String,
+    focus: GitHubRepoFocus?,
+    focusLoading: Boolean,
+    onSelectRepo: (String) -> Unit,
+    haptics: HapticHelper,
+) {
+    val selected = focus?.repo ?: repos.firstOrNull { it.fullName.equals(selectedFullName, true) }
+    if (selected != null) {
+        RepoDetail(
+            repo = selected,
+            focus = focus,
+            loading = focusLoading,
+            haptics = haptics,
+            onClear = { haptics.tick(); onSelectRepo("") },
+        )
+        return
+    }
     if (repos.isEmpty()) {
         EmptyHint("No repositories yet")
         return
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        repos.take(30).forEach { repo ->
-            RepoRow(repo) {
-                haptics.tick()
-                context.startActivity(Intent(Intent.ACTION_VIEW, repo.htmlUrl.toUri()))
+        WidgetScrollBox(
+            containerColor = GhSurface,
+            borderColor = GhHairline.copy(alpha = 0.7f),
+            fadeColor = GhSurface,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repos.take(40).forEach { repo ->
+                RepoRow(repo) {
+                    haptics.tick()
+                    onSelectRepo(repo.fullName)
+                }
+            }
+        }
+        Text(
+            "Tap a repo to focus it · most recently updated first",
+            fontSize = 11.sp,
+            color = TextSecondary,
+        )
+    }
+}
+
+@Composable
+private fun InboxTab(
+    notifications: List<GitHubNotification>,
+    needReconnect: Boolean,
+    haptics: HapticHelper,
+) {
+    val context = LocalContext.current
+    if (needReconnect && notifications.isEmpty()) {
+        EmptyHint("Reconnect GitHub to load your inbox (notifications scope).")
+        return
+    }
+    if (notifications.isEmpty()) {
+        EmptyHint("Inbox is clear")
+        return
+    }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        WidgetScrollBox(
+            containerColor = GhSurface,
+            borderColor = GhHairline.copy(alpha = 0.7f),
+            fadeColor = GhSurface,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            notifications.take(30).forEach { item ->
+                NotificationRow(item) {
+                    haptics.tick()
+                    item.htmlUrl?.let {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri()))
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun NotificationRow(item: GitHubNotification, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Sharp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (item.unread) GhReview else GhDraft),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                item.title,
+                fontSize = 13.sp,
+                fontWeight = if (item.unread) FontWeight.SemiBold else FontWeight.Medium,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                buildString {
+                    append(item.repoFullName)
+                    val reason = notificationReason(item.reason)
+                    if (reason.isNotBlank()) append(" · $reason")
+                },
+                fontSize = 11.sp,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        StatusTag(item.type.take(8).uppercase(), GhAccent)
+        GhRelative(item.updatedAt)
+    }
+}
+
+@Composable
+private fun RepoPicker(
+    repos: List<GitHubRepo>,
+    selectedFullName: String,
+    onSelect: (String) -> Unit,
+    compact: Boolean = false,
+    compactMeta: String? = null,
+) {
+    var open by rememberSaveable(compact) { mutableStateOf(false) }
+    val selected = repos.firstOrNull { it.fullName.equals(selectedFullName, ignoreCase = true) }
+    val rotation by animateFloatAsState(
+        if (open) 180f else 0f,
+        MacroMotion.pressSpring(),
+        label = "ghPickerRot",
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Sharp)
+            .background(GhSurface)
+            .border(0.5.dp, GhHairline.copy(alpha = 0.8f), Sharp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { open = !open }
+                .padding(horizontal = 12.dp, vertical = if (compact) 10.dp else 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (compact) {
+                Text(
+                    selected?.name ?: "All repos",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!compactMeta.isNullOrBlank()) {
+                    Text(
+                        compactMeta,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        selected?.name ?: "All repos",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        selected?.fullName ?: "${repos.size} repos · recently updated first",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Icon(
+                Icons.Outlined.ExpandMore,
+                contentDescription = if (open) "Close repo list" else "Choose repo",
+                tint = TextSecondary,
+                modifier = Modifier.size(if (compact) 18.dp else 20.dp).rotate(rotation),
+            )
+        }
+        AnimatedVisibility(visible = open) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = if (compact) 148.dp else 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 4.dp),
+            ) {
+                HorizontalDivider(color = GhHairline, thickness = 0.5.dp)
+                PickerRow(
+                    title = "All repos",
+                    subtitle = "Issues, PRs, and activity across your account",
+                    active = selectedFullName.isBlank(),
+                    at = null,
+                    compact = compact,
+                ) {
+                    onSelect("")
+                    open = false
+                }
+                repos.forEach { repo ->
+                    PickerRow(
+                        title = repo.name,
+                        subtitle = repo.fullName,
+                        active = repo.fullName.equals(selectedFullName, ignoreCase = true),
+                        at = repo.pushedAt ?: repo.updatedAt,
+                        language = repo.language,
+                        compact = compact,
+                    ) {
+                        onSelect(repo.fullName)
+                        open = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickerRow(
+    title: String,
+    subtitle: String,
+    active: Boolean,
+    at: String?,
+    language: String? = null,
+    compact: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (active) GhAccent.copy(alpha = 0.12f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = if (compact) 7.dp else 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (compact) {
+            Text(
+                title,
+                fontSize = 12.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    fontSize = 13.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    subtitle,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (!language.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(languageColor(language)),
+            )
+        }
+        GhRelative(at)
+    }
+}
+
+@Composable
+private fun RepoDetail(
+    repo: GitHubRepo,
+    focus: GitHubRepoFocus?,
+    loading: Boolean,
+    haptics: HapticHelper,
+    onClear: () -> Unit,
+) {
+    val context = LocalContext.current
+    val commits = focus?.commits.orEmpty()
+    val runs = focus?.workflowRuns.orEmpty()
+    val release = focus?.latestRelease
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    repo.fullName,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (repo.isPrivate) {
+                        Icon(Icons.Outlined.Lock, null, tint = GhDraft, modifier = Modifier.size(12.dp))
+                    }
+                    Text("Focused", fontSize = 11.sp, color = GhAccent, fontWeight = FontWeight.SemiBold)
+                    GhRelative(repo.pushedAt ?: repo.updatedAt)
+                }
+            }
+            IconButton(
+                onClick = {
+                    haptics.tick()
+                    context.startActivity(Intent(Intent.ACTION_VIEW, repo.htmlUrl.toUri()))
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.OpenInNew,
+                    contentDescription = "Open on GitHub",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+
+        repo.description?.takeIf { it.isNotBlank() }?.let {
+            Text(it, fontSize = 13.sp, color = TextSecondary)
+        }
+
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (!repo.language.isNullOrBlank()) {
+                MetaChip(dotColor = languageColor(repo.language), text = repo.language)
+            }
+            MetaChip(icon = Icons.Outlined.Star, text = compactCount(repo.stars), color = Color(0xFFE3B341))
+            MetaChip(icon = Icons.Outlined.AccountTree, text = compactCount(repo.forks))
+            repo.defaultBranch?.let { MetaChip(text = it) }
+            repo.license?.takeIf { it != "NOASSERTION" }?.let { MetaChip(text = it) }
+        }
+
+        if (release != null) {
+            ReleaseRow(release) {
+                haptics.tick()
+                context.startActivity(Intent(Intent.ACTION_VIEW, release.htmlUrl.toUri()))
+            }
+        }
+
+        if (loading && focus == null) {
+            GhLoading()
+        }
+
+        if (commits.isNotEmpty()) {
+            SectionLabel("COMMITS")
+            WidgetScrollBox(
+                containerColor = GhSurface,
+                borderColor = GhHairline.copy(alpha = 0.7f),
+                fadeColor = GhSurface,
+                maxHeight = 200.dp,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                commits.take(10).forEach { commit ->
+                    CommitRow(commit) {
+                        haptics.tick()
+                        context.startActivity(Intent(Intent.ACTION_VIEW, commit.htmlUrl.toUri()))
+                    }
+                }
+            }
+        }
+
+        if (runs.isNotEmpty()) {
+            SectionLabel("ACTIONS")
+            WidgetScrollBox(
+                containerColor = GhSurface,
+                borderColor = GhHairline.copy(alpha = 0.7f),
+                fadeColor = GhSurface,
+                maxHeight = 180.dp,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                runs.take(8).forEach { run ->
+                    WorkflowRow(run) {
+                        haptics.tick()
+                        context.startActivity(Intent(Intent.ACTION_VIEW, run.htmlUrl.toUri()))
+                    }
+                }
+            }
+        }
+
+        TextButton(onClick = onClear, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+            Text("All repos", color = GhAccent, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun ReleaseRow(release: GitHubRelease, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Sharp)
+            .background(GhSurface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Outlined.NewReleases, null, tint = GhAccent, modifier = Modifier.size(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                release.name?.takeIf { it.isNotBlank() } ?: release.tagName,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                if (release.prerelease) "Pre-release ${release.tagName}" else release.tagName,
+                fontSize = 11.sp,
+                color = TextSecondary,
+            )
+        }
+        GhRelative(release.publishedAt)
+    }
+}
+
+@Composable
+private fun CommitRow(commit: GitHubCommit, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        GhAvatar(commit.authorAvatarUrl, commit.authorLogin ?: "c", size = 18.dp)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                commit.message,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                buildString {
+                    append(commit.sha.take(7))
+                    commit.authorLogin?.let { append(" · $it") }
+                },
+                fontSize = 11.sp,
+                color = TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+            )
+        }
+        GhRelative(commit.committedAt)
+    }
+}
+
+@Composable
+private fun WorkflowRow(run: GitHubWorkflowRun, onClick: () -> Unit) {
+    val key = run.statusKey()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusDot(key)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                run.displayTitle.ifBlank { run.name },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                buildString {
+                    append(run.name)
+                    run.headBranch?.let { append(" · $it") }
+                },
+                fontSize = 11.sp,
+                color = TextSecondary,
+                maxLines = 1,
+            )
+        }
+        StatusTag(key.uppercase().take(8), statusColor(key))
+        GhRelative(run.updatedAt)
+    }
+}
+
+private fun notificationReason(reason: String): String = when (reason) {
+    "review_requested" -> "Review"
+    "mention" -> "Mention"
+    "assign" -> "Assigned"
+    "author" -> "Yours"
+    "comment" -> "Comment"
+    "subscribed" -> "Watching"
+    "state_change" -> "Updated"
+    "ci_activity" -> "CI"
+    "security_alert" -> "Security"
+    "manual" -> "Manual"
+    else -> reason.replace('_', ' ')
 }
 
 @Composable
@@ -767,6 +1802,13 @@ private fun AccountTab(
             }
             snapshot.user.bio?.takeIf { it.isNotBlank() }?.let {
                 Text(it, fontSize = 13.sp, color = TextSecondary)
+            }
+            if (snapshot.notificationsNeedReconnect) {
+                Text(
+                    "Disconnect and connect again to enable inbox notifications.",
+                    fontSize = 12.sp,
+                    color = GhReview,
+                )
             }
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -888,6 +1930,28 @@ private fun GitHubDeviceCodePanel(
     onCancelLogin: () -> Unit,
 ) {
     val haptics = rememberHaptics()
+    val context = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+    val code = userCode?.takeIf { it.isNotBlank() }
+
+    fun copyCode(fromUser: Boolean = false) {
+        val value = code ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("GitHub code", value))
+        copied = true
+        if (fromUser) haptics.confirm()
+    }
+
+    LaunchedEffect(code) {
+        if (code != null) copyCode(fromUser = false)
+    }
+    LaunchedEffect(copied, code) {
+        if (copied) {
+            delay(2500)
+            copied = false
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -903,12 +1967,36 @@ private fun GitHubDeviceCodePanel(
             color = TextSecondary,
         )
         Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .clip(Sharp)
+                .background(GhSurface)
+                .clickable(enabled = code != null, onClick = { copyCode(fromUser = true) })
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                code ?: "····",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                letterSpacing = 1.5.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+            Icon(
+                imageVector = if (copied) Icons.Filled.Check else Icons.Outlined.ContentCopy,
+                contentDescription = if (copied) "Copied" else "Copy code",
+                tint = if (copied) GhOpen else GhAccent,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
-            userCode?.takeIf { it.isNotBlank() } ?: "····",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-            letterSpacing = 1.5.sp,
+            if (copied) "Copied to clipboard" else "Copied automatically · tap to copy again",
+            fontSize = 11.sp,
+            color = if (copied) GhOpen else TextSecondary,
+            textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(10.dp))
         Text(
@@ -918,7 +2006,7 @@ private fun GitHubDeviceCodePanel(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(
                 onClick = {
                     haptics.click()
@@ -935,6 +2023,21 @@ private fun GitHubDeviceCodePanel(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Open GitHub", fontSize = 13.sp)
+            }
+            Button(
+                onClick = { copyCode(fromUser = true) },
+                enabled = code != null,
+                colors = ButtonDefaults.buttonColors(containerColor = GhChip, contentColor = TextPrimary),
+                shape = Sharp,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Icon(
+                    if (copied) Icons.Filled.Check else Icons.Outlined.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(if (copied) "Copied" else "Copy", fontSize = 13.sp)
             }
             TextButton(onClick = { haptics.tick(); onCancelLogin() }) {
                 Text("Cancel", color = TextSecondary, fontSize = 13.sp)
@@ -1088,6 +2191,7 @@ private fun ActivityRow(
 
 @Composable
 private fun RepoRow(repo: GitHubRepo, onClick: () -> Unit) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1113,6 +2217,16 @@ private fun RepoRow(repo: GitHubRepo, onClick: () -> Unit) {
             if (repo.isPrivate) {
                 Icon(Icons.Outlined.Lock, null, tint = GhDraft, modifier = Modifier.size(13.dp))
             }
+            Icon(
+                Icons.AutoMirrored.Outlined.OpenInNew,
+                contentDescription = "Open on GitHub",
+                tint = TextSecondary.copy(alpha = 0.55f),
+                modifier = Modifier
+                    .size(16.dp)
+                    .clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, repo.htmlUrl.toUri()))
+                    },
+            )
         }
         repo.description?.takeIf { it.isNotBlank() }?.let {
             Text(

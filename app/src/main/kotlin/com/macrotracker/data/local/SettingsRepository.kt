@@ -98,6 +98,9 @@ class SettingsRepository @Inject constructor(
     private val _githubToken = MutableStateFlow(prefs.getString(KEY_GITHUB_TOKEN, "") ?: "")
     val githubToken: StateFlow<String> = _githubToken
 
+    private val _githubFocusRepo = MutableStateFlow(prefs.getString(KEY_GITHUB_FOCUS_REPO, "") ?: "")
+    val githubFocusRepo: StateFlow<String> = _githubFocusRepo
+
     // Layout preferences for Home Screen
     private val _homeWidgetOrder = MutableStateFlow(
         prefs.getString(
@@ -186,6 +189,17 @@ class SettingsRepository @Inject constructor(
         _githubToken.value = trimmed
     }
 
+    /** Empty [fullName] means All repos. Persist `owner/name` when focusing one repo. */
+    fun saveGithubFocusRepo(fullName: String) {
+        val trimmed = fullName.trim()
+        prefs.edit { putString(KEY_GITHUB_FOCUS_REPO, trimmed) }
+        _githubFocusRepo.value = trimmed
+        val parts = trimmed.split('/')
+        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+            saveGithubRepo(parts[0], parts[1])
+        }
+    }
+
     fun updateHomeWidgetOrder(order: String) {
         prefs.edit { putString("home_widget_order", order) }
         _homeWidgetOrder.value = order
@@ -258,6 +272,7 @@ class SettingsRepository @Inject constructor(
         const val KEY_GITHUB_OWNER = "github_owner"
         const val KEY_GITHUB_REPO = "github_repo"
         const val KEY_GITHUB_TOKEN = "github_token"
+        const val KEY_GITHUB_FOCUS_REPO = "github_focus_repo"
         const val DEFAULT_GITHUB_OWNER = "T3lluz"
         const val DEFAULT_GITHUB_REPO = "MacroTracker"
 

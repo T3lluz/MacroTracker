@@ -811,14 +811,25 @@ private fun LiveStreamFeed(
                     },
                 )
             }
-            filtered.drop(1).forEach { stream ->
-                LiveStreamRow(
-                    stream = stream,
-                    onClick = {
-                        haptics.click()
-                        openUrl(context, stream.channelUrl)
-                    },
-                )
+            val rest = filtered.drop(1)
+            if (rest.isNotEmpty()) {
+                WidgetScrollBox(
+                    maxHeight = 360.dp,
+                    containerColor = TwCardBg,
+                    borderColor = TwHairline.copy(alpha = 0.7f),
+                    fadeColor = TwCardBg,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    rest.forEach { stream ->
+                        LiveStreamRow(
+                            stream = stream,
+                            onClick = {
+                                haptics.click()
+                                openUrl(context, stream.channelUrl)
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -1113,81 +1124,89 @@ private fun TwitchChannelsHub(
                 color = TextSecondary,
             )
         } else {
-            trackedChannels.forEach { channel ->
-                val isLive = channel.userId in liveUserIds
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(TwSharp)
-                        .background(TwSurface)
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Box {
-                        if (channel.profileImageUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = channel.profileImageUrl,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape),
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(TwPurple.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    channel.displayName.take(1).uppercase(),
-                                    color = TwPurple,
-                                    fontWeight = FontWeight.Bold,
+            WidgetScrollBox(
+                maxHeight = 360.dp,
+                containerColor = TwCardBg,
+                borderColor = TwHairline.copy(alpha = 0.7f),
+                fadeColor = TwCardBg,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                trackedChannels.forEach { channel ->
+                    val isLive = channel.userId in liveUserIds
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(TwSharp)
+                            .background(TwSurface)
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Box {
+                            if (channel.profileImageUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = channel.profileImageUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape),
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(TwPurple.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        channel.displayName.take(1).uppercase(),
+                                        color = TwPurple,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                            if (isLive) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(TwLive)
+                                        .border(1.5.dp, TwSurface, CircleShape),
                                 )
                             }
                         }
-                        if (isLive) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(TwLive)
-                                    .border(1.5.dp, TwSurface, CircleShape),
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                channel.displayName,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                if (isLive) "LIVE now" else "Offline",
+                                fontSize = 11.sp,
+                                color = if (isLive) TwLive else TextSecondary,
+                                fontWeight = if (isLive) FontWeight.Bold else FontWeight.Normal,
                             )
                         }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            channel.displayName,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            if (isLive) "LIVE now" else "Offline",
-                            fontSize = 11.sp,
-                            color = if (isLive) TwLive else TextSecondary,
-                            fontWeight = if (isLive) FontWeight.Bold else FontWeight.Normal,
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            haptics.tick()
-                            viewModel.removeChannel(channel.userId)
-                        },
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = "Remove",
-                            tint = TextSecondary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(18.dp),
-                        )
+                        IconButton(
+                            onClick = {
+                                haptics.tick()
+                                viewModel.removeChannel(channel.userId)
+                            },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Remove",
+                                tint = TextSecondary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }

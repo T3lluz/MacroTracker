@@ -63,6 +63,7 @@ Desktop.ini
 
 # --- Agent / tooling leftovers ---
 .artifacts/
+.tmp/
 node_modules/
 .expo/
 *.log
