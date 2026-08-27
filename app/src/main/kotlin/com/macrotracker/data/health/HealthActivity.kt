@@ -1,5 +1,7 @@
 package com.macrotracker.data.health
 
+import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import java.time.Duration
 import java.time.Instant
@@ -7,7 +9,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
@@ -93,6 +97,37 @@ data class RouteBounds(
     val minLng: Double,
     val maxLng: Double,
 )
+
+/** GPS points plus whether Health Connect still needs a one-time route OK. */
+data class ActivityRouteResolution(
+    val points: List<ActivityRoutePoint>,
+    val consentRequired: Boolean,
+)
+
+/**
+ * Web Mercator viewport in fractional OSM tile coordinates (Y grows south).
+ * [west]/[east]/[north]/[south] are padded and aspect-fitted to the view.
+ */
+data class RouteMapViewport(
+    val zoom: Int,
+    val west: Double,
+    val north: Double,
+    val east: Double,
+    val south: Double,
+) {
+    val spanX: Double get() = (east - west).coerceAtLeast(1e-9)
+    val spanY: Double get() = (south - north).coerceAtLeast(1e-9)
+    val tileX0: Int get() = floor(west).toInt()
+    val tileY0: Int get() = floor(north).toInt()
+    val tileX1: Int get() = (ceil(east) - 1.0).toInt().coerceAtLeast(tileX0)
+    val tileY1: Int get() = (ceil(south) - 1.0).toInt().coerceAtLeast(tileY0)
+
+    fun fractionX(lng: Double): Float =
+        ((lngToTileX(lng, zoom) - west) / spanX).toFloat()
+
+    fun fractionY(lat: Double): Float =
+        ((latToTileY(lat, zoom) - north) / spanY).toFloat()
+}
 
 fun exerciseTypeLabel(type: Int): String = when (type) {
     ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walk"
@@ -364,5 +399,108 @@ fun mercatorY(lat: Double): Double {
 
 fun pickFeaturedActivity(activities: List<HealthActivity>): HealthActivity? {
     if (activities.isEmpty()) return null
-    return activities.firstOrNull { it.hasRoute } ?: activities.first()
+    return activities.firstOrNull { it.hasRoute }
+        ?: activities.firstOrNull { it.routeConsentRequired }
+        ?: activities.firstOrNull { it.isOutdoorType }
+        ?: activities.first()
+}
+
+fun pointsFromExerciseRoute(route: ExerciseRoute?): List<ActivityRoutePoint> {
+    val raw = route?.route.orEmpty()
+    if (raw.isEmpty()) return emptyList()
+    return downsampleRoute(
+        raw.map { loc ->
+            ActivityRoutePoint(
+                latitude = loc.latitude,
+                longitude = loc.longitude,
+                altitudeMeters = loc.altitude?.inMeters,
+                time = loc.time,
+            )
+        },
+    )
+}
+
+fun resolveActivityRoute(result: ExerciseRouteResult): ActivityRouteResolution = when (result) {
+    is ExerciseRouteResult.Data -> ActivityRouteResolution(
+        points = pointsFromExerciseRoute(result.exerciseRoute),
+        consentRequired = false,
+    )
+    is ExerciseRouteResult.ConsentRequired -> ActivityRouteResolution(
+        points = emptyList(),
+        consentRequired = true,
+    )
+    else -> ActivityRouteResolution(points = emptyList(), consentRequired = false)
+}
+
+fun activityNeedsRouteConsent(
+    points: List<ActivityRoutePoint>,
+    hcConsentRequired: Boolean,
+    exerciseType: Int,
+): Boolean {
+    if (points.size >= 2) return false
+    return hcConsentRequired || isOutdoorExercise(exerciseType)
+}
+
+fun lngToTileX(lng: Double, zoom: Int): Double {
+    val n = 1 shl zoom
+    return (lng + 180.0) / 360.0 * n
+}
+
+fun latToTileY(lat: Double, zoom: Int): Double {
+    val n = 1 shl zoom
+    return (1.0 - mercatorY(lat) / Math.PI) / 2.0 * n
+}
+
+/**
+ * Padded, aspect-fitted tile viewport so the GPS path sits on real map tiles
+ * without stretching north-south vs east-west.
+ */
+fun buildRouteMapViewport(
+    points: List<ActivityRoutePoint>,
+    viewAspect: Double = 2.0,
+    maxZoom: Int = 16,
+    minZoom: Int = 3,
+    maxTilesX: Int = 5,
+    maxTilesY: Int = 4,
+): RouteMapViewport? {
+    if (points.size < 2) return null
+    val bounds = routeBounds(points) ?: return null
+    var minLat = bounds.minLat
+    var maxLat = bounds.maxLat
+    var minLng = bounds.minLng
+    var maxLng = bounds.maxLng
+    val latPad = max((maxLat - minLat) * 0.22, 0.0008)
+    val lngPad = max((maxLng - minLng) * 0.22, 0.0008)
+    minLat -= latPad
+    maxLat += latPad
+    minLng -= lngPad
+    maxLng += lngPad
+    val aspect = viewAspect.coerceIn(0.4, 4.0)
+
+    var zoom = maxZoom
+    var viewport: RouteMapViewport? = null
+    while (zoom >= minZoom) {
+        var west = lngToTileX(minLng, zoom)
+        var east = lngToTileX(maxLng, zoom)
+        var north = latToTileY(maxLat, zoom)
+        var south = latToTileY(minLat, zoom)
+        var spanX = (east - west).coerceAtLeast(0.4)
+        var spanY = (south - north).coerceAtLeast(0.4)
+        val geoAspect = spanX / spanY
+        if (geoAspect > aspect) {
+            val extra = spanX / aspect - spanY
+            north -= extra / 2
+            south += extra / 2
+        } else {
+            val extra = spanY * aspect - spanX
+            west -= extra / 2
+            east += extra / 2
+        }
+        val tilesX = ceil(east).toInt() - floor(west).toInt()
+        val tilesY = ceil(south).toInt() - floor(north).toInt()
+        viewport = RouteMapViewport(zoom, west, north, east, south)
+        if (tilesX <= maxTilesX && tilesY <= maxTilesY) break
+        zoom--
+    }
+    return viewport
 }
