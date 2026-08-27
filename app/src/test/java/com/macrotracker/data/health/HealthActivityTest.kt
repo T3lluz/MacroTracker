@@ -1,8 +1,11 @@
 package com.macrotracker.data.health
 
+import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import com.macrotracker.data.local.SettingsRepository
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -104,17 +107,24 @@ class HealthActivityTest {
     }
 
     @Test
-    fun featuredPrefersRouteThenLatest() {
-        val noRoute = sampleActivity("a", route = emptyList())
+    fun featuredPrefersRouteThenConsentThenLatest() {
+        val indoor = sampleActivity(
+            "gym",
+            exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+        )
+        val outdoor = sampleActivity("walk")
+        val consent = sampleActivity("need-map", routeConsentRequired = true)
         val withRoute = sampleActivity(
-            "b",
+            "mapped",
             route = listOf(
                 ActivityRoutePoint(51.5, -0.12),
                 ActivityRoutePoint(51.51, -0.11),
             ),
         )
-        assertEquals("b", pickFeaturedActivity(listOf(noRoute, withRoute))?.id)
-        assertEquals("a", pickFeaturedActivity(listOf(noRoute))?.id)
+        assertEquals("mapped", pickFeaturedActivity(listOf(indoor, outdoor, consent, withRoute))?.id)
+        assertEquals("need-map", pickFeaturedActivity(listOf(indoor, outdoor, consent))?.id)
+        assertEquals("walk", pickFeaturedActivity(listOf(indoor, outdoor))?.id)
+        assertEquals("gym", pickFeaturedActivity(listOf(indoor))?.id)
         assertNull(pickFeaturedActivity(emptyList()))
     }
 
@@ -149,16 +159,106 @@ class HealthActivityTest {
         assertTrue(fromLegacy.startsWith("DAILY_HEALTH:true,ACTIVITIES:true,"))
     }
 
+    @Test
+    fun resolveRouteFromHealthConnectResults() {
+        val t0 = Instant.parse("2026-08-27T12:00:00Z")
+        val data = resolveActivityRoute(
+            ExerciseRouteResult.Data(
+                ExerciseRoute(
+                    listOf(
+                        ExerciseRoute.Location(t0, 51.5, -0.12),
+                        ExerciseRoute.Location(t0.plusSeconds(12), 51.501, -0.119),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(2, data.points.size)
+        assertEquals(51.5, data.points.first().latitude, 0.0)
+        assertFalse(data.consentRequired)
+
+        val consent = resolveActivityRoute(ExerciseRouteResult.ConsentRequired())
+        assertTrue(consent.points.isEmpty())
+        assertTrue(consent.consentRequired)
+
+        val none = resolveActivityRoute(ExerciseRouteResult.NoData())
+        assertTrue(none.points.isEmpty())
+        assertFalse(none.consentRequired)
+    }
+
+    @Test
+    fun outdoorWorkoutsOfferRouteConsentWhenListOmitsGps() {
+        assertFalse(
+            activityNeedsRouteConsent(
+                points = listOf(
+                    ActivityRoutePoint(51.5, -0.12),
+                    ActivityRoutePoint(51.51, -0.11),
+                ),
+                hcConsentRequired = false,
+                exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING,
+            ),
+        )
+        assertTrue(
+            activityNeedsRouteConsent(
+                points = emptyList(),
+                hcConsentRequired = true,
+                exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+            ),
+        )
+        assertTrue(
+            activityNeedsRouteConsent(
+                points = emptyList(),
+                hcConsentRequired = false,
+                exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING,
+            ),
+        )
+        assertFalse(
+            activityNeedsRouteConsent(
+                points = emptyList(),
+                hcConsentRequired = false,
+                exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+            ),
+        )
+    }
+
+    @Test
+    fun mapViewportKeepsRouteInsideFrameAndUsesWebMercatorTiles() {
+        assertEquals(0.5, lngToTileX(0.0, 0), 1e-9)
+        assertEquals(0.5, latToTileY(0.0, 0), 1e-6)
+        assertEquals(1.0, lngToTileX(0.0, 1), 1e-9)
+
+        val points = listOf(
+            ActivityRoutePoint(51.5074, -0.1278),
+            ActivityRoutePoint(51.5088, -0.1260),
+            ActivityRoutePoint(51.5095, -0.1242),
+            ActivityRoutePoint(51.5102, -0.1225),
+        )
+        val viewport = buildRouteMapViewport(points, viewAspect = 2.0)
+        requireNotNull(viewport)
+        assertTrue(viewport.zoom in 3..16)
+        points.forEach { point ->
+            val x = viewport.fractionX(point.longitude)
+            val y = viewport.fractionY(point.latitude)
+            assertTrue(x in 0.05f..0.95f)
+            assertTrue(y in 0.05f..0.95f)
+        }
+        val tilesX = viewport.tileX1 - viewport.tileX0 + 1
+        val tilesY = viewport.tileY1 - viewport.tileY0 + 1
+        assertTrue(tilesX in 1..5)
+        assertTrue(tilesY in 1..4)
+    }
+
     private fun sampleActivity(
         id: String,
         start: Instant = noon,
         end: Instant = noon.plusSeconds(1800),
         distanceKm: Double? = null,
         route: List<ActivityRoutePoint> = emptyList(),
+        routeConsentRequired: Boolean = false,
+        exerciseType: Int = ExerciseSessionRecord.EXERCISE_TYPE_WALKING,
     ) = HealthActivity(
         id = id,
         title = "Test",
-        exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING,
+        exerciseType = exerciseType,
         startTime = start,
         endTime = end,
         sourcePackage = "com.garmin.android.apps.connectmobile",
@@ -172,6 +272,6 @@ class HealthActivityTest {
         minHr = 98,
         elevationGainM = 42.0,
         route = route,
-        routeConsentRequired = false,
+        routeConsentRequired = routeConsentRequired,
     )
 }

@@ -406,7 +406,7 @@ private fun ActivityMapBlock(
                     Spacer(modifier = Modifier.height(6.dp))
                     Text("Show GPS map", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     Text(
-                        "Health Connect needs a one-time OK to share this route",
+                        "Tap to allow this workout’s route in Health Connect",
                         fontSize = 11.sp,
                         color = TextSecondary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),

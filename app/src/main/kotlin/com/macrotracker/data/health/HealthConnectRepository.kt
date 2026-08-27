@@ -24,6 +24,9 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
@@ -703,15 +706,15 @@ class HealthConnectRepository @Inject constructor(
 
     /**
      * Recent workouts written by Garmin Connect and other Health Connect apps.
-     * Routes come inline when granted; otherwise [HealthActivity.routeConsentRequired]
-     * is true and the UI can request the path per session.
+     *
+     * Session list reads omit GPS. Each session is re-read by id so
+     * [ExerciseRouteResult] is [Data] or [ConsentRequired] instead of a false
+     * [ExerciseRouteResult.NoData]. Not cached — consent can change mid-session.
      */
     suspend fun readRecentActivities(
         days: Int = 14,
         limit: Int = 16,
     ): List<HealthActivity> = withContext(Dispatchers.IO) {
-        val cacheKey = "activities_${days}_$limit"
-        getCached<List<HealthActivity>>(cacheKey)?.let { return@withContext it }
         val hc = client ?: return@withContext emptyList()
         if (!hasPermission(EXERCISE_PERMISSION)) return@withContext emptyList()
 
@@ -738,32 +741,26 @@ class HealthConnectRepository @Inject constructor(
             return@withContext emptyList()
         }
 
-        val activities = sessions.map { session ->
-            enrichSession(
-                hc = hc,
-                session = session,
-                canDistance = canDistance,
-                canCalories = canCalories,
-                canHr = canHr,
-                canSteps = canSteps,
-                canElevation = canElevation,
-            )
+        coroutineScope {
+            sessions.map { session ->
+                async {
+                    enrichSession(
+                        hc = hc,
+                        session = session,
+                        canDistance = canDistance,
+                        canCalories = canCalories,
+                        canHr = canHr,
+                        canSteps = canSteps,
+                        canElevation = canElevation,
+                    )
+                }
+            }.awaitAll()
         }
-        putCache(cacheKey, activities)
-        activities
     }
 
     fun activityWithRoute(activity: HealthActivity, route: ExerciseRoute?): HealthActivity {
-        val raw = route?.route.orEmpty()
-        if (raw.isEmpty()) return activity
-        val points = raw.map { loc ->
-            ActivityRoutePoint(
-                latitude = loc.latitude,
-                longitude = loc.longitude,
-                altitudeMeters = loc.altitude?.inMeters,
-                time = loc.time,
-            )
-        }.let { downsampleRoute(it) }
+        val points = pointsFromExerciseRoute(route)
+        if (points.size < 2) return activity
         val distance = activity.distanceKm
             ?: routeDistanceKm(points).takeIf { it > 0.02 }
         val elevation = activity.elevationGainM
@@ -872,19 +869,13 @@ class HealthConnectRepository @Inject constructor(
             }
         }
 
-        val routeResult = session.exerciseRouteResult
-        val routePoints = when (routeResult) {
-            is ExerciseRouteResult.Data -> routeResult.exerciseRoute.route.map { loc ->
-                ActivityRoutePoint(
-                    latitude = loc.latitude,
-                    longitude = loc.longitude,
-                    altitudeMeters = loc.altitude?.inMeters,
-                    time = loc.time,
-                )
-            }.let { downsampleRoute(it) }
-            else -> emptyList()
-        }
-        val consentRequired = routeResult is ExerciseRouteResult.ConsentRequired
+        val resolvedRoute = resolveActivityRoute(readSessionRoute(hc, session))
+        val routePoints = resolvedRoute.points
+        val consentRequired = activityNeedsRouteConsent(
+            points = routePoints,
+            hcConsentRequired = resolvedRoute.consentRequired,
+            exerciseType = session.exerciseType,
+        )
 
         if (distanceKm == null) {
             val fromGps = routeDistanceKm(routePoints)
@@ -923,5 +914,35 @@ class HealthConnectRepository @Inject constructor(
             routeConsentRequired = consentRequired,
             laps = laps,
         )
+    }
+
+    /**
+     * List reads often strip the GPS track (and even the has-route flag). The
+     * documented way to load a workout map is [HealthConnectClient.readRecord]
+     * with the session id, then [ExerciseSessionRecord.exerciseRouteResult].
+     */
+    private suspend fun readSessionRoute(
+        hc: HealthConnectClient,
+        session: ExerciseSessionRecord,
+    ): ExerciseRouteResult {
+        val listed = session.exerciseRouteResult
+        if (listed is ExerciseRouteResult.Data && listed.exerciseRoute.route.size >= 2) {
+            return listed
+        }
+        val id = session.metadata.id
+        if (id.isBlank()) return listed
+        return try {
+            val detailed = hc.readRecord(ExerciseSessionRecord::class, id).record
+            val full = detailed.exerciseRouteResult
+            when {
+                full is ExerciseRouteResult.Data && full.exerciseRoute.route.size >= 2 -> full
+                full is ExerciseRouteResult.ConsentRequired -> full
+                listed is ExerciseRouteResult.ConsentRequired -> listed
+                else -> full
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read exercise route for $id: ${e.message}")
+            listed
+        }
     }
 }
