@@ -251,7 +251,7 @@ class SettingsRepository @Inject constructor(
 
     private fun loadHealthWidgetOrder(): String {
         val default =
-            "DAILY_HEALTH:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
+            "DAILY_HEALTH:true,ACTIVITIES:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
         val raw = prefs.getString("health_widget_order", default) ?: default
         val migrated = migrateHealthWidgetOrder(raw)
         if (migrated != raw) {
@@ -276,10 +276,22 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_GITHUB_OWNER = "T3lluz"
         const val DEFAULT_GITHUB_REPO = "MacroTracker"
 
-        /** Prepend Daily Health for installs that predate the widget. */
+        /** Keep Daily Health first; insert Activities after it for older installs. */
         fun migrateHealthWidgetOrder(order: String): String {
-            if (order.contains("DAILY_HEALTH")) return order
-            return "DAILY_HEALTH:true,$order"
+            var result = order
+            if (!result.contains("DAILY_HEALTH")) {
+                result = "DAILY_HEALTH:true,$result"
+            }
+            if (!result.contains("ACTIVITIES")) {
+                result = when {
+                    result.contains("DAILY_HEALTH:true") ->
+                        result.replaceFirst("DAILY_HEALTH:true", "DAILY_HEALTH:true,ACTIVITIES:true")
+                    result.contains("DAILY_HEALTH:false") ->
+                        result.replaceFirst("DAILY_HEALTH:false", "DAILY_HEALTH:false,ACTIVITIES:true")
+                    else -> "ACTIVITIES:true,$result"
+                }
+            }
+            return result
         }
     }
 }

@@ -127,10 +127,10 @@ private val PAGES = listOf(
         accentColor = androidx.compose.ui.graphics.Color(0xFFEC4899),
         badge = "Health",
         title = "Optional Health Metrics",
-        body = "Connect Health Connect to layer in steps, heart rate, sleep, floors climbed and active calories alongside your nutrition data. All stored locally — nothing uploaded.",
+        body = "Connect Health Connect to layer in steps, heart rate, sleep, workouts, floors climbed and active calories alongside your nutrition data. All stored locally — nothing uploaded.",
         tips = listOf(
             "Enable Health Connect in Settings → Connections",
-            "Toggle each metric on or off independently",
+            "Sync Garmin Connect (or another fitness app) to Health Connect to see walks and rides",
             "Health Connect must be installed on your device",
         ),
     ),

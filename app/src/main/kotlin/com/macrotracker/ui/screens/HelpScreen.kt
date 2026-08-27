@@ -103,7 +103,11 @@ private val FAQ = listOf(
     ),
     FaqItem(
         question = "How do I connect Health Connect?",
-        answer = "Go to Settings → Connections and toggle on Health Connect. Grant the permissions when prompted. You can then enable individual metrics (steps, heart rate, sleep, active calories, etc.) independently.",
+        answer = "Go to Settings → Connections and toggle on Health Connect. Grant the permissions when prompted, including Exercise so Garmin (and other apps) can share workouts. You can then enable individual metrics independently.",
+    ),
+    FaqItem(
+        question = "How do I see Garmin walks and rides?",
+        answer = "In Garmin Connect, turn on Health Connect sync (including activities). In DailyDash, allow Health Connect exercise access. Workouts then appear on the Health tab in Activities, with a GPS map when the session includes a route.",
     ),
     FaqItem(
         question = "How do I connect Weather or Calendar?",

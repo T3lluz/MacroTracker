@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Add
@@ -63,10 +64,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.contracts.ExerciseRouteRequestContract
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.macrotracker.ui.screens.health.ActivitiesSection
 import com.macrotracker.ui.screens.health.AnimatedMacroBarChart
 import com.macrotracker.ui.screens.health.DailyHealthSection
 import com.macrotracker.ui.screens.health.HealthMetric
@@ -134,6 +137,7 @@ fun HealthScreen(
     val healthHistory by healthViewModel.healthHistory.collectAsState()
     val healthWidgetOrder by healthViewModel.healthWidgetOrder.collectAsState()
     val healthConnectState by healthViewModel.healthConnectState.collectAsState()
+    val activitiesState by healthViewModel.activitiesState.collectAsState()
 
     val selectedDate by healthViewModel.selectedDate.collectAsState()
     val intradayHeartRate by healthViewModel.intradayHeartRate.collectAsState()
@@ -165,6 +169,7 @@ fun HealthScreen(
     val defaultHealthWidgets = remember {
         listOf(
             Triple("DAILY_HEALTH", "Daily Health", Icons.Filled.Favorite),
+            Triple("ACTIVITIES", "Activities", Icons.AutoMirrored.Filled.DirectionsWalk),
             Triple("BODY_STATS", "Body Stats", Icons.Default.MonitorHeart),
             Triple("HISTORY", "Weekly Trends", Icons.AutoMirrored.Filled.ShowChart),
             Triple("SUMMARY", "Daily Summary", Icons.Default.ViewDay),
@@ -194,6 +199,15 @@ fun HealthScreen(
         val anyGranted = granted.any { it in healthViewModel.healthConnectPermissions }
         healthViewModel.loadHealthConnect(permissionsGranted = anyGranted)
         dashboardViewModel.loadData(forceRefresh = true)
+    }
+
+    var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
+    val routeLauncher = rememberLauncherForActivityResult(
+        contract = ExerciseRouteRequestContract(),
+    ) { route ->
+        val id = pendingRouteActivityId ?: return@rememberLauncherForActivityResult
+        pendingRouteActivityId = null
+        healthViewModel.applyExerciseRoute(id, route)
     }
 
     // Load data on first composition and on resume
@@ -321,6 +335,21 @@ fun HealthScreen(
                             restingHrBpm = restingHeartRateState.value.takeIf { restingHeartRateState.isEnabled },
                             spo2Percent = oxygenSaturationState.value.takeIf { oxygenSaturationState.isEnabled },
                             respRate = respiratoryRateState.value.takeIf { respiratoryRateState.isEnabled },
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    "ACTIVITIES" -> {
+                        ActivitiesSection(
+                            state = activitiesState,
+                            haptics = haptics,
+                            onRequestPermission = {
+                                hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+                            },
+                            onRevealRoute = { activity ->
+                                pendingRouteActivityId = activity.id
+                                routeLauncher.launch(activity.id)
+                            },
+                            onExpandActivity = { healthViewModel.loadActivityHeartRate(it) },
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                     }

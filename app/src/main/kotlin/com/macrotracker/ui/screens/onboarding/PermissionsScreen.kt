@@ -105,7 +105,7 @@ private val PERMISSION_ITEMS = listOf(
         permission = null,
         icon = Icons.Outlined.FavoriteBorder,
         title = "Health Connect",
-        description = "Sync steps, heart rate, sleep and more. Connect in Settings after setup.",
+        description = "Sync steps, heart rate, sleep, workouts and more. Connect in Settings after setup.",
     ),
 )
 
