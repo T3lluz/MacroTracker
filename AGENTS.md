@@ -139,9 +139,9 @@ Widget order and visibility are persisted as a single colon-and-comma encoded st
 
 The **Health screen** uses the same draggable pattern with a separate key (`healthWidgetOrder`):
 ```
-"DAILY_HEALTH:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
+"DAILY_HEALTH:true,ACTIVITIES:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
 ```
-`DAILY_HEALTH` is the hero Daily Health card (Apple-style activity rings + dynamic today metrics). `WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
+`DAILY_HEALTH` is the hero Daily Health card (Apple-style activity rings + dynamic today metrics). **`ACTIVITIES`** lists recent workouts synced through Health Connect (Garmin Connect, Google Fit, Samsung Health, Strava, and others): type, source, duration, distance, pace, heart rate, elevation, and a GPS route map when the session includes one. `WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
 
 ### App Widgets (Glance)
 All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(context)` (call from the app) or `WidgetRefreshWorker` (periodic WorkManager task, 30-min interval, requires network). F1 widgets share a disk/memory cache through `F1WidgetDataProvider`. Full widget list: `DashboardWidget`, `MacrosWidget`, `HealthWidget`, `WeatherWidget`, `CalendarWidget`, `F1CountdownWidget`, `F1StandingsWidget`, `F1ScheduleWidget`.

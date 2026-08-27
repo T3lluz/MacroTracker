@@ -6,6 +6,10 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ElevationGainedRecord
+import androidx.health.connect.client.records.ExerciseRoute
+import androidx.health.connect.client.records.ExerciseRouteResult
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.FloorsClimbedRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
@@ -28,6 +32,7 @@ import java.time.LocalDateTime
 import java.time.Period
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -70,6 +75,8 @@ class HealthConnectRepository @Inject constructor(
             HealthPermission.getReadPermission(RespiratoryRateRecord::class),
             HealthPermission.getReadPermission(DistanceRecord::class),
             HealthPermission.getReadPermission(FloorsClimbedRecord::class),
+            HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+            HealthPermission.getReadPermission(ElevationGainedRecord::class),
         )
 
         val STEPS_PERMISSION = HealthPermission.getReadPermission(StepsRecord::class)
@@ -82,6 +89,8 @@ class HealthConnectRepository @Inject constructor(
         val RESPIRATORY_RATE_PERMISSION = HealthPermission.getReadPermission(RespiratoryRateRecord::class)
         val DISTANCE_PERMISSION = HealthPermission.getReadPermission(DistanceRecord::class)
         val FLOORS_PERMISSION = HealthPermission.getReadPermission(FloorsClimbedRecord::class)
+        val EXERCISE_PERMISSION = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+        val ELEVATION_PERMISSION = HealthPermission.getReadPermission(ElevationGainedRecord::class)
     }
 
     private val client: HealthConnectClient? by lazy {
@@ -690,5 +699,229 @@ class HealthConnectRepository @Inject constructor(
             Log.e(TAG, "Failed to read sleep sessions", e)
             emptyList()
         }
+    }
+
+    /**
+     * Recent workouts written by Garmin Connect and other Health Connect apps.
+     * Routes come inline when granted; otherwise [HealthActivity.routeConsentRequired]
+     * is true and the UI can request the path per session.
+     */
+    suspend fun readRecentActivities(
+        days: Int = 14,
+        limit: Int = 16,
+    ): List<HealthActivity> = withContext(Dispatchers.IO) {
+        val cacheKey = "activities_${days}_$limit"
+        getCached<List<HealthActivity>>(cacheKey)?.let { return@withContext it }
+        val hc = client ?: return@withContext emptyList()
+        if (!hasPermission(EXERCISE_PERMISSION)) return@withContext emptyList()
+
+        val end = Instant.now()
+        val start = end.minus(Duration.ofDays(days.toLong()))
+        val granted = getGrantedPermissions()
+        val canDistance = DISTANCE_PERMISSION in granted
+        val canCalories = ACTIVE_CALORIES_PERMISSION in granted
+        val canHr = HEART_RATE_PERMISSION in granted
+        val canSteps = STEPS_PERMISSION in granted
+        val canElevation = ELEVATION_PERMISSION in granted
+
+        val sessions = try {
+            hc.readRecords(
+                ReadRecordsRequest(
+                    recordType = ExerciseSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    ascendingOrder = false,
+                    pageSize = limit,
+                ),
+            ).records.sortedByDescending { it.startTime }.take(limit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read exercise sessions", e)
+            return@withContext emptyList()
+        }
+
+        val activities = sessions.map { session ->
+            enrichSession(
+                hc = hc,
+                session = session,
+                canDistance = canDistance,
+                canCalories = canCalories,
+                canHr = canHr,
+                canSteps = canSteps,
+                canElevation = canElevation,
+            )
+        }
+        putCache(cacheKey, activities)
+        activities
+    }
+
+    fun activityWithRoute(activity: HealthActivity, route: ExerciseRoute?): HealthActivity {
+        val raw = route?.route.orEmpty()
+        if (raw.isEmpty()) return activity
+        val points = raw.map { loc ->
+            ActivityRoutePoint(
+                latitude = loc.latitude,
+                longitude = loc.longitude,
+                altitudeMeters = loc.altitude?.inMeters,
+                time = loc.time,
+            )
+        }.let { downsampleRoute(it) }
+        val distance = activity.distanceKm
+            ?: routeDistanceKm(points).takeIf { it > 0.02 }
+        val elevation = activity.elevationGainM
+            ?: routeElevationGainM(points).takeIf { it >= 1.0 }
+        return activity.copy(
+            route = points,
+            routeConsentRequired = false,
+            distanceKm = distance,
+            elevationGainM = elevation,
+        )
+    }
+
+    suspend fun readActivityHeartRate(
+        start: Instant,
+        end: Instant,
+    ): List<ActivityHrPoint> = withContext(Dispatchers.IO) {
+        if (!start.isBefore(end)) return@withContext emptyList()
+        if (!hasPermission(HEART_RATE_PERMISSION)) return@withContext emptyList()
+        val hc = client ?: return@withContext emptyList()
+        try {
+            val records = hc.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                ),
+            ).records
+            val samples = records.flatMap { rec ->
+                rec.samples.map { sample -> ActivityHrPoint(sample.time, sample.beatsPerMinute) }
+            }.sortedBy { it.time }
+            downsampleHr(samples)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read activity heart rate", e)
+            emptyList()
+        }
+    }
+
+    private suspend fun enrichSession(
+        hc: HealthConnectClient,
+        session: ExerciseSessionRecord,
+        canDistance: Boolean,
+        canCalories: Boolean,
+        canHr: Boolean,
+        canSteps: Boolean,
+        canElevation: Boolean,
+    ): HealthActivity {
+        val origin = session.metadata.dataOrigin
+        val device = session.metadata.device
+        val sourcePkg = origin.packageName
+        val sourceLabel = activitySourceLabel(sourcePkg, device?.manufacturer)
+        val deviceLabel = listOfNotNull(device?.manufacturer, device?.model)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .joinToString(" ")
+            .ifBlank { null }
+
+        val title = session.title?.trim()?.takeIf { it.isNotEmpty() }
+            ?: defaultActivityTitle(session.exerciseType, session.startTime)
+
+        var distanceKm: Double? = null
+        var calories: Double? = null
+        var steps: Long? = null
+        var avgHr: Long? = null
+        var maxHr: Long? = null
+        var minHr: Long? = null
+        var elevationM: Double? = null
+
+        val metrics = buildSet {
+            if (canDistance) add(DistanceRecord.DISTANCE_TOTAL)
+            if (canCalories) add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
+            if (canHr) {
+                add(HeartRateRecord.BPM_AVG)
+                add(HeartRateRecord.BPM_MAX)
+                add(HeartRateRecord.BPM_MIN)
+            }
+            if (canSteps) add(StepsRecord.COUNT_TOTAL)
+            if (canElevation) add(ElevationGainedRecord.ELEVATION_GAINED_TOTAL)
+        }
+        if (metrics.isNotEmpty() && session.startTime.isBefore(session.endTime)) {
+            try {
+                val agg = hc.aggregate(
+                    AggregateRequest(
+                        metrics = metrics,
+                        timeRangeFilter = TimeRangeFilter.between(session.startTime, session.endTime),
+                    ),
+                )
+                if (canDistance) {
+                    distanceKm = agg[DistanceRecord.DISTANCE_TOTAL]?.inKilometers?.takeIf { it > 0 }
+                }
+                if (canCalories) {
+                    calories = agg[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.takeIf { it > 0 }
+                }
+                if (canHr) {
+                    avgHr = agg[HeartRateRecord.BPM_AVG]?.takeIf { it > 0 }
+                    maxHr = agg[HeartRateRecord.BPM_MAX]?.takeIf { it > 0 }
+                    minHr = agg[HeartRateRecord.BPM_MIN]?.takeIf { it > 0 }
+                }
+                if (canSteps) {
+                    steps = agg[StepsRecord.COUNT_TOTAL]?.takeIf { it > 0 }
+                }
+                if (canElevation) {
+                    elevationM = agg[ElevationGainedRecord.ELEVATION_GAINED_TOTAL]?.inMeters?.takeIf { it >= 1.0 }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to aggregate session ${session.metadata.id}: ${e.message}")
+            }
+        }
+
+        val routeResult = session.exerciseRouteResult
+        val routePoints = when (routeResult) {
+            is ExerciseRouteResult.Data -> routeResult.exerciseRoute.route.map { loc ->
+                ActivityRoutePoint(
+                    latitude = loc.latitude,
+                    longitude = loc.longitude,
+                    altitudeMeters = loc.altitude?.inMeters,
+                    time = loc.time,
+                )
+            }.let { downsampleRoute(it) }
+            else -> emptyList()
+        }
+        val consentRequired = routeResult is ExerciseRouteResult.ConsentRequired
+
+        if (distanceKm == null) {
+            val fromGps = routeDistanceKm(routePoints)
+            if (fromGps > 0.02) distanceKm = fromGps
+        }
+        if (elevationM == null) {
+            val fromGps = routeElevationGainM(routePoints)
+            if (fromGps >= 1.0) elevationM = fromGps
+        }
+
+        val laps = session.laps.mapIndexed { index, lap ->
+            ActivityLap(
+                index = index + 1,
+                duration = Duration.between(lap.startTime, lap.endTime).coerceAtLeast(Duration.ZERO),
+                distanceKm = lap.length?.inKilometers?.takeIf { it > 0 },
+            )
+        }
+
+        return HealthActivity(
+            id = session.metadata.id,
+            title = title.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+            exerciseType = session.exerciseType,
+            startTime = session.startTime,
+            endTime = session.endTime,
+            sourcePackage = sourcePkg,
+            sourceLabel = sourceLabel,
+            deviceLabel = deviceLabel,
+            distanceKm = distanceKm,
+            caloriesKcal = calories,
+            steps = steps,
+            avgHr = avgHr,
+            maxHr = maxHr,
+            minHr = minHr,
+            elevationGainM = elevationM,
+            route = routePoints,
+            routeConsentRequired = consentRequired,
+            laps = laps,
+        )
     }
 }

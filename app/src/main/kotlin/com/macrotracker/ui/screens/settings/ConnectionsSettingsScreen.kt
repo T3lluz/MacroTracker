@@ -102,7 +102,7 @@ fun ConnectionsSettingsScreen(
             ConnectionRow(
                 icon = Icons.Outlined.FavoriteBorder,
                 name = "Health Connect",
-                description = "Steps, heart rate, sleep & active calories",
+                description = "Steps, heart rate, sleep, workouts & active calories",
                 connected = healthConnectAvailable,
                 iconTint = Color(0xFFEF5350),
                 enabled = masterHealthConnectEnabled,

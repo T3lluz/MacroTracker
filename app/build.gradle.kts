@@ -174,4 +174,6 @@ dependencies {
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)
+
+    testImplementation("junit:junit:4.13.2")
 }

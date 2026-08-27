@@ -1,13 +1,16 @@
 package com.macrotracker.ui.viewmodel
 
 import android.util.Log
+import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.health.DailyHealthStats
+import com.macrotracker.data.health.HealthActivity
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.health.HealthStats
+import com.macrotracker.data.health.pickFeaturedActivity
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.data.local.MacroRepository
@@ -39,6 +42,14 @@ sealed class HealthConnectUiState {
     data class Error(val message: String) : HealthConnectUiState()
 }
 
+sealed class ActivitiesUiState {
+    data object Unavailable : ActivitiesUiState()
+    data object PermissionRequired : ActivitiesUiState()
+    data object Loading : ActivitiesUiState()
+    data class Success(val activities: List<HealthActivity>, val isRefreshing: Boolean = false) : ActivitiesUiState()
+    data class Error(val message: String) : ActivitiesUiState()
+}
+
 @HiltViewModel
 class HealthViewModel @Inject constructor(
     private val repository: MacroRepository,
@@ -61,6 +72,9 @@ class HealthViewModel @Inject constructor(
 
     private val _healthConnectState = MutableStateFlow<HealthConnectUiState>(HealthConnectUiState.Loading)
     val healthConnectState: StateFlow<HealthConnectUiState> = _healthConnectState
+
+    private val _activitiesState = MutableStateFlow<ActivitiesUiState>(ActivitiesUiState.Loading)
+    val activitiesState: StateFlow<ActivitiesUiState> = _activitiesState
 
     private val _healthHistory = MutableStateFlow<List<DailyHealthStats>>(emptyList())
     val healthHistory: StateFlow<List<DailyHealthStats>> = _healthHistory
@@ -298,17 +312,20 @@ class HealthViewModel @Inject constructor(
             if (!healthConnectRepository.isAvailable()) {
                 Log.w(TAG, "Health Connect not available")
                 _healthConnectState.value = HealthConnectUiState.NotAvailable
+                _activitiesState.value = ActivitiesUiState.Unavailable
                 return@launch
             }
 
             if (!settingsRepository.masterHealthConnectEnabled.value) {
                 _healthConnectState.value = HealthConnectUiState.PermissionRequired
+                _activitiesState.value = ActivitiesUiState.PermissionRequired
                 return@launch
             }
 
             val hasPerms = permissionsGranted || healthConnectRepository.hasAnyPermissions()
             if (!hasPerms) {
                 _healthConnectState.value = HealthConnectUiState.PermissionRequired
+                _activitiesState.value = ActivitiesUiState.PermissionRequired
                 return@launch
             }
 
@@ -333,9 +350,11 @@ class HealthViewModel @Inject constructor(
                             emptyList()
                         }
                     }
+                    val activitiesDeferred = async { loadActivitiesInternal(silent) }
                     val stats = statsDeferred.await()
                     historyDeferred.await()
                     _todaySleepSessions.value = todaySleepDeferred.await()
+                    activitiesDeferred.await()
                     if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
                         _healthConnectState.value = current.copy(isRefreshing = false)
                     } else {
@@ -355,6 +374,56 @@ class HealthViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private suspend fun loadActivitiesInternal(silent: Boolean) {
+        if (!healthConnectRepository.hasPermission(HealthConnectRepository.EXERCISE_PERMISSION)) {
+            _activitiesState.value = ActivitiesUiState.PermissionRequired
+            return
+        }
+        val current = _activitiesState.value
+        if (!silent || current !is ActivitiesUiState.Success) {
+            _activitiesState.value = ActivitiesUiState.Loading
+        } else {
+            _activitiesState.value = current.copy(isRefreshing = true)
+        }
+        try {
+            val activities = healthConnectRepository.readRecentActivities()
+            _activitiesState.value = ActivitiesUiState.Success(activities)
+            pickFeaturedActivity(activities)?.let { loadActivityHeartRate(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read activities", e)
+            if (current is ActivitiesUiState.Success) {
+                _activitiesState.value = current.copy(isRefreshing = false)
+            } else {
+                _activitiesState.value = ActivitiesUiState.Error(
+                    e.message ?: "Failed to read workouts",
+                )
+            }
+        }
+    }
+
+    fun loadActivityHeartRate(activity: HealthActivity) {
+        if (activity.hrSamples.isNotEmpty()) return
+        viewModelScope.launch {
+            val samples = healthConnectRepository.readActivityHeartRate(activity.startTime, activity.endTime)
+            if (samples.isEmpty()) return@launch
+            val current = _activitiesState.value as? ActivitiesUiState.Success ?: return@launch
+            _activitiesState.value = current.copy(
+                activities = current.activities.map {
+                    if (it.id == activity.id) it.copy(hrSamples = samples) else it
+                },
+            )
+        }
+    }
+
+    fun applyExerciseRoute(activityId: String, route: ExerciseRoute?) {
+        val current = _activitiesState.value as? ActivitiesUiState.Success ?: return
+        val existing = current.activities.find { it.id == activityId } ?: return
+        val updated = healthConnectRepository.activityWithRoute(existing, route)
+        _activitiesState.value = current.copy(
+            activities = current.activities.map { if (it.id == activityId) updated else it },
+        )
     }
 
     fun addLog(foodName: String, calories: Int, protein: Int) {

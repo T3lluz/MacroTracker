@@ -1,0 +1,642 @@
+package com.macrotracker.ui.screens.health
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Hiking
+import androidx.compose.material.icons.filled.Pool
+import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.SportsScore
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.records.ExerciseSessionRecord
+import com.macrotracker.R
+import com.macrotracker.data.health.ActivityHrPoint
+import com.macrotracker.data.health.HealthActivity
+import com.macrotracker.data.health.formatActivityDistance
+import com.macrotracker.data.health.formatActivityDuration
+import com.macrotracker.data.health.formatActivityWhen
+import com.macrotracker.data.health.formatElevation
+import com.macrotracker.data.health.formatPace
+import com.macrotracker.data.health.pickFeaturedActivity
+import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.WidgetScrollBox
+import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.MacroMotion
+import com.macrotracker.ui.theme.Primary
+import com.macrotracker.ui.theme.TextPrimary
+import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.util.HapticHelper
+import com.macrotracker.ui.viewmodel.ActivitiesUiState
+import java.util.Locale
+import kotlin.math.roundToInt
+
+@Composable
+fun ActivitiesSection(
+    state: ActivitiesUiState,
+    haptics: HapticHelper,
+    onRequestPermission: () -> Unit,
+    onRevealRoute: (HealthActivity) -> Unit,
+    onExpandActivity: (HealthActivity) -> Unit,
+    delayMs: Long = 40L,
+) {
+    MacroCard(delayMs = delayMs) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.FavoriteBorder,
+                contentDescription = null,
+                tint = Color(0xFF34D399),
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Activities", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(
+                    "Latest workouts from Garmin and Health Connect",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                )
+            }
+        }
+
+        when (state) {
+            is ActivitiesUiState.Loading -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Loading workouts…", fontSize = 13.sp, color = TextSecondary)
+                }
+            }
+            is ActivitiesUiState.PermissionRequired -> {
+                ActivitiesEmptyCopy(
+                    title = "Show workouts from Garmin",
+                    body = "Allow exercise access in Health Connect. Garmin Connect (and other fitness apps) can then share walks, rides, and gym sessions here — including GPS maps when available.",
+                    actionLabel = "Allow workouts",
+                    onAction = {
+                        haptics.tick()
+                        onRequestPermission()
+                    },
+                )
+            }
+            is ActivitiesUiState.Unavailable -> {
+                ActivitiesEmptyCopy(
+                    title = "Health Connect needed",
+                    body = "Workouts appear here once Health Connect is available and a source like Garmin Connect is syncing activities.",
+                    actionLabel = null,
+                    onAction = null,
+                )
+            }
+            is ActivitiesUiState.Error -> {
+                ActivitiesEmptyCopy(
+                    title = "Couldn’t load activities",
+                    body = state.message,
+                    actionLabel = "Retry",
+                    onAction = {
+                        haptics.tick()
+                        onRequestPermission()
+                    },
+                )
+            }
+            is ActivitiesUiState.Success -> {
+                if (state.activities.isEmpty()) {
+                    ActivitiesEmptyCopy(
+                        title = "No workouts yet",
+                        body = "Sync Garmin Connect (or Google Fit, Samsung Health, Strava…) to Health Connect. New walks, runs, and rides will show up here with maps and stats.",
+                        actionLabel = null,
+                        onAction = null,
+                    )
+                } else {
+                    ActivitiesList(
+                        activities = state.activities,
+                        haptics = haptics,
+                        onRevealRoute = onRevealRoute,
+                        onExpandActivity = onExpandActivity,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivitiesList(
+    activities: List<HealthActivity>,
+    haptics: HapticHelper,
+    onRevealRoute: (HealthActivity) -> Unit,
+    onExpandActivity: (HealthActivity) -> Unit,
+) {
+    val featured = pickFeaturedActivity(activities)
+    val rest = if (featured == null) activities else activities.filter { it.id != featured.id }
+    var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    if (featured != null) {
+        FeaturedActivityCard(
+            activity = featured,
+            haptics = haptics,
+            onRevealRoute = onRevealRoute,
+        )
+    }
+
+    if (rest.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            "Recent",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+        WidgetScrollBox {
+            rest.forEach { activity ->
+                CompactActivityRow(
+                    activity = activity,
+                    expanded = expandedId == activity.id,
+                    onToggle = {
+                        haptics.tick()
+                        expandedId = if (expandedId == activity.id) null else activity.id
+                        if (expandedId == activity.id) onExpandActivity(activity)
+                    },
+                    onRevealRoute = {
+                        haptics.tick()
+                        onRevealRoute(activity)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeaturedActivityCard(
+    activity: HealthActivity,
+    haptics: HapticHelper,
+    onRevealRoute: (HealthActivity) -> Unit,
+) {
+    val accent = activityAccent(activity.exerciseType)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Background)
+            .border(1.dp, Border, RoundedCornerShape(14.dp))
+            .padding(12.dp),
+    ) {
+        ActivityHeader(activity = activity, accent = accent)
+        Spacer(modifier = Modifier.height(10.dp))
+        ActivityMapBlock(
+            activity = activity,
+            accent = accent,
+            height = 176.dp,
+            onRevealRoute = {
+                haptics.tick()
+                onRevealRoute(activity)
+            },
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        ActivityStatsGrid(activity)
+        if (activity.hrSamples.size >= 2) {
+            Spacer(modifier = Modifier.height(10.dp))
+            ActivityHrSparkline(samples = activity.hrSamples, accent = Color(0xFFEF5350))
+        }
+        if (activity.laps.size >= 2) {
+            Spacer(modifier = Modifier.height(8.dp))
+            ActivityLapsRow(activity)
+        }
+    }
+}
+
+@Composable
+private fun CompactActivityRow(
+    activity: HealthActivity,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onRevealRoute: () -> Unit,
+) {
+    val accent = activityAccent(activity.exerciseType)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Background)
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ActivityTypeBadge(activity.exerciseType, accent)
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    activity.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    buildString {
+                        append(formatActivityWhen(activity.startTime))
+                        append(" · ")
+                        append(activity.sourceLabel)
+                    },
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    formatActivityDistance(activity.distanceKm) ?: formatActivityDuration(activity.duration),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                )
+                Text(
+                    if (activity.distanceKm != null) formatActivityDuration(activity.duration) else activity.typeLabel,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                )
+            }
+        }
+        AnimatedVisibility(visible = expanded, enter = MacroMotion.expandEnter, exit = MacroMotion.expandExit) {
+            Column(modifier = Modifier.padding(top = 10.dp)) {
+                ActivityMapBlock(activity = activity, accent = accent, height = 148.dp, onRevealRoute = onRevealRoute)
+                Spacer(modifier = Modifier.height(10.dp))
+                ActivityStatsGrid(activity)
+                if (activity.hrSamples.size >= 2) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ActivityHrSparkline(samples = activity.hrSamples, accent = Color(0xFFEF5350))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityHeader(activity: HealthActivity, accent: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ActivityTypeBadge(activity.exerciseType, accent)
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                activity.title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                formatActivityWhen(activity.startTime),
+                fontSize = 12.sp,
+                color = TextSecondary,
+            )
+        }
+        SourceChip(activity.sourceLabel, accent)
+    }
+}
+
+@Composable
+private fun ActivityTypeBadge(type: Int, accent: Color) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(accent.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = activityIcon(type),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun SourceChip(label: String, accent: Color) {
+    Text(
+        label,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = accent,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(accent.copy(alpha = 0.14f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun ActivityMapBlock(
+    activity: HealthActivity,
+    accent: Color,
+    height: androidx.compose.ui.unit.Dp,
+    onRevealRoute: () -> Unit,
+) {
+    when {
+        activity.hasRoute -> {
+            ActivityRouteMap(points = activity.route, accent = accent, height = height)
+        }
+        activity.routeConsentRequired -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF0B1424))
+                    .clickable(onClick = onRevealRoute),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Outlined.Map, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Show GPS map", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(
+                        "Health Connect needs a one-time OK to share this route",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+            }
+        }
+        else -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(88.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF0B1424)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(activityIcon(activity.exerciseType), null, tint = accent, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        if (activity.isOutdoorType) "No GPS saved for this ${activity.typeLabel.lowercase()}"
+                        else "Indoor ${activity.typeLabel.lowercase()} — no map",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ActivityStatsGrid(activity: HealthActivity) {
+    val stats = buildList {
+        formatActivityDistance(activity.distanceKm)?.let { add("Distance" to it) }
+        add("Time" to formatActivityDuration(activity.duration))
+        formatPace(activity.avgPaceMinPerKm)?.let { add("Pace" to it) }
+        activity.avgSpeedKmh?.takeIf { activity.avgPaceMinPerKm == null && it > 0 }?.let {
+            add("Speed" to String.format(Locale.US, "%.1f km/h", it))
+        }
+        activity.caloriesKcal?.takeIf { it > 0 }?.let { add("Active" to "${it.roundToInt()} kcal") }
+        activity.avgHr?.takeIf { it > 0 }?.let { add("Avg HR" to "$it bpm") }
+        activity.maxHr?.takeIf { it > 0 }?.let { add("Max HR" to "$it bpm") }
+        formatElevation(activity.elevationGainM)?.let { add("Gain" to it) }
+        activity.steps?.takeIf { it > 0 }?.let {
+            add("Steps" to String.format(Locale.US, "%,d", it))
+        }
+    }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = 3,
+    ) {
+        stats.forEach { (label, value) ->
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF0E1626))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Text(label, fontSize = 10.sp, color = TextSecondary)
+                Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityHrSparkline(samples: List<ActivityHrPoint>, accent: Color) {
+    val avg = samples.map { it.bpm }.average().roundToInt()
+    val max = samples.maxOf { it.bpm }
+    val min = samples.minOf { it.bpm }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
+            Icon(
+                painter = painterResource(R.drawable.ic_heart),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Heart rate", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            Spacer(modifier = Modifier.weight(1f))
+            Text("$min–$max · avg $avg", fontSize = 11.sp, color = TextSecondary)
+        }
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF0E1626)),
+        ) {
+            if (samples.size < 2) return@Canvas
+            val minB = samples.minOf { it.bpm }.toFloat()
+            val maxB = samples.maxOf { it.bpm }.toFloat().coerceAtLeast(minB + 1f)
+            val path = androidx.compose.ui.graphics.Path()
+            samples.forEachIndexed { i, sample ->
+                val x = size.width * i / (samples.size - 1).coerceAtLeast(1)
+                val y = size.height - ((sample.bpm - minB) / (maxB - minB)) * (size.height * 0.78f) - size.height * 0.12f
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(
+                path,
+                color = accent.copy(alpha = 0.28f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8f, cap = StrokeCap.Round),
+            )
+            drawPath(
+                path,
+                color = accent,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f, cap = StrokeCap.Round),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActivityLapsRow(activity: HealthActivity) {
+    Text(
+        "${activity.laps.size} laps",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = TextSecondary,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+        activity.laps.take(6).forEach { lap ->
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF0E1626))
+                    .padding(6.dp),
+            ) {
+                Text("L${lap.index}", fontSize = 10.sp, color = TextSecondary)
+                Text(
+                    formatActivityDistance(lap.distanceKm) ?: formatActivityDuration(lap.duration),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivitiesEmptyCopy(
+    title: String,
+    body: String,
+    actionLabel: String?,
+    onAction: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Background)
+            .padding(14.dp),
+    ) {
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        Text(
+            body,
+            fontSize = 13.sp,
+            color = TextSecondary,
+            fontStyle = FontStyle.Italic,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        if (actionLabel != null && onAction != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                actionLabel,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Primary.copy(alpha = 0.12f))
+                    .clickable(onClick = onAction)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+internal fun activityAccent(type: Int): Color = when (type) {
+    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> Color(0xFF4F7CFF)
+    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
+    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL,
+    -> Color(0xFFFF8A4C)
+    ExerciseSessionRecord.EXERCISE_TYPE_BIKING,
+    ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY,
+    -> Color(0xFF2DD4BF)
+    ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> Color(0xFF34D399)
+    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER,
+    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
+    -> Color(0xFF38BDF8)
+    ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+    ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+    -> Color(0xFFA78BFA)
+    ExerciseSessionRecord.EXERCISE_TYPE_YOGA,
+    ExerciseSessionRecord.EXERCISE_TYPE_PILATES,
+    ExerciseSessionRecord.EXERCISE_TYPE_STRETCHING,
+    -> Color(0xFFC084FC)
+    ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING -> Color(0xFFF43F5E)
+    else -> Primary
+}
+
+internal fun activityIcon(type: Int): ImageVector = when (type) {
+    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> Icons.AutoMirrored.Filled.DirectionsWalk
+    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
+    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL,
+    -> Icons.AutoMirrored.Filled.DirectionsRun
+    ExerciseSessionRecord.EXERCISE_TYPE_BIKING,
+    ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY,
+    -> Icons.AutoMirrored.Filled.DirectionsBike
+    ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> Icons.Filled.Hiking
+    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER,
+    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
+    -> Icons.Filled.Pool
+    ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+    ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+    ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS,
+    -> Icons.Filled.FitnessCenter
+    ExerciseSessionRecord.EXERCISE_TYPE_YOGA,
+    ExerciseSessionRecord.EXERCISE_TYPE_PILATES,
+    ExerciseSessionRecord.EXERCISE_TYPE_STRETCHING,
+    -> Icons.Filled.SelfImprovement
+    else -> Icons.Filled.SportsScore
+}
