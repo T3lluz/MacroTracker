@@ -10,12 +10,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -82,11 +76,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -104,14 +95,19 @@ import com.macrotracker.data.remote.NutritionEstimate
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroTextField
+import com.macrotracker.ui.components.ScreenHeader
+import com.macrotracker.ui.components.ScreenHeaderSpacer
+import com.macrotracker.ui.components.TypingDots
+import com.macrotracker.ui.components.dottedFrost
 import com.macrotracker.ui.screens.ai.DishSuggestion
 import com.macrotracker.ui.screens.ai.refineDraft
 import com.macrotracker.ui.screens.ai.suggestionStripTitle
 import com.macrotracker.ui.screens.ai.suggestionsForDraft
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.GlassHairline
+import com.macrotracker.ui.theme.GlassTint
 import com.macrotracker.ui.theme.Error
-import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
@@ -436,200 +432,58 @@ private fun AiChatHeader(
     onCancel: () -> Unit,
     canClear: Boolean,
 ) {
-    val motion = rememberInfiniteTransition(label = "headerLife")
-    val avocadoY by motion.animateFloat(
-        initialValue = -5f,
-        targetValue = 6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "avocadoY",
-    )
-    val avocadoRot by motion.animateFloat(
-        initialValue = -8f,
-        targetValue = 7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "avocadoRot",
-    )
-    val appleY by motion.animateFloat(
-        initialValue = 5f,
-        targetValue = -6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "appleY",
-    )
-    val saladY by motion.animateFloat(
-        initialValue = -3f,
-        targetValue = 7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2300, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "saladY",
-    )
-    val eggY by motion.animateFloat(
-        initialValue = 4f,
-        targetValue = -4f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "eggY",
-    )
-    val clankerScale by motion.animateFloat(
-        initialValue = 0.98f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "clankerScale",
-    )
-
     val status = when {
-        loading -> "Crunching macros…"
+        loading -> "Estimating macros…"
         loggedCount > 0 -> "Logged $loggedCount this chat"
-        else -> "Ask me about any meal"
+        else -> "Describe a meal, photo, or label"
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Primary.copy(alpha = 0.10f),
-                        Background,
-                    ),
-                ),
-            )
-            .padding(top = 40.dp, start = 16.dp, end = 12.dp, bottom = 8.dp),
+            .padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
     ) {
-        // Floating foods — open header, not a card
-        Image(
-            painter = painterResource(R.drawable.ic_food_avocado),
-            contentDescription = null,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 86.dp, top = 2.dp)
-                .size(30.dp)
-                .graphicsLayer {
-                    translationY = avocadoY
-                    rotationZ = avocadoRot
-                },
-        )
-        Image(
-            painter = painterResource(R.drawable.ic_food_apple),
-            contentDescription = null,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 48.dp, top = 28.dp)
-                .size(24.dp)
-                .graphicsLayer { translationY = appleY },
-        )
-        Image(
-            painter = painterResource(R.drawable.ic_food_salad),
-            contentDescription = null,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 8.dp, top = 4.dp)
-                .size(28.dp)
-                .graphicsLayer { translationY = saladY },
-        )
-        Image(
-            painter = painterResource(R.drawable.ic_food_egg),
-            contentDescription = null,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 112.dp, top = 34.dp)
-                .size(20.dp)
-                .graphicsLayer {
-                    translationY = eggY
-                    alpha = 0.92f
-                },
-        )
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
+        ScreenHeaderSpacer()
+        ScreenHeader(
+            title = "AI",
+            subtitle = status,
+            trailing = {
+                Image(
+                    painter = painterResource(R.drawable.ic_clanker),
+                    contentDescription = "Clanker",
                     modifier = Modifier
-                        .size(72.dp)
-                        .drawBehind {
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        Primary.copy(alpha = 0.22f),
-                                        Color.Transparent,
-                                    ),
-                                ),
-                                radius = size.minDimension * 0.58f,
-                            )
-                        },
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_clanker),
-                        contentDescription = "Clanker",
-                        modifier = Modifier
-                            .size(64.dp)
-                            .graphicsLayer {
-                                scaleX = clankerScale
-                                scaleY = clankerScale
-                            },
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Dr. Clanker",
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = HeaderColor,
-                    )
-                    Text(
-                        status,
-                        fontSize = 13.sp,
-                        color = if (loading) Primary else TextSecondary,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 10.dp, start = 4.dp),
-            ) {
-                HeaderAction(
-                    icon = Icons.Outlined.CameraAlt,
-                    label = "Scan label",
-                    emphasized = true,
-                    onClick = onCameraScan,
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Surface)
+                        .border(1.dp, Border, CircleShape)
+                        .padding(3.dp),
                 )
-                if (loading) {
-                    HeaderAction(
-                        icon = Icons.Outlined.Close,
-                        label = "Cancel",
-                        onClick = onCancel,
-                    )
-                } else if (canClear) {
-                    HeaderAction(
-                        icon = Icons.Outlined.DeleteSweep,
-                        label = "New",
-                        onClick = onClear,
-                    )
-                }
+            },
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 12.dp),
+        ) {
+            HeaderAction(
+                icon = Icons.Outlined.CameraAlt,
+                label = "Scan label",
+                emphasized = true,
+                onClick = onCameraScan,
+            )
+            if (loading) {
+                HeaderAction(
+                    icon = Icons.Outlined.Close,
+                    label = "Cancel",
+                    onClick = onCancel,
+                )
+            } else if (canClear) {
+                HeaderAction(
+                    icon = Icons.Outlined.DeleteSweep,
+                    label = "New",
+                    onClick = onClear,
+                )
             }
         }
     }
@@ -1060,7 +914,6 @@ private fun UserBubble(text: String) {
 
 @Composable
 private fun TypingBubble(onCancel: () -> Unit) {
-    val bounce = rememberInfiniteTransition(label = "typing")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
@@ -1082,27 +935,11 @@ private fun TypingBubble(onCancel: () -> Unit) {
                 .background(Surface)
                 .border(1.dp, Border, RoundedCornerShape(14.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            repeat(3) { index ->
-                val y by bounce.animateFloat(
-                    initialValue = 0f,
-                    targetValue = -4f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(400, delayMillis = index * 100),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "dot$index",
-                )
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .graphicsLayer { translationY = y }
-                        .clip(CircleShape)
-                        .background(TextSecondary),
-                )
-            }
+            TypingDots(color = TextSecondary)
+            Text("Estimating…", fontSize = 12.sp, color = TextSecondary)
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
@@ -1142,8 +979,9 @@ private fun ChatComposer(
             .padding(horizontal = 12.dp)
             .padding(top = 6.dp, bottom = bottomPad)
             .clip(RoundedCornerShape(16.dp))
-            .background(Surface)
-            .border(1.dp, Border, RoundedCornerShape(16.dp))
+            .background(GlassTint.copy(alpha = 0.92f))
+            .dottedFrost()
+            .border(1.dp, GlassHairline, RoundedCornerShape(16.dp))
             .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
