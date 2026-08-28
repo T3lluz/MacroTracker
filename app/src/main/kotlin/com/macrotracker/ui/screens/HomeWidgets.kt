@@ -21,7 +21,6 @@ import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Restaurant
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -41,9 +40,12 @@ import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.components.BodyStats
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.CalendarCard
+import com.macrotracker.ui.components.ContentSkeleton
 import com.macrotracker.ui.components.F1Card
 import com.macrotracker.ui.components.GitHubCard
 import com.macrotracker.ui.components.HealthMetricUiState
+import com.macrotracker.ui.components.LoadingSpec
+import com.macrotracker.ui.components.LoadingSpinner
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroProgressBar
@@ -54,6 +56,7 @@ import com.macrotracker.ui.components.WidgetConfig
 import com.macrotracker.ui.components.TwitchCard
 import com.macrotracker.ui.components.YoutubeCard
 import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
@@ -205,7 +208,7 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
                             color = TextSecondary,
                         )
                         if (hs.isRefreshing) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            LoadingSpinner(size = LoadingSpec.SizeInline)
                         }
                     }
                 }
@@ -256,14 +259,7 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
         }
         is HomeHealthState.Loading -> {
             MacroCard {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = Primary)
-                }
+                ContentSkeleton(lines = 3, accent = Border)
             }
         }
         HomeHealthState.Unavailable -> {

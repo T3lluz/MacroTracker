@@ -62,7 +62,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -407,16 +406,13 @@ fun YoutubeCard(viewModel: YouTubeViewModel = hiltViewModel()) {
                     ) { key ->
                         when {
                             key == -1 || youtubeState is YouTubeUiState.Loading -> {
-                                Box(
-                                    Modifier.fillMaxWidth().height(120.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = YtRed,
-                                        modifier = Modifier.size(28.dp),
-                                        strokeWidth = 2.5.dp,
-                                    )
-                                }
+                                ContentSkeleton(
+                                    tiles = 3,
+                                    tileAspect = 16f / 9f,
+                                    lines = 0,
+                                    accent = YtHairline,
+                                    surface = YtCardBg,
+                                )
                             }
                             key == -2 || youtubeState is YouTubeUiState.Error -> {
                                 val msg = (youtubeState as? YouTubeUiState.Error)?.message
@@ -558,7 +554,13 @@ private fun YoutubeCollapsedGlance(
             }
         }
         is YouTubeUiState.Loading, YouTubeUiState.Idle -> {
-            CompactVideoFeedSkeleton()
+            ContentSkeleton(
+                tiles = 3,
+                tileAspect = 16f / 9f,
+                lines = 0,
+                accent = YtHairline,
+                surface = YtCardBg,
+            )
         }
         is YouTubeUiState.Success -> {
             CompactVideoFeed(
@@ -870,116 +872,6 @@ private fun CompactVideoStrip(
                 video = video,
                 modifier = Modifier.width(WidgetCompactTileWidth),
                 onClick = { onVideoClick(video) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactVideoFeedSkeleton() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(YtCardBg.copy(alpha = 0.9f))
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(42.dp)
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(YtHairline.copy(alpha = 0.55f)),
-                )
-            }
-            repeat(3) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(YtCardBg.copy(alpha = 0.9f))
-                        .border(1.5.dp, YtHairline.copy(alpha = 0.45f), CircleShape),
-                )
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            repeat(3) {
-                CompactVideoTilePlaceholder(
-                    modifier = Modifier.width(WidgetCompactTileWidth),
-                    showSpinner = it == 0,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompactVideoTilePlaceholder(
-    modifier: Modifier = Modifier,
-    showSpinner: Boolean = false,
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(YtCardBg.copy(alpha = 0.88f))
-            .border(0.5.dp, YtHairline.copy(alpha = 0.55f), RoundedCornerShape(10.dp)),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .background(YtDark.copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (showSpinner) {
-                CircularProgressIndicator(
-                    color = YtRed.copy(alpha = 0.7f),
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                Icon(
-                    Icons.Outlined.VideoLibrary,
-                    contentDescription = null,
-                    tint = TextSecondary.copy(alpha = 0.28f),
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = YT_COMPACT_CAPTION_MIN_HEIGHT)
-                .padding(horizontal = 7.dp, vertical = 7.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .height(11.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(YtHairline.copy(alpha = 0.4f)),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.68f)
-                    .height(11.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(YtHairline.copy(alpha = 0.28f)),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.78f)
-                    .height(9.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(YtHairline.copy(alpha = 0.22f)),
             )
         }
     }
@@ -2093,11 +1985,7 @@ private fun NoChannelsPrompt(
                 shape = RoundedCornerShape(10.dp),
             ) {
                 if (googleState.isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White,
-                    )
+                    LoadingSpinner(color = Color.White, size = LoadingSpec.SizeInline)
                 } else {
                     Icon(Icons.Outlined.AccountCircle, null, modifier = Modifier.size(16.dp))
                 }
@@ -2163,11 +2051,7 @@ private fun YouTubeGoogleAccountCard(
                 contentAlignment = Alignment.Center,
             ) {
                 if (googleState.isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = YtRed,
-                    )
+                    LoadingSpinner(color = YtRed, size = LoadingSpec.SizeInline)
                 } else {
                     Icon(
                         Icons.Outlined.AccountCircle,
@@ -2493,11 +2377,7 @@ private fun SearchTab(
             placeholder = { Text("Search channels…", color = TextSecondary, fontSize = 13.sp) },
             leadingIcon = {
                 if (suggestionsLoading && searchQuery.isNotBlank()) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = YtRed,
-                    )
+                    LoadingSpinner(color = YtRed, size = LoadingSpec.SizeInline)
                 } else {
                     Icon(Icons.Filled.Search, null, tint = TextSecondary, modifier = Modifier.size(20.dp))
                 }
@@ -2545,7 +2425,7 @@ private fun SearchTab(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator(color = YtRed, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        LoadingSpinner(color = YtRed, size = LoadingSpec.SizeInline)
                     }
                 } else {
                     suggestions.forEachIndexed { idx, channel ->
@@ -2612,7 +2492,7 @@ private fun SearchTab(
         // ── Full search results ───────────────────────────────────────────
         when (val s = channelSearchState) {
             is ChannelSearchState.Loading -> Box(Modifier.fillMaxWidth().height(60.dp), Alignment.Center) {
-                CircularProgressIndicator(color = YtRed, modifier = Modifier.size(24.dp))
+                LoadingSpinner(color = YtRed)
             }
             is ChannelSearchState.Success -> {
                 if (s.channels.isEmpty()) {

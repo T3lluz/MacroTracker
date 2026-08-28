@@ -53,7 +53,6 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -91,6 +90,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.R
 import com.macrotracker.ui.components.ButtonVariant
+import com.macrotracker.ui.components.LoadingSpinner
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.theme.Background
@@ -627,7 +627,7 @@ private fun PreviewPhase(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 ) {
-                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(36.dp))
+                    LoadingSpinner()
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         "Clanker is analysing…",

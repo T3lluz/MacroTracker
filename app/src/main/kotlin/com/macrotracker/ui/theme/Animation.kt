@@ -6,7 +6,10 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.InfiniteRepeatableSpec
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -89,6 +92,18 @@ object MacroMotion {
     /** Linear path/draw progress (circuit map) — named exception to FastOutSlowIn. */
     fun <T> drawTween(durationMs: Int = 1200): FiniteAnimationSpec<T> =
         tween(durationMs, easing = LinearEasing)
+
+    /**
+     * Soft pulse (typing dots, calm character marks). Always go through here —
+     * never `infiniteRepeatable(tween(...))` at a call site.
+     */
+    fun pulseSpec(
+        durationMs: Int = 400,
+        delayMs: Int = 0,
+    ): InfiniteRepeatableSpec<Float> = infiniteRepeatable(
+        animation = tween(durationMs, delayMillis = delayMs, easing = FastOutSlowInEasing),
+        repeatMode = RepeatMode.Reverse,
+    )
 
     /** Chart reveal (area/line/bar grow-in). Slightly longer than fades for presence. */
     fun <T> chartRevealTween(durationMs: Int = 700): FiniteAnimationSpec<T> =

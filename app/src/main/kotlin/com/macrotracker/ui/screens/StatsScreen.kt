@@ -30,9 +30,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroProgressBar
+import com.macrotracker.ui.components.ScreenHeader
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Error
-import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
@@ -58,27 +58,19 @@ fun StatsScreen(
             .padding(horizontal = 16.dp)
             .padding(top = 24.dp, bottom = 120.dp),
     ) {
-        // Header with back button
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            IconButton(onClick = onNavigateBack, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    Icons.Outlined.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Primary,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            Text(
-                "Stats",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = HeaderColor,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
+        ScreenHeader(
+            title = "Stats",
+            leading = {
+                IconButton(onClick = onNavigateBack, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Outlined.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            },
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 

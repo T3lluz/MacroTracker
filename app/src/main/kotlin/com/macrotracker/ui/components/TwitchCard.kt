@@ -4,11 +4,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,7 +49,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -110,6 +106,7 @@ import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.util.LastUpdatedText
+import com.macrotracker.ui.util.LocalTickersPaused
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.TwitchAuthUiState
 import com.macrotracker.ui.viewmodel.TwitchChannelSearchState
@@ -385,16 +382,14 @@ fun TwitchCard(viewModel: TwitchViewModel = hiltViewModel()) {
                     WidgetStateSwitch(targetState = stateKey, label = "twHubBody") { key ->
                         when {
                             key == -1 || twitchState is TwitchUiState.Loading -> {
-                                Box(
-                                    Modifier.fillMaxWidth().height(120.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = TwPurple,
-                                        modifier = Modifier.size(28.dp),
-                                        strokeWidth = 2.5.dp,
-                                    )
-                                }
+                                ContentSkeleton(
+                                    tiles = 3,
+                                    tileHeight = 130.dp,
+                                    lines = 0,
+                                    accent = TwHairline,
+                                    surface = TwSurface,
+                                    tileShape = TwSharp,
+                                )
                             }
                             key == -2 || twitchState is TwitchUiState.Error -> {
                                 val msg = (twitchState as? TwitchUiState.Error)?.message
@@ -550,7 +545,14 @@ private fun TwitchCollapsedGlance(
             }
         }
         is TwitchUiState.Loading, TwitchUiState.Idle -> {
-            CompactLiveSkeleton()
+            ContentSkeleton(
+                tiles = 3,
+                tileHeight = 130.dp,
+                lines = 0,
+                accent = TwHairline,
+                surface = TwSurface,
+                tileShape = TwSharp,
+            )
         }
         is TwitchUiState.Success -> {
             if (streams.isEmpty()) {
@@ -721,21 +723,6 @@ private fun CompactLiveTile(stream: TwitchStream, onClick: () -> Unit) {
                 color = TextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactLiveSkeleton() {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        repeat(3) {
-            Box(
-                modifier = Modifier
-                    .width(WidgetCompactTileWidth)
-                    .height(130.dp)
-                    .clip(TwSharp)
-                    .background(TwSurface),
             )
         }
     }
@@ -1023,16 +1010,19 @@ private fun LiveBadge(
 
 @Composable
 private fun LiveDot(size: Dp, color: Color = TwLive) {
-    val pulse = rememberInfiniteTransition(label = "livePulse")
-    val alpha by pulse.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "liveAlpha",
-    )
+    val paused = LocalTickersPaused.current
+    val alpha = if (paused) {
+        1f
+    } else {
+        val pulse = rememberInfiniteTransition(label = "livePulse")
+        val animated by pulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.35f,
+            animationSpec = MacroMotion.pulseSpec(durationMs = 700),
+            label = "liveAlpha",
+        )
+        animated
+    }
     Box(
         modifier = Modifier
             .size(size)
@@ -1273,11 +1263,7 @@ private fun NoTwitchChannelsPrompt(
                     shape = RoundedCornerShape(10.dp),
                 ) {
                     if (authState.isBusy) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = Color.White,
-                        )
+                        LoadingSpinner(color = Color.White, size = LoadingSpec.SizeInline)
                     } else {
                         Icon(Icons.Outlined.AccountCircle, null, modifier = Modifier.size(16.dp))
                     }
@@ -1408,11 +1394,7 @@ private fun TwitchAccountCard(
                 contentAlignment = Alignment.Center,
             ) {
                 if (authState.isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = TwPurple,
-                    )
+                    LoadingSpinner(color = TwPurple, size = LoadingSpec.SizeInline)
                 } else {
                     Icon(
                         Icons.Outlined.AccountCircle,
@@ -1774,11 +1756,7 @@ private fun TwitchSettingsSheet(
                                 Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                CircularProgressIndicator(
-                                    color = TwPurple,
-                                    modifier = Modifier.size(22.dp),
-                                    strokeWidth = 2.dp,
-                                )
+                                LoadingSpinner(color = TwPurple)
                             }
                         }
                         searchSuggestions.isNotEmpty() &&
@@ -1803,7 +1781,7 @@ private fun TwitchSettingsSheet(
                                 Modifier.fillMaxWidth().padding(vertical = 24.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                CircularProgressIndicator(color = TwPurple)
+                                LoadingSpinner(color = TwPurple)
                             }
                         }
                         is TwitchChannelSearchState.Error -> {

@@ -17,17 +17,15 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Widgets
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.macrotracker.ui.components.ScreenHeader
+import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.screens.settings.SettingsCategoryGroup
 import com.macrotracker.ui.screens.settings.SettingsCategoryItem
 import com.macrotracker.ui.theme.Background
-import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.util.rememberHaptics
 
 @Composable
@@ -51,8 +49,8 @@ fun SettingsScreen(
             .padding(16.dp)
             .padding(bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
-        Text("Settings", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
+        ScreenHeaderSpacer()
+        ScreenHeader(title = "Settings")
         Spacer(modifier = Modifier.height(20.dp))
 
         SettingsCategoryGroup(

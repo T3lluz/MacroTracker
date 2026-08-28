@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.macrotracker.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -65,7 +66,7 @@ fun relativeTimeString(instant: Instant): String {
 fun LastUpdatedText(
     lastUpdatedAt: Instant?,
     modifier: Modifier = Modifier,
-    color: Color = Color(0xFF99A8C2),
+    color: Color = TextSecondary,
 ) {
     if (lastUpdatedAt == null) return
 

@@ -43,7 +43,6 @@ import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -601,7 +600,7 @@ private fun GhLoading() {
         Modifier.fillMaxWidth().height(56.dp),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(color = GhAccent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+        ContentSkeleton(lines = 4, accent = GhHairline, surface = GhSurface)
     }
 }
 
@@ -1876,11 +1875,7 @@ private fun GitHubAccountActions(
                 shape = Sharp,
             ) {
                 if (authState.isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White,
-                    )
+                    LoadingSpinner(color = Color.White, size = LoadingSpec.SizeInline)
                 } else {
                     Icon(
                         Icons.Outlined.AccountCircle,
