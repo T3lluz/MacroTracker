@@ -242,7 +242,7 @@ private fun TeamLogo(url: String?, teamName: String, modifier: Modifier = Modifi
     SubcomposeAsyncImage(model = request, contentDescription = teamName, modifier = modifier, contentScale = contentScale) {
         when (painter.state) {
             is AsyncImagePainter.State.Loading -> Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = TextSecondary.copy(alpha = 0.4f))
+                LoadingSpinner(color = TextSecondary.copy(alpha = 0.4f), size = LoadingSpec.SizeInline)
             }
             is AsyncImagePainter.State.Error -> Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -311,21 +311,13 @@ private fun DriverHeadshot(
                         modifier = Modifier.fillMaxSize().background(teamColor.copy(alpha = 0.06f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            strokeWidth = 1.5.dp,
-                            color = teamColor.copy(alpha = 0.4f),
-                        )
+                        LoadingSpinner(color = teamColor.copy(alpha = 0.4f), size = LoadingSpec.SizeInline)
                     }
                     is AsyncImagePainter.State.Error -> {
                         if (urlIndex < headshotUrls.size - 1) {
                             LaunchedEffect(activeUrl) { urlIndex++ }
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(10.dp),
-                                    strokeWidth = 1.dp,
-                                    color = teamColor.copy(alpha = 0.2f),
-                                )
+                                LoadingSpinner(color = teamColor.copy(alpha = 0.2f), size = LoadingSpec.SizeInline)
                             }
                         } else {
                             DriverPlaceholder(driverAcronym, driverNumber, teamColor)
@@ -450,9 +442,7 @@ fun F1Card(
             when (state) {
                 is F1UiState.Loading -> {
                     Spacer(Modifier.height(16.dp))
-                    Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = F1Red, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                    }
+                    ContentSkeleton(lines = 3, accent = Hairline, surface = RowSurface)
                 }
                 is F1UiState.Error -> {
                     Spacer(Modifier.height(12.dp))
@@ -1177,11 +1167,7 @@ private fun CompactNextRace(
                     ) {
                         when (painter.state) {
                             is AsyncImagePainter.State.Loading ->
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 1.5.dp,
-                                    color = accent.copy(alpha = 0.5f),
-                                )
+                                LoadingSpinner(color = accent.copy(alpha = 0.5f), size = LoadingSpec.SizeInline)
                             is AsyncImagePainter.State.Error ->
                                 Text(
                                     "TRACK",
@@ -1354,7 +1340,7 @@ private fun TrackVisualization(circuitId: String, accentColor: Color, raceName: 
                 SubcomposeAsyncImage(model = request, contentDescription = "$raceName circuit map", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
                     when (painter.state) {
                         is AsyncImagePainter.State.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = accentColor.copy(alpha = 0.6f))
+                            LoadingSpinner(color = accentColor.copy(alpha = 0.6f))
                         }
                         is AsyncImagePainter.State.Error -> TrackFallbackCanvas(circuitId = circuitId, accentColor = accentColor, raceName = raceName)
                         else -> SubcomposeAsyncImageContent()
@@ -1431,7 +1417,7 @@ private fun DrawScope.drawTrackPath(points: List<TrackPoint>, accentColor: Color
 @Composable
 private fun F1Loading() {
     Box(modifier = Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = F1Red, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+        ContentSkeleton(lines = 4, accent = Hairline, surface = RowSurface)
     }
 }
 

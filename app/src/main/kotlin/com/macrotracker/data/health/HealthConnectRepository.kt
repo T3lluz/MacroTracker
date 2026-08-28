@@ -80,6 +80,8 @@ class HealthConnectRepository @Inject constructor(
             HealthPermission.getReadPermission(FloorsClimbedRecord::class),
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
             HealthPermission.getReadPermission(ElevationGainedRecord::class),
+            // Platform GPS-route permission (not yet a HealthPermission.* constant in 1.1.0-alpha10).
+            "android.permission.health.READ_EXERCISE_ROUTES",
         )
 
         val STEPS_PERMISSION = HealthPermission.getReadPermission(StepsRecord::class)
@@ -94,6 +96,7 @@ class HealthConnectRepository @Inject constructor(
         val FLOORS_PERMISSION = HealthPermission.getReadPermission(FloorsClimbedRecord::class)
         val EXERCISE_PERMISSION = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
         val ELEVATION_PERMISSION = HealthPermission.getReadPermission(ElevationGainedRecord::class)
+        val EXERCISE_ROUTES_PERMISSION = "android.permission.health.READ_EXERCISE_ROUTES"
     }
 
     private val client: HealthConnectClient? by lazy {
@@ -758,20 +761,8 @@ class HealthConnectRepository @Inject constructor(
         }
     }
 
-    fun activityWithRoute(activity: HealthActivity, route: ExerciseRoute?): HealthActivity {
-        val points = pointsFromExerciseRoute(route)
-        if (points.size < 2) return activity
-        val distance = activity.distanceKm
-            ?: routeDistanceKm(points).takeIf { it > 0.02 }
-        val elevation = activity.elevationGainM
-            ?: routeElevationGainM(points).takeIf { it >= 1.0 }
-        return activity.copy(
-            route = points,
-            routeConsentRequired = false,
-            distanceKm = distance,
-            elevationGainM = elevation,
-        )
-    }
+    fun activityWithRoute(activity: HealthActivity, route: ExerciseRoute?): HealthActivity =
+        activityAfterRouteAttempt(activity, route)
 
     suspend fun readActivityHeartRate(
         start: Instant,

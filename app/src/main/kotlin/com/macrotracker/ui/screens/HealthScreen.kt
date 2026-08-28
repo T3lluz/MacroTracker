@@ -38,7 +38,6 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -76,16 +75,20 @@ import com.macrotracker.ui.screens.health.HealthMetric
 import com.macrotracker.ui.screens.health.HealthStatCard
 import com.macrotracker.ui.screens.health.HealthTrendsSection
 import com.macrotracker.ui.screens.health.iconRes
+import com.macrotracker.data.health.HealthActivity
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.HealthConnectCard
+import com.macrotracker.ui.components.LoadingRow
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.MacroLogItem
 import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
+import com.macrotracker.ui.components.ScreenHeader
+import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.calculatePercentageChange
 import com.macrotracker.ui.components.draggableWidgetItems
@@ -95,7 +98,6 @@ import com.macrotracker.ui.components.rememberDraggableWidgetListState
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
-import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.Success
@@ -192,15 +194,6 @@ fun HealthScreen(
     val floorsClimbedState by dashboardViewModel.floorsClimbedState.collectAsState()
     val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
 
-    // Health Connect permission launcher
-    val hcPermissionLauncher = rememberLauncherForActivityResult(
-        contract = PermissionController.createRequestPermissionResultContract(),
-    ) { granted ->
-        val anyGranted = granted.any { it in healthViewModel.healthConnectPermissions }
-        healthViewModel.loadHealthConnect(permissionsGranted = anyGranted)
-        dashboardViewModel.loadData(forceRefresh = true)
-    }
-
     var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
     val routeLauncher = rememberLauncherForActivityResult(
         contract = ExerciseRouteRequestContract(),
@@ -210,8 +203,44 @@ fun HealthScreen(
         healthViewModel.applyExerciseRoute(id, route)
     }
 
-    // Load data on first composition and on resume
+    // Health Connect permission launcher
+    val hcPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract(),
+    ) { granted ->
+        val anyGranted = granted.any { it in healthViewModel.healthConnectPermissions }
+        val pendingId = pendingRouteActivityId
+        val routesGranted = healthViewModel.exerciseRoutesPermission in granted
+        healthViewModel.loadHealthConnect(
+            permissionsGranted = anyGranted,
+            silent = pendingId != null,
+        )
+        dashboardViewModel.loadData(forceRefresh = true)
+        if (pendingId != null) {
+            if (routesGranted) {
+                routeLauncher.launch(pendingId)
+            } else {
+                // Denied or omitted READ_EXERCISE_ROUTES — stop looping “Show GPS map”.
+                healthViewModel.applyExerciseRoute(pendingId, null)
+                pendingRouteActivityId = null
+            }
+        }
+    }
+
+    fun revealActivityRoute(activity: HealthActivity) {
+        pendingRouteActivityId = activity.id
+        // READ_EXERCISE_ROUTES must be granted before the per-workout GPS sheet.
+        // If it is already granted, the permission activity returns immediately
+        // and we then launch ExerciseRouteRequestContract below.
+        hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+    }
+
+    // First visit to this tab happens while the Activity is already resumed, so
+    // ON_RESUME never fires. Load now, then again on later resumes (30s throttle).
     val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(Unit) {
+        healthViewModel.loadDataOnResume()
+        dashboardViewModel.loadDataThrottled()
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -258,22 +287,17 @@ fun HealthScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
     ) {
         item(key = "header") {
-        Spacer(modifier = Modifier.height(48.dp))
+        ScreenHeaderSpacer()
 
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("Health", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
-                Text(todayFormatted, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
-            }
-            IconButton(onClick = { haptics.tick(); isEditMode = !isEditMode }) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
-            }
-        }
+        ScreenHeader(
+            title = "Health",
+            subtitle = todayFormatted,
+            trailing = {
+                IconButton(onClick = { haptics.tick(); isEditMode = !isEditMode }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit Widgets", tint = Primary)
+                }
+            },
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -335,6 +359,7 @@ fun HealthScreen(
                             restingHrBpm = restingHeartRateState.value.takeIf { restingHeartRateState.isEnabled },
                             spo2Percent = oxygenSaturationState.value.takeIf { oxygenSaturationState.isEnabled },
                             respRate = respiratoryRateState.value.takeIf { respiratoryRateState.isEnabled },
+                            loading = healthConnectState is HealthConnectUiState.Loading,
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                     }
@@ -345,9 +370,10 @@ fun HealthScreen(
                             onRequestPermission = {
                                 hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
                             },
+                            onRetry = { healthViewModel.retryHealthConnect() },
                             onRevealRoute = { activity ->
-                                pendingRouteActivityId = activity.id
-                                routeLauncher.launch(activity.id)
+                                haptics.tick()
+                                revealActivityRoute(activity)
                             },
                             onExpandActivity = { healthViewModel.loadActivityHeartRate(it) },
                         )
@@ -891,15 +917,7 @@ private fun MacroTrendsSection(
             )
 
             if (loading) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
+                LoadingRow(color = Primary) {
                     Text("Loading trends…", fontSize = 13.sp, color = TextSecondary)
                 }
             }

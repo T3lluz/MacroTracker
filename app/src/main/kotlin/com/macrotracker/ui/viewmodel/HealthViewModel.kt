@@ -121,6 +121,7 @@ class HealthViewModel @Inject constructor(
     val macroHistoryLoading: StateFlow<Boolean> = _macroHistoryLoading
 
     val healthConnectPermissions = HealthConnectRepository.PERMISSIONS
+    val exerciseRoutesPermission = HealthConnectRepository.EXERCISE_ROUTES_PERMISSION
 
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
     val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay
@@ -135,6 +136,7 @@ class HealthViewModel @Inject constructor(
     private var macroHistoryJob: Job? = null
     private var healthJob: Job? = null
     private var detailJob: Job? = null
+    private var pendingRouteApply: Pair<String, ExerciseRoute?>? = null
 
     /** Which detail panel (if any) should load heavy intraday datasets. */
     private var detailMetric: DetailMetric = DetailMetric.NONE
@@ -389,8 +391,15 @@ class HealthViewModel @Inject constructor(
         }
         try {
             val activities = healthConnectRepository.readRecentActivities()
-            _activitiesState.value = ActivitiesUiState.Success(activities)
-            pickFeaturedActivity(activities)?.let { loadActivityHeartRate(it) }
+            val merged = pendingRouteApply?.let { (id, route) ->
+                pendingRouteApply = null
+                activities.map { activity ->
+                    if (activity.id == id) healthConnectRepository.activityWithRoute(activity, route)
+                    else activity
+                }
+            } ?: activities
+            _activitiesState.value = ActivitiesUiState.Success(merged)
+            pickFeaturedActivity(merged)?.let { loadActivityHeartRate(it) }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read activities", e)
             if (current is ActivitiesUiState.Success) {
@@ -418,12 +427,23 @@ class HealthViewModel @Inject constructor(
     }
 
     fun applyExerciseRoute(activityId: String, route: ExerciseRoute?) {
-        val current = _activitiesState.value as? ActivitiesUiState.Success ?: return
+        val current = _activitiesState.value as? ActivitiesUiState.Success
+        if (current == null) {
+            pendingRouteApply = activityId to route
+            return
+        }
         val existing = current.activities.find { it.id == activityId } ?: return
         val updated = healthConnectRepository.activityWithRoute(existing, route)
         _activitiesState.value = current.copy(
             activities = current.activities.map { if (it.id == activityId) updated else it },
         )
+        if (updated.hasRoute) {
+            loadActivityHeartRate(updated)
+        }
+    }
+
+    fun retryHealthConnect() {
+        loadHealthConnect()
     }
 
     fun addLog(foodName: String, calories: Int, protein: Int) {

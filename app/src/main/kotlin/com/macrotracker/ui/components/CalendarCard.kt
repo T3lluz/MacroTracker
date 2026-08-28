@@ -95,7 +95,9 @@ fun CalendarCard(
     ) { stateKey ->
         val currentState = state
         when (stateKey) {
-            0 -> { } // Loading — nothing
+            0 -> MacroCard {
+                ContentSkeleton(lines = 3, accent = Border)
+            }
 
             1 -> {
                 val successState = currentState as? CalendarUiState.Success

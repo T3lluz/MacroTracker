@@ -35,9 +35,10 @@ import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.ScreenHeader
+import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
-import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -103,11 +104,11 @@ private val FAQ = listOf(
     ),
     FaqItem(
         question = "How do I connect Health Connect?",
-        answer = "Go to Settings → Connections and toggle on Health Connect. Grant the permissions when prompted, including Exercise so Garmin (and other apps) can share workouts. You can then enable individual metrics independently.",
+        answer = "Go to Settings → Connections and toggle on Health Connect. Grant the permissions when prompted, including Exercise and exercise routes so Garmin (and other apps) can share workouts and GPS maps. You can then enable individual metrics independently.",
     ),
     FaqItem(
         question = "How do I see Garmin walks and rides?",
-        answer = "In Garmin Connect, turn on Health Connect sync (including activities). In DailyDash, allow Health Connect exercise access. Workouts then appear on the Health tab in Activities, with a GPS map when the session includes a route.",
+        answer = "In Garmin Connect, turn on Health Connect sync (including activities). In DailyDash, allow Health Connect exercise and route access. Workouts then appear on the Health tab in Activities. If a walk or ride has GPS, tap Show GPS map once to reveal the route.",
     ),
     FaqItem(
         question = "How do I connect Weather or Calendar?",
@@ -131,16 +132,12 @@ fun HelpScreen(
             .padding(16.dp)
             .padding(bottom = 120.dp),
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Header
-        Text("Help & How-To", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = HeaderColor)
-        Text(
-            "Get started in minutes",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+        ScreenHeaderSpacer()
+        ScreenHeader(
+            title = "Help & How-To",
+            subtitle = "Get started in minutes",
         )
+        Spacer(modifier = Modifier.height(20.dp))
 
         // Quick Start card
         MacroCard(delayMs = 60) {

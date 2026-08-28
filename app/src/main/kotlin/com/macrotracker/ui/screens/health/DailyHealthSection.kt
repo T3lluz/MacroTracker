@@ -39,7 +39,10 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import com.macrotracker.R
 import com.macrotracker.data.health.HealthStats
 import com.macrotracker.data.local.DailySummary
+import com.macrotracker.ui.components.ContentSkeleton
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.StatusCopy
+import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -76,6 +79,7 @@ fun DailyHealthSection(
     restingHrBpm: String?,
     spo2Percent: String?,
     respRate: String?,
+    loading: Boolean = false,
     delayMs: Long = 0L,
 ) {
     val activity = remember(stats) {
@@ -123,7 +127,21 @@ fun DailyHealthSection(
 
     val hasAny = !quiet || resting != null || eaten != null ||
         (!heartRateBpm.isNullOrBlank() && heartRateBpm != "–")
-    if (!hasAny) return
+    if (loading && !hasAny) {
+        MacroCard(delayMs = delayMs) {
+            ContentSkeleton(lines = 4, accent = Border)
+        }
+        return
+    }
+    if (!hasAny) {
+        MacroCard(delayMs = delayMs) {
+            StatusCopy(
+                title = "No health data yet",
+                body = "Rings and today’s metrics show up once Health Connect is sharing steps, workouts, or sleep.",
+            )
+        }
+        return
+    }
 
     val dateLabel = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("EEE · MMM d"))

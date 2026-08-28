@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.GlassHairline
+import com.macrotracker.ui.theme.GlassTint
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
@@ -38,8 +40,6 @@ import dev.chrisbanes.haze.materials.CupertinoMaterials
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 
 private val NavPillShape = RoundedCornerShape(percent = 50)
-private val NavGlassTint = Color(0xFF141C2C)
-private val NavHairline = Color.White.copy(alpha = 0.22f)
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -85,16 +85,18 @@ fun PillNavigationBar(
                     if (hazeState != null) {
                         Modifier.hazeEffect(
                             state = hazeState,
-                            style = CupertinoMaterials.ultraThin(containerColor = NavGlassTint),
+                            style = CupertinoMaterials.ultraThin(containerColor = GlassTint),
                         ) {
                             blurRadius = 48.dp
-                            noiseFactor = 0.04f
+                            // Dotted frost is the texture; grain would compete with the dots.
+                            noiseFactor = 0f
                         }
                     } else {
-                        Modifier.background(NavGlassTint.copy(alpha = 0.55f))
+                        Modifier.background(GlassTint.copy(alpha = 0.72f))
                     },
                 )
-                .border(BorderStroke(0.5.dp, NavHairline), NavPillShape),
+                .dottedFrost()
+                .border(BorderStroke(0.5.dp, GlassHairline), NavPillShape),
         )
 
         if (containerSize.width > 0 && items.isNotEmpty()) {
@@ -174,7 +176,7 @@ fun PillNavigationBar(
                                         .clip(CircleShape)
                                         .background(Error)
                                         .border(
-                                            BorderStroke(1.5.dp, NavGlassTint),
+                                            BorderStroke(1.5.dp, GlassTint),
                                             CircleShape,
                                         ),
                                     contentAlignment = Alignment.Center,

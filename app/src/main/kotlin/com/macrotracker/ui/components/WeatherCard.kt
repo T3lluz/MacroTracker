@@ -29,7 +29,6 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -296,19 +295,7 @@ fun WeatherCard(
         when (stateKey) {
             WeatherStateKey.LOADING -> {
                 MacroCard {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = Primary,
-                            strokeWidth = 2.dp,
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Loading weather…", color = TextSecondary, fontSize = 14.sp)
-                    }
+                    ContentSkeleton(lines = 4, accent = Border)
                 }
             }
 

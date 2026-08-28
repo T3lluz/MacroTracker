@@ -16,3 +16,14 @@ val Success = Color(0xFF22C55E)
 
 // Semantic alias for screen-level headers — keeps every screen in sync
 val HeaderColor = TextPrimary
+
+/** Frosted pill / overlay chrome (navbar, floating composer). */
+val GlassTint = Color(0xFF141C2C)
+val GlassHairline = Color.White.copy(alpha = 0.22f)
+val GlassDot = Color.White.copy(alpha = 0.10f)
+
+/** Health activity maps and inset wells — named, not one-off hex. */
+val MapSurface = Color(0xFF0B1424)
+val MapWell = Color(0xFF0E1626)
+val MapStart = Color(0xFF34D399)
+val MapFinish = Color(0xFFFB7185)
