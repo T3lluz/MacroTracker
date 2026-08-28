@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.SportsScore
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Map
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,7 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,11 +57,15 @@ import com.macrotracker.data.health.formatActivityWhen
 import com.macrotracker.data.health.formatElevation
 import com.macrotracker.data.health.formatPace
 import com.macrotracker.data.health.pickFeaturedActivity
+import com.macrotracker.ui.components.ContentSkeleton
 import com.macrotracker.ui.components.MacroCard
+import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.MacroMotion
+import com.macrotracker.ui.theme.MapSurface
+import com.macrotracker.ui.theme.MapWell
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -79,6 +81,7 @@ fun ActivitiesSection(
     onRequestPermission: () -> Unit,
     onRevealRoute: (HealthActivity) -> Unit,
     onExpandActivity: (HealthActivity) -> Unit,
+    onRetry: () -> Unit = onRequestPermission,
     delayMs: Long = 40L,
 ) {
     MacroCard(delayMs = delayMs) {
@@ -105,20 +108,20 @@ fun ActivitiesSection(
 
         when (state) {
             is ActivitiesUiState.Loading -> {
-                Row(
+                ContentSkeleton(lines = 3, tiles = 0, accent = Border)
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 20.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Loading workouts…", fontSize = 13.sp, color = TextSecondary)
-                }
+                        .height(168.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MapSurface),
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                ContentSkeleton(lines = 2, accent = Border)
             }
             is ActivitiesUiState.PermissionRequired -> {
-                ActivitiesEmptyCopy(
+                StatusCopy(
                     title = "Show workouts from Garmin",
                     body = "Allow exercise access in Health Connect. Garmin Connect (and other fitness apps) can then share walks, rides, and gym sessions here — including GPS maps when available.",
                     actionLabel = "Allow workouts",
@@ -129,31 +132,27 @@ fun ActivitiesSection(
                 )
             }
             is ActivitiesUiState.Unavailable -> {
-                ActivitiesEmptyCopy(
+                StatusCopy(
                     title = "Health Connect needed",
                     body = "Workouts appear here once Health Connect is available and a source like Garmin Connect is syncing activities.",
-                    actionLabel = null,
-                    onAction = null,
                 )
             }
             is ActivitiesUiState.Error -> {
-                ActivitiesEmptyCopy(
+                StatusCopy(
                     title = "Couldn’t load activities",
                     body = state.message,
                     actionLabel = "Retry",
                     onAction = {
                         haptics.tick()
-                        onRequestPermission()
+                        onRetry()
                     },
                 )
             }
             is ActivitiesUiState.Success -> {
                 if (state.activities.isEmpty()) {
-                    ActivitiesEmptyCopy(
+                    StatusCopy(
                         title = "No workouts yet",
                         body = "Sync Garmin Connect (or Google Fit, Samsung Health, Strava…) to Health Connect. New walks, runs, and rides will show up here with maps and stats.",
-                        actionLabel = null,
-                        onAction = null,
                     )
                 } else {
                     ActivitiesList(
@@ -397,7 +396,7 @@ private fun ActivityMapBlock(
                     .fillMaxWidth()
                     .height(height)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF0B1424))
+                    .background(MapSurface)
                     .clickable(onClick = onRevealRoute),
                 contentAlignment = Alignment.Center,
             ) {
@@ -420,7 +419,7 @@ private fun ActivityMapBlock(
                     .fillMaxWidth()
                     .height(88.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF0B1424)),
+                    .background(MapSurface),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -467,7 +466,7 @@ private fun ActivityStatsGrid(activity: HealthActivity) {
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF0E1626))
+                    .background(MapWell)
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Text(label, fontSize = 10.sp, color = TextSecondary)
@@ -500,7 +499,7 @@ private fun ActivityHrSparkline(samples: List<ActivityHrPoint>, accent: Color) {
                 .fillMaxWidth()
                 .height(44.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF0E1626)),
+                .background(MapWell),
         ) {
             if (samples.size < 2) return@Canvas
             val minB = samples.minOf { it.bpm }.toFloat()
@@ -540,7 +539,7 @@ private fun ActivityLapsRow(activity: HealthActivity) {
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF0E1626))
+                    .background(MapWell)
                     .padding(6.dp),
             ) {
                 Text("L${lap.index}", fontSize = 10.sp, color = TextSecondary)
@@ -556,47 +555,8 @@ private fun ActivityLapsRow(activity: HealthActivity) {
     }
 }
 
-@Composable
-private fun ActivitiesEmptyCopy(
-    title: String,
-    body: String,
-    actionLabel: String?,
-    onAction: (() -> Unit)?,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Background)
-            .padding(14.dp),
-    ) {
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        Text(
-            body,
-            fontSize = 13.sp,
-            color = TextSecondary,
-            fontStyle = FontStyle.Italic,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        if (actionLabel != null && onAction != null) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                actionLabel,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = Primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Primary.copy(alpha = 0.12f))
-                    .clickable(onClick = onAction)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-        }
-    }
-}
-
 internal fun activityAccent(type: Int): Color = when (type) {
-    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> Color(0xFF4F7CFF)
+    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> Primary
     ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
     ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL,
     -> Color(0xFFFF8A4C)

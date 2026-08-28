@@ -186,6 +186,27 @@ class HealthActivityTest {
     }
 
     @Test
+    fun routeAttemptClearsConsentWhenUserDeniesOrEmpty() {
+        val waiting = sampleActivity("need-map", routeConsentRequired = true)
+        val denied = activityAfterRouteAttempt(waiting, null)
+        assertFalse(denied.routeConsentRequired)
+        assertTrue(denied.route.isEmpty())
+
+        val granted = activityAfterRouteAttempt(
+            waiting,
+            ExerciseRoute(
+                listOf(
+                    ExerciseRoute.Location(noon, 51.5, -0.12),
+                    ExerciseRoute.Location(noon.plusSeconds(20), 51.501, -0.119),
+                ),
+            ),
+        )
+        assertFalse(granted.routeConsentRequired)
+        assertEquals(2, granted.route.size)
+        assertEquals("need-map", granted.id)
+    }
+
+    @Test
     fun outdoorWorkoutsOfferRouteConsentWhenListOmitsGps() {
         assertFalse(
             activityNeedsRouteConsent(

@@ -45,13 +45,12 @@ import com.macrotracker.data.health.ActivityRoutePoint
 import com.macrotracker.data.health.RouteMapViewport
 import com.macrotracker.data.health.buildRouteMapViewport
 import com.macrotracker.ui.theme.MacroMotion
+import com.macrotracker.ui.theme.MapFinish
+import com.macrotracker.ui.theme.MapStart
+import com.macrotracker.ui.theme.MapSurface
 import com.macrotracker.ui.theme.TextSecondary
 import kotlin.math.max
 import kotlin.math.roundToInt
-
-private val MapBg = Color(0xFF0B1424)
-private val StartDot = Color(0xFF34D399)
-private val EndDot = Color(0xFFFB7185)
 
 @Composable
 fun ActivityRouteMap(
@@ -83,7 +82,7 @@ fun ActivityRouteMap(
             .fillMaxWidth()
             .height(height)
             .clip(RoundedCornerShape(14.dp))
-            .background(MapBg)
+            .background(MapSurface)
             .onSizeChanged { sizePx = it },
         contentAlignment = Alignment.Center,
     ) {
@@ -123,7 +122,7 @@ fun ActivityRouteMap(
             )
             Text(
                 "Start",
-                color = StartDot,
+                color = MapStart,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
@@ -132,7 +131,7 @@ fun ActivityRouteMap(
             )
             Text(
                 "Finish",
-                color = EndDot,
+                color = MapFinish,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
@@ -236,12 +235,12 @@ private fun RouteOverlay(
             viewport.fractionX(last.longitude) * w,
             viewport.fractionY(last.latitude) * h,
         )
-        drawCircle(StartDot.copy(alpha = 0.28f), radius = 12f, center = start)
-        drawCircle(StartDot, radius = 5.5f, center = start)
+        drawCircle(MapStart.copy(alpha = 0.28f), radius = 12f, center = start)
+        drawCircle(MapStart, radius = 5.5f, center = start)
         drawCircle(Color.White, radius = 2.2f, center = start)
         if (progress > 0.92f) {
-            drawCircle(EndDot.copy(alpha = 0.28f), radius = 12f, center = end)
-            drawCircle(EndDot, radius = 5.5f, center = end)
+            drawCircle(MapFinish.copy(alpha = 0.28f), radius = 12f, center = end)
+            drawCircle(MapFinish, radius = 5.5f, center = end)
             drawCircle(Color.White, radius = 2.2f, center = end)
         }
     }

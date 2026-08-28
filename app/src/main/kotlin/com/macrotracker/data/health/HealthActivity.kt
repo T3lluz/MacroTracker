@@ -420,6 +420,28 @@ fun pointsFromExerciseRoute(route: ExerciseRoute?): List<ActivityRoutePoint> {
     )
 }
 
+/**
+ * Apply a Health Connect route-consent result. Empty / denied routes clear
+ * [HealthActivity.routeConsentRequired] so outdoor workouts don't loop on
+ * “Show GPS map”.
+ */
+fun activityAfterRouteAttempt(activity: HealthActivity, route: ExerciseRoute?): HealthActivity {
+    val points = pointsFromExerciseRoute(route)
+    if (points.size < 2) {
+        return activity.copy(routeConsentRequired = false)
+    }
+    val distance = activity.distanceKm
+        ?: routeDistanceKm(points).takeIf { it > 0.02 }
+    val elevation = activity.elevationGainM
+        ?: routeElevationGainM(points).takeIf { it >= 1.0 }
+    return activity.copy(
+        route = points,
+        routeConsentRequired = false,
+        distanceKm = distance,
+        elevationGainM = elevation,
+    )
+}
+
 fun resolveActivityRoute(result: ExerciseRouteResult): ActivityRouteResolution = when (result) {
     is ExerciseRouteResult.Data -> ActivityRouteResolution(
         points = pointsFromExerciseRoute(result.exerciseRoute),
