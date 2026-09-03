@@ -9,6 +9,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,6 +44,8 @@ import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
+import com.macrotracker.ui.components.HealthMetricUiState
+import com.macrotracker.ui.components.calculatePercentageChange
 import java.text.DecimalFormat
 import kotlin.math.abs
 
@@ -124,7 +128,13 @@ fun HealthStatCard(
     percentageChange: Double?,
     @DrawableRes iconRes: Int,
     color: Color,
+    /** Replaces the delta row when there is no reading ("Not shared", "No data today"). */
+    note: String? = null,
+    /** Softens the card when it is a placeholder rather than a live number. */
+    dimmed: Boolean = false,
 ) {
+    val valueColor = if (dimmed) TextSecondary else TextPrimary
+    val accent = if (dimmed) color.copy(alpha = 0.45f) else color
     Box(
         modifier = modifier
             .height(96.dp)
@@ -146,13 +156,13 @@ fun HealthStatCard(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(color.copy(alpha = 0.18f)),
+                        .background(accent.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = painterResource(iconRes),
                         contentDescription = metricName,
-                        tint = color,
+                        tint = accent,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -180,14 +190,27 @@ fun HealthStatCard(
                         text = animatedValue,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
+                        color = valueColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (percentageChange != null) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    HealthPercentageChange(percentageChange)
+                when {
+                    percentageChange != null -> {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        HealthPercentageChange(percentageChange)
+                    }
+                    note != null -> {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = note,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
@@ -247,5 +270,66 @@ fun HealthMiniStat(
         if (subtitle != null) {
             Text(subtitle, fontSize = 10.sp, color = tint.copy(alpha = 0.85f), fontWeight = FontWeight.Medium)
         }
+    }
+}
+
+/**
+ * One metric as the Body Stats grid renders it. [state] carries the toggle,
+ * the permission result and the reading, so the grid can tell "nothing today"
+ * apart from "Health Connect never granted this".
+ */
+data class HealthMetricEntry(
+    val metric: HealthMetric,
+    val label: String,
+    val unit: String,
+    val state: HealthMetricUiState,
+)
+
+/**
+ * Shared two-column metric grid.
+ *
+ * Every enabled metric gets a card. A metric with no reading shows its empty
+ * placeholder instead of disappearing, and one whose permission is missing says
+ * so — the old grid silently dropped both cases, which read as "the app only
+ * shows heart rate".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun HealthMetricGrid(
+    entries: List<HealthMetricEntry>,
+    modifier: Modifier = Modifier,
+) {
+    val visible = entries.filter { it.state.isEnabled }
+    if (visible.isEmpty()) return
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = 2,
+    ) {
+        visible.forEach { entry ->
+            val state = entry.state
+            val value = state.value.orEmpty().ifBlank { "—" }
+            HealthStatCard(
+                modifier = Modifier.weight(1f),
+                metricName = entry.label,
+                value = if (entry.unit.isBlank()) value else "$value ${entry.unit}",
+                percentageChange = if (state.hasValue) {
+                    calculatePercentageChange(state.today, state.yesterday)
+                } else {
+                    null
+                },
+                iconRes = entry.metric.iconRes(),
+                color = entry.metric.tint(),
+                note = when {
+                    state.permissionMissing -> "Not shared"
+                    state.isEmpty -> "No data today"
+                    else -> null
+                },
+                dimmed = !state.hasValue,
+            )
+        }
+        // Keeps the last row aligned to the same column widths.
+        if (visible.size % 2 == 1) Spacer(modifier = Modifier.weight(1f))
     }
 }

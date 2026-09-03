@@ -72,6 +72,8 @@ import com.macrotracker.ui.screens.health.ActivitiesSection
 import com.macrotracker.ui.screens.health.AnimatedMacroBarChart
 import com.macrotracker.ui.screens.health.DailyHealthSection
 import com.macrotracker.ui.screens.health.HealthMetric
+import com.macrotracker.ui.screens.health.HealthMetricEntry
+import com.macrotracker.ui.screens.health.HealthMetricGrid
 import com.macrotracker.ui.screens.health.HealthStatCard
 import com.macrotracker.ui.screens.health.HealthTrendsSection
 import com.macrotracker.ui.screens.health.iconRes
@@ -88,8 +90,11 @@ import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.ScreenHeader
+import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.components.WidgetEditor
+import com.macrotracker.ui.components.WidgetPlaceholder
+import com.macrotracker.ui.components.WidgetPlaceholderCard
 import com.macrotracker.ui.components.calculatePercentageChange
 import com.macrotracker.ui.components.draggableWidgetItems
 import com.macrotracker.ui.components.encodeWidgetConfig
@@ -98,6 +103,7 @@ import com.macrotracker.ui.components.rememberDraggableWidgetListState
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.NutritionCalories
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.Success
@@ -193,6 +199,7 @@ fun HealthScreen(
     val distanceState by dashboardViewModel.distanceState.collectAsState()
     val floorsClimbedState by dashboardViewModel.floorsClimbedState.collectAsState()
     val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
+    val missingPermissions by dashboardViewModel.missingPermissions.collectAsState()
 
     var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
     val routeLauncher = rememberLauncherForActivityResult(
@@ -359,6 +366,10 @@ fun HealthScreen(
                             restingHrBpm = restingHeartRateState.value.takeIf { restingHeartRateState.isEnabled },
                             spo2Percent = oxygenSaturationState.value.takeIf { oxygenSaturationState.isEnabled },
                             respRate = respiratoryRateState.value.takeIf { respiratoryRateState.isEnabled },
+                            stepsToday = stepsState.today?.toLong(),
+                            activeCaloriesToday = activeCaloriesState.today?.toDouble(),
+                            distanceToday = distanceState.today?.toDouble(),
+                            floorsToday = floorsClimbedState.today?.toDouble(),
                             loading = healthConnectState is HealthConnectUiState.Loading,
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -380,28 +391,28 @@ fun HealthScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
                     "BODY_STATS" -> {
-                        // Daily Health already surfaces today's vitals/chips — skip this duplicate
-                        // grid when that widget is visible. Keep Body Stats for installs that
-                        // hide Daily Health.
-                        val dailyHealthVisible = parsedConfigs.any {
-                            it.id == "DAILY_HEALTH" && it.isVisible
+                        // Every enabled metric gets a card. This grid used to be
+                        // suppressed whenever Daily Health was visible, which hid
+                        // steps / distance / floors / active calories entirely on a
+                        // default install.
+                        val metricEntries = remember(
+                            heartRateState, restingHeartRateState, oxygenSaturationState,
+                            respiratoryRateState, stepsState, distanceState,
+                            floorsClimbedState, activeCaloriesState,
+                        ) {
+                            listOf(
+                                HealthMetricEntry(HealthMetric.HEART_RATE, "Heart Rate", "bpm", heartRateState),
+                                HealthMetricEntry(HealthMetric.RESTING_HEART_RATE, "Resting HR", "bpm", restingHeartRateState),
+                                HealthMetricEntry(HealthMetric.OXYGEN_SATURATION, "SpO₂", "%", oxygenSaturationState),
+                                HealthMetricEntry(HealthMetric.RESPIRATORY_RATE, "Resp. Rate", "rpm", respiratoryRateState),
+                                HealthMetricEntry(HealthMetric.STEPS, "Steps", "", stepsState),
+                                HealthMetricEntry(HealthMetric.DISTANCE, "Distance", "km", distanceState),
+                                HealthMetricEntry(HealthMetric.FLOORS_CLIMBED, "Floors", "", floorsClimbedState),
+                                HealthMetricEntry(HealthMetric.CALORIES, "Active Cals", "kcal", activeCaloriesState),
+                            )
                         }
-                        val showHeartRate = !dailyHealthVisible &&
-                            heartRateState.isEnabled && heartRateState.value != "–"
-                        val showRestingHr = !dailyHealthVisible &&
-                            restingHeartRateState.isEnabled && restingHeartRateState.value != "–"
-                        val showSpo2 = !dailyHealthVisible &&
-                            oxygenSaturationState.isEnabled && oxygenSaturationState.value != "–"
-                        val showResp = !dailyHealthVisible &&
-                            respiratoryRateState.isEnabled && respiratoryRateState.value != "–"
-                        val showSteps = !dailyHealthVisible && stepsState.isEnabled
-                        val showDistance = !dailyHealthVisible && distanceState.isEnabled
-                        val showFloors = !dailyHealthVisible && floorsClimbedState.isEnabled
-                        val showActive = !dailyHealthVisible && activeCaloriesState.isEnabled
-                        val isAnyStatEnabled = showHeartRate || showRestingHr || showSpo2 || showResp ||
-                                showSteps || showDistance || showFloors || showActive
 
-                        if (isAnyStatEnabled) {
+                        if (metricEntries.any { it.state.isEnabled }) {
                             MacroCard(delayMs = 0) {
                                 Text(
                                     "Body Stats",
@@ -411,92 +422,21 @@ fun HealthScreen(
                                     modifier = Modifier.padding(bottom = 12.dp),
                                 )
 
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    maxItemsInEachRow = 2,
-                                ) {
-                                    if (showHeartRate) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Heart Rate",
-                                            value = "${heartRateState.value} bpm",
-                                            percentageChange = calculatePercentageChange(heartRateState.today, heartRateState.yesterday),
-                                            iconRes = HealthMetric.HEART_RATE.iconRes(),
-                                            color = Color(0xFFEF5350),
-                                        )
-                                    }
-                                    if (showRestingHr) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Resting HR",
-                                            value = "${restingHeartRateState.value} bpm",
-                                            percentageChange = calculatePercentageChange(restingHeartRateState.today, restingHeartRateState.yesterday),
-                                            iconRes = HealthMetric.RESTING_HEART_RATE.iconRes(),
-                                            color = Color(0xFFE57373),
-                                        )
-                                    }
-                                    if (showSpo2) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "SpO2",
-                                            value = "${oxygenSaturationState.value} %",
-                                            percentageChange = calculatePercentageChange(oxygenSaturationState.today, oxygenSaturationState.yesterday),
-                                            iconRes = HealthMetric.OXYGEN_SATURATION.iconRes(),
-                                            color = Color(0xFF42A5F5),
-                                        )
-                                    }
-                                    if (showResp) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Resp. Rate",
-                                            value = "${respiratoryRateState.value} rpm",
-                                            percentageChange = calculatePercentageChange(respiratoryRateState.today, respiratoryRateState.yesterday),
-                                            iconRes = HealthMetric.RESPIRATORY_RATE.iconRes(),
-                                            color = Color(0xFF26C6DA),
-                                        )
-                                    }
-                                    if (showSteps) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Steps",
-                                            value = stepsState.value ?: "0",
-                                            percentageChange = calculatePercentageChange(stepsState.today, stepsState.yesterday),
-                                            iconRes = HealthMetric.STEPS.iconRes(),
-                                            color = Primary,
-                                        )
-                                    }
-                                    if (showDistance) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Distance",
-                                            value = "${distanceState.value} km",
-                                            percentageChange = calculatePercentageChange(distanceState.today, distanceState.yesterday),
-                                            iconRes = HealthMetric.DISTANCE.iconRes(),
-                                            color = Primary,
-                                        )
-                                    }
-                                    if (showFloors) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Floors",
-                                            value = floorsClimbedState.value ?: "0",
-                                            percentageChange = calculatePercentageChange(floorsClimbedState.today, floorsClimbedState.yesterday),
-                                            iconRes = HealthMetric.FLOORS_CLIMBED.iconRes(),
-                                            color = Color(0xFF66BB6A),
-                                        )
-                                    }
-                                    if (showActive) {
-                                        HealthStatCard(
-                                            modifier = Modifier.weight(1f),
-                                            metricName = "Active Cals",
-                                            value = activeCaloriesState.value ?: "0",
-                                            percentageChange = calculatePercentageChange(activeCaloriesState.today, activeCaloriesState.yesterday),
-                                            iconRes = HealthMetric.CALORIES.iconRes(),
-                                            color = Color(0xFFFF9800),
-                                        )
-                                    }
+                                HealthMetricGrid(entries = metricEntries)
+
+                                if (missingPermissions.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    StatusCopy(
+                                        title = "Some metrics aren’t shared",
+                                        body = "Health Connect hasn’t granted " +
+                                            missingPermissions.joinToString { it.label } +
+                                            ". Allow them to see real numbers instead of placeholders.",
+                                        actionLabel = "Allow in Health Connect",
+                                        onAction = {
+                                            haptics.tick()
+                                            hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+                                        },
+                                    )
                                 }
                             }
 
@@ -504,7 +444,17 @@ fun HealthScreen(
                         }
                     }
                     "HISTORY" -> {
-                        if (healthHistory.isNotEmpty()) {
+                        if (healthHistory.isEmpty()) {
+                            // Reserve the slot instead of collapsing to nothing —
+                            // an empty section used to shove the rest of the list
+                            // down the instant the week query returned.
+                            WidgetPlaceholderCard(
+                                title = "Weekly Trends",
+                                icon = Icons.AutoMirrored.Filled.ShowChart,
+                                lines = 4,
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                        } else {
                             HealthTrendsSection(
                                 healthHistory = healthHistory,
                                 selectedDate = selectedDate,
@@ -539,7 +489,15 @@ fun HealthScreen(
                     }
                     "SUMMARY" -> {
                         val s = summary
-                        if (s != null) {
+                        if (s == null) {
+                            WidgetPlaceholderCard(
+                                title = "Daily Summary",
+                                icon = Icons.Default.ViewDay,
+                                minHeight = WidgetPlaceholder.CompactMinHeight,
+                                lines = 2,
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                        } else {
                             val hcStats = (healthConnectState as? HealthConnectUiState.Success)?.stats
                             MacroCard(delayMs = 100) {
                                 Text(
@@ -808,7 +766,7 @@ private fun MacroTrendsSection(
         if (metric == "calories") day?.totalCalories ?: 0 else day?.totalProtein ?: 0
     }
     val selectedMacro = macroHistory.find { it.date == selectedDate }
-    val barColor = if (metric == "calories") Color(0xFFFF9800) else Primary
+    val barColor = if (metric == "calories") NutritionCalories else Primary
     val selectedIndex = dates.indexOf(selectedDate).coerceAtLeast(0)
     val labels = dates.map { date ->
         try {
@@ -853,7 +811,7 @@ private fun MacroTrendsSection(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
                 listOf("calories" to "Calories", "protein" to "Protein").forEach { (key, label) ->
                     val isActive = metric == key
-                    val tint = if (key == "calories") Color(0xFFFF9800) else Primary
+                    val tint = if (key == "calories") NutritionCalories else Primary
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)

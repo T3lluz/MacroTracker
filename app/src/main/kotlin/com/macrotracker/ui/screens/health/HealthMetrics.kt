@@ -4,7 +4,15 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import com.macrotracker.R
 import com.macrotracker.data.health.HealthStats
-import com.macrotracker.ui.theme.Primary
+import com.macrotracker.ui.theme.HealthDistance
+import com.macrotracker.ui.theme.HealthFloors
+import com.macrotracker.ui.theme.HealthHeartRate
+import com.macrotracker.ui.theme.HealthMove
+import com.macrotracker.ui.theme.HealthOxygen
+import com.macrotracker.ui.theme.HealthRespiratory
+import com.macrotracker.ui.theme.HealthRestingHr
+import com.macrotracker.ui.theme.HealthSleep
+import com.macrotracker.ui.theme.HealthSteps
 import java.util.Locale
 
 enum class HealthMetric {
@@ -45,16 +53,17 @@ fun HealthStats.valueOf(metric: HealthMetric): Double = when (metric) {
     HealthMetric.FLOORS_CLIMBED -> floorsClimbed
 }
 
+/** Single source for metric colour — see the Health* tokens in Color.kt. */
 fun HealthMetric.tint(): Color = when (this) {
-    HealthMetric.STEPS -> Primary
-    HealthMetric.HEART_RATE -> Color(0xFFEF5350)
-    HealthMetric.SLEEP -> Color(0xFF7C4DFF)
-    HealthMetric.CALORIES -> Color(0xFFFF9800)
-    HealthMetric.RESTING_HEART_RATE -> Color(0xFFE57373)
-    HealthMetric.OXYGEN_SATURATION -> Color(0xFF42A5F5)
-    HealthMetric.RESPIRATORY_RATE -> Color(0xFF26C6DA)
-    HealthMetric.DISTANCE -> Color(0xFF26A69A)
-    HealthMetric.FLOORS_CLIMBED -> Color(0xFF66BB6A)
+    HealthMetric.STEPS -> HealthSteps
+    HealthMetric.HEART_RATE -> HealthHeartRate
+    HealthMetric.SLEEP -> HealthSleep
+    HealthMetric.CALORIES -> HealthMove
+    HealthMetric.RESTING_HEART_RATE -> HealthRestingHr
+    HealthMetric.OXYGEN_SATURATION -> HealthOxygen
+    HealthMetric.RESPIRATORY_RATE -> HealthRespiratory
+    HealthMetric.DISTANCE -> HealthDistance
+    HealthMetric.FLOORS_CLIMBED -> HealthFloors
 }
 
 fun HealthMetric.chipLabel(): String = when (this) {

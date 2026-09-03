@@ -36,17 +36,24 @@ import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Success
+import com.macrotracker.ui.theme.HealthFloors
+import com.macrotracker.ui.theme.HealthMove
+import com.macrotracker.ui.theme.HealthRecovery
+import com.macrotracker.ui.theme.HealthSleep
+import com.macrotracker.ui.theme.HealthSteps
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private val MoveRing = Color(0xFFFF2D55)
-private val ExerciseRing = Color(0xFF30D158)
-private val StepsRing = Color(0xFF0A84FF)
-private val SleepAccent = Color(0xFF5C6BC0)
-private val RecoveryAccent = Color(0xFF26C6DA)
+// Aliases onto the shared health palette (Color.kt). This file used to carry
+// its own near-miss copies of the same five colours.
+private val MoveRing = HealthMove
+private val ExerciseRing = HealthFloors
+private val StepsRing = HealthSteps
+private val SleepAccent = HealthSleep
+private val RecoveryAccent = HealthRecovery
 
 @Composable
 fun HealthActivityHighlights(
