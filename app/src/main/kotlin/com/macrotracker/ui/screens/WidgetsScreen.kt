@@ -61,6 +61,9 @@ import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.HeaderColor
 import com.macrotracker.ui.theme.MacroMotion
+import com.macrotracker.ui.theme.CalendarBrand
+import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.WeatherBrand
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Success
 import com.macrotracker.ui.theme.Surface
@@ -95,15 +98,15 @@ private data class WidgetInfo(
 
 private val F1_RED = Color(0xFFE8002D)
 
-/** All widgets are fixed 5×3; preview images are 16:9 mock screenshots. */
+/** Widgets are placed at 5×3 and resize down from there; previews are 16:9. */
 private const val WIDGET_PREVIEW_RATIO = 16f / 9f
 
 private val CORE_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — Dashboard",
         description = "Your all-in-one daily overview: macros, health metrics, weather, and calendar events in one glance.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 2 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_dashboard,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = DashboardWidgetReceiver::class.java,
@@ -112,8 +115,8 @@ private val CORE_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — Nutrition",
         description = "Track today's calories and protein goals with animated progress bars and a quick-glance summary.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 2 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_macros,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = MacrosWidgetReceiver::class.java,
@@ -122,12 +125,12 @@ private val CORE_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — Health",
         description = "Steps, heart rate, sleep duration, and active calories from Health Connect at a glance.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 2 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_health,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = HealthWidgetReceiver::class.java,
-        accentColor = Color(0xFFEF4444),
+        accentColor = Error,
     ),
     WidgetInfo(
         name        = "DailyDash — Weather",
@@ -137,17 +140,17 @@ private val CORE_WIDGETS = listOf(
         previewRes  = R.drawable.widget_preview_weather,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = WeatherWidgetReceiver::class.java,
-        accentColor = Color(0xFF42A5F5),
+        accentColor = WeatherBrand,
     ),
     WidgetInfo(
         name        = "DailyDash — Calendar",
         description = "Today's upcoming events and tomorrow's schedule from your Google Calendar.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 2 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_calendar,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = CalendarWidgetReceiver::class.java,
-        accentColor = Color(0xFF4285F4),
+        accentColor = CalendarBrand,
     ),
 )
 
@@ -155,8 +158,8 @@ private val F1_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — F1: Next Race",
         description = "Countdown timer to the next Grand Prix, circuit info, and full session schedule.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 2 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_f1_countdown,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = F1CountdownWidgetReceiver::class.java,
@@ -165,8 +168,8 @@ private val F1_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — F1: Standings",
         description = "Live driver and constructor championship standings with team colours and points.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 3 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_f1_standings,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = F1StandingsWidgetReceiver::class.java,
@@ -175,8 +178,8 @@ private val F1_WIDGETS = listOf(
     WidgetInfo(
         name        = "DailyDash — F1: Schedule",
         description = "Full 2026 Formula 1 race calendar with sprint weekends, flags, and round numbers.",
-        size        = "5 × 3",
-        sizeLabel   = "Large",
+        size        = "5 × 3 — resize to 3 × 2",
+        sizeLabel   = "Resizable",
         previewRes  = R.drawable.widget_preview_f1_schedule,
         previewRatio = WIDGET_PREVIEW_RATIO,
         receiverClass = F1ScheduleWidgetReceiver::class.java,

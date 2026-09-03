@@ -234,7 +234,8 @@ fun HomeScreen(
             haptics = haptics,
         )
         val tickersPaused by remember { derivedStateOf { listState.isScrollInProgress } }
-        val visibleWidgetIds = rememberVisibleHomeWidgetIds(listState)
+        val orderedWidgetIds = remember(visibleConfigs) { visibleConfigs.map { it.id } }
+        val visibleWidgetIds = rememberVisibleHomeWidgetIds(listState, orderedWidgetIds)
 
         // Load data for newly visible widgets only; ViewModel tracks already-loaded IDs.
         LaunchedEffect(visibleWidgetIds) {

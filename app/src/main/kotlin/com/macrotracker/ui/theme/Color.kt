@@ -27,3 +27,32 @@ val MapSurface = Color(0xFF0B1424)
 val MapWell = Color(0xFF0E1626)
 val MapStart = Color(0xFF34D399)
 val MapFinish = Color(0xFFFB7185)
+
+/**
+ * Health metric accents — one palette for rings, chips, stat cards and charts.
+ *
+ * Daily Health and Body Stats used to carry two different sets of hard-coded
+ * hex for the same metrics, so the same number changed colour between cards.
+ */
+val HealthSteps = Color(0xFF0A84FF)
+val HealthSleep = Color(0xFFBF5AF2)
+val HealthMove = Color(0xFFFF375F)
+val HealthHeartRate = Color(0xFFFF453A)
+val HealthRestingHr = Color(0xFFFF6961)
+val HealthOxygen = Color(0xFF64D2FF)
+val HealthRespiratory = Color(0xFF70D7FF)
+val HealthFloors = Color(0xFF30D158)
+val HealthDistance = Color(0xFF32ADE6)
+val HealthEnergy = Color(0xFFFFD60A)
+val HealthProtein = Color(0xFF32D74B)
+val HealthActivity = Color(0xFF34D399)
+val HealthRecovery = Color(0xFF26C6DA)
+
+/** Nutrition accents — calories and protein, wherever either is charted. */
+val NutritionCalories = Color(0xFFFF9800)
+val NutritionProtein = Secondary
+
+/** Single-brand chrome for cards that represent an outside service. */
+val CalendarBrand = Color(0xFF4285F4)
+val WeatherBrand = Color(0xFF42A5F5)
+val HealthConnectBrand = Color(0xFFE53935)

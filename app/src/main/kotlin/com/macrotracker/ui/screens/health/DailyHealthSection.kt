@@ -43,6 +43,16 @@ import com.macrotracker.ui.components.ContentSkeleton
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.HealthEnergy
+import com.macrotracker.ui.theme.HealthFloors
+import com.macrotracker.ui.theme.HealthHeartRate
+import com.macrotracker.ui.theme.HealthMove
+import com.macrotracker.ui.theme.HealthOxygen
+import com.macrotracker.ui.theme.HealthProtein
+import com.macrotracker.ui.theme.HealthRespiratory
+import com.macrotracker.ui.theme.HealthRestingHr
+import com.macrotracker.ui.theme.HealthSleep
+import com.macrotracker.ui.theme.HealthSteps
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -51,17 +61,18 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-// Ring + accent palette (Apple Fitness–adjacent, tuned for DailyDash dark UI)
-private val StepsC = Color(0xFF0A84FF)
-private val SleepC = Color(0xFFBF5AF2)
-private val MoveC = Color(0xFFFF375F)
-private val RestC = Color(0xFFFF6961)
-private val HrC = Color(0xFFFF453A)
-private val Spo2C = Color(0xFF64D2FF)
-private val FloorC = Color(0xFF30D158)
-private val EnergyC = Color(0xFFFFD60A)
-private val ProteinC = Color(0xFF32D74B)
-private val RespC = Color(0xFF70D7FF)
+// Local aliases for the shared health palette (Color.kt) so this file reads
+// the same as before while every card draws from one set of tokens.
+private val StepsC = HealthSteps
+private val SleepC = HealthSleep
+private val MoveC = HealthMove
+private val RestC = HealthRestingHr
+private val HrC = HealthHeartRate
+private val Spo2C = HealthOxygen
+private val FloorC = HealthFloors
+private val EnergyC = HealthEnergy
+private val ProteinC = HealthProtein
+private val RespC = HealthRespiratory
 
 private enum class HeroKind { SLEEP, STEPS, MOVE, RESTING, ENERGY }
 
@@ -79,16 +90,26 @@ fun DailyHealthSection(
     restingHrBpm: String?,
     spo2Percent: String?,
     respRate: String?,
+    /**
+     * Per-metric reads from `DashboardViewModel`. The batch aggregate behind
+     * [stats] and these single-metric reads can disagree (a provider rejects one
+     * metric in a batch but answers it alone), so whichever has a real number
+     * wins instead of the card rendering a zero.
+     */
+    stepsToday: Long? = null,
+    activeCaloriesToday: Double? = null,
+    distanceToday: Double? = null,
+    floorsToday: Double? = null,
     loading: Boolean = false,
     delayMs: Long = 0L,
 ) {
-    val activity = remember(stats) {
+    val activity = remember(stats, stepsToday, activeCaloriesToday, distanceToday, floorsToday) {
         computeTodayActivity(
             stats = stats,
-            stepsToday = stats?.steps,
-            activeCalToday = stats?.activeCaloriesBurned,
-            distanceToday = stats?.distance,
-            floorsToday = stats?.floorsClimbed,
+            stepsToday = stepsToday?.takeIf { it > 0L } ?: stats?.steps,
+            activeCalToday = activeCaloriesToday?.takeIf { it > 0.0 } ?: stats?.activeCaloriesBurned,
+            distanceToday = distanceToday?.takeIf { it > 0.0 } ?: stats?.distance,
+            floorsToday = floorsToday?.takeIf { it > 0.0 } ?: stats?.floorsClimbed,
         )
     }
 

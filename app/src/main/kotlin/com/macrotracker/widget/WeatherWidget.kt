@@ -57,7 +57,19 @@ private fun WeatherRoot(d: DashboardWidgetData) {
 
             if (!d.hasWeatherData) {
                 Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    WidgetNoData(R.drawable.ic_weather_cloud_sun, "No weather data", c, sc)
+                    // Say *why* there is no forecast — a missing location
+                    // permission is a fixable problem, a failed fetch is not the
+                    // same thing.
+                    WidgetNoData(
+                        R.drawable.ic_weather_cloud_sun,
+                        when (d.weatherState) {
+                            WidgetSourceState.NO_PERMISSION -> "Location not shared\nTap to allow"
+                            WidgetSourceState.ERROR -> "Couldn't load weather\nTap to retry"
+                            else -> "No weather data yet"
+                        },
+                        c,
+                        sc,
+                    )
                 }
             } else {
                 // Header Labels Row
@@ -387,7 +399,8 @@ private fun WeatherHeaderBlock(
             c = c,
             sc = sc,
             showGreeting = showGreeting,
-            lastUpdatedAt = d.lastUpdatedAt,
+            // The forecast's own age, not the widget's render time.
+            lastUpdatedAt = if (d.weatherFetchedAt > 0L) d.weatherFetchedAt else d.lastUpdatedAt,
             accent = c.weather,
         )
         if (!d.weatherLocation.isNullOrBlank()) {

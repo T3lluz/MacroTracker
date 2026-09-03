@@ -529,3 +529,26 @@ fun buildRouteMapViewport(
     }
     return viewport
 }
+
+/**
+ * Start of the window the Activities card covers.
+ *
+ * A plain rolling [days] window drops workouts the user thinks of as "last
+ * month": on the 3rd, a 31-day window starts on the 3rd of the previous month,
+ * so a session from the 1st is invisible even though it is obviously "last
+ * month". Reach back to whichever is earlier — the rolling window, or the start
+ * of the previous calendar month.
+ */
+fun activityWindowStart(
+    days: Int,
+    now: java.time.Instant = java.time.Instant.now(),
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+): java.time.Instant {
+    val rolling = now.minus(java.time.Duration.ofDays(days.toLong()))
+    val calendarMonthStart = now.atZone(zone).toLocalDate()
+        .withDayOfMonth(1)
+        .minusMonths(1)
+        .atStartOfDay(zone)
+        .toInstant()
+    return if (calendarMonthStart.isBefore(rolling)) calendarMonthStart else rolling
+}

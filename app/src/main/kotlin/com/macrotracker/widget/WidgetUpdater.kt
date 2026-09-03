@@ -2,7 +2,12 @@ package com.macrotracker.widget
 
 import android.content.Context
 import androidx.glance.appwidget.updateAll
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -18,6 +23,31 @@ import kotlinx.coroutines.withContext
  * 3. Enqueue a background worker to fetch fresh AI insights + re-render again
  */
 object WidgetUpdater {
+
+    /** Writes arrive in bursts (a scan adds a log, then reloads); collapse them. */
+    private const val DATA_CHANGE_DEBOUNCE_MS = 600L
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var dataChangeJob: Job? = null
+
+    /**
+     * Fire-and-forget signal that locally-stored data changed (a meal logged,
+     * a log deleted, goals edited).
+     *
+     * Call it from the single write point rather than from each screen — the
+     * Macros and Dashboard widgets used to sit stale for up to 30 minutes after
+     * logging from anywhere except Home, because only `HomeViewModel` asked for
+     * a refresh.
+     */
+    fun notifyDataChanged(context: Context) {
+        val appContext = context.applicationContext
+        if (!WidgetStateProvider.hasAnyDashboardWidget(appContext)) return
+        dataChangeJob?.cancel()
+        dataChangeJob = scope.launch {
+            delay(DATA_CHANGE_DEBOUNCE_MS)
+            runCatching { updateDashboardWidgets(appContext) }
+        }
+    }
 
     /**
      * Full update: invalidate cache → re-render placed widgets → enqueue worker.
@@ -57,7 +87,7 @@ object WidgetUpdater {
     suspend fun forceRefreshDashboardWidgets(context: Context) {
         if (!WidgetStateProvider.hasAnyDashboardWidget(context)) return
         DashboardWidgetDataProvider.invalidate(context, clearWeatherCaches = true)
-        DashboardWidgetDataProvider.refreshNow(context)
+        DashboardWidgetDataProvider.refreshNow(context, force = true)
         withContext(Dispatchers.Main) {
             updatePlacedDashboardWidgets(context)
         }

@@ -1009,27 +1009,10 @@ private fun LiveBadge(
     }
 }
 
+/** Thin alias so this file keeps reading the same; the dot itself is shared. */
 @Composable
 private fun LiveDot(size: Dp, color: Color = TwLive) {
-    val paused = LocalTickersPaused.current
-    val alpha = if (paused) {
-        1f
-    } else {
-        val pulse = rememberInfiniteTransition(label = "livePulse")
-        val animated by pulse.animateFloat(
-            initialValue = 1f,
-            targetValue = 0.35f,
-            animationSpec = MacroMotion.pulseSpec(durationMs = 700),
-            label = "liveAlpha",
-        )
-        animated
-    }
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(color.copy(alpha = alpha)),
-    )
+    LivePulseDot(color = color, size = size)
 }
 
 @Composable
@@ -1058,7 +1041,7 @@ private fun LiveFilterChip(
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        if (live) LiveDot(size = 6.dp)
+        if (live) LiveDot(size = LivePulseSpec.SizeChip)
         Text(
             label,
             fontSize = 11.sp,
@@ -1163,11 +1146,16 @@ private fun TwitchChannelsHub(
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
-                                        .size(10.dp)
+                                        .size(14.dp)
                                         .clip(CircleShape)
-                                        .background(TwLive)
-                                        .border(1.5.dp, TwSurface, CircleShape),
-                                )
+                                        .background(TwSurface),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    LivePulseDot(
+                                        color = TwLive,
+                                        size = LivePulseSpec.SizeBadge,
+                                    )
+                                }
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {

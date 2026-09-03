@@ -23,10 +23,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.macrotracker.ui.theme.HealthConnectBrand
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 
-private val HealthConnectAccent = Color(0xFFE53935)
+private val HealthConnectAccent = HealthConnectBrand
 
 @Composable
 fun HealthConnectCard(

@@ -33,9 +33,12 @@ import com.macrotracker.MainActivity
 
 /**
  * Calendar / Events widget.
+ *
+ * Small slots answer "what's next?"; larger ones list the run of upcoming
+ * events. Today's count only earns its own row once there is height to spare.
  */
 class CalendarWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    override val sizeMode = SizeMode.Responsive(WidgetSizes.ALL)
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = DashboardWidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { CalendarRoot(data) } }
@@ -56,14 +59,38 @@ private fun CalendarRoot(data: DashboardWidgetData) {
 
 @Composable
 private fun CalFull(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
+    val ws = wSize()
+    // Without READ_CALENDAR there is nothing to list; the old card showed
+    // "No upcoming events", which reads as an empty calendar.
+    if (d.calendarState != WidgetSourceState.OK) {
+        Column(GlanceModifier.fillMaxSize()) {
+            WidgetHeader(title = "Calendar", c = c, sc = sc, lastUpdatedAt = d.lastUpdatedAt, accent = c.event)
+            Box(GlanceModifier.fillMaxSize()) {
+                WidgetStateMessage(
+                    state = d.calendarState,
+                    subject = "Calendar",
+                    iconRes = com.macrotracker.R.drawable.ic_calendar,
+                    c = c,
+                    sc = sc,
+                )
+            }
+        }
+        return
+    }
+
     Column(GlanceModifier.fillMaxSize()) {
-        WidgetHeader(title = "Calendar", c = c, sc = sc, showGreeting = true, lastUpdatedAt = d.lastUpdatedAt, accent = c.event)
-        if (!d.aiInsightCalendar.isNullOrBlank()) {
+        WidgetHeader(
+            title = "Calendar", c = c, sc = sc,
+            showGreeting = ws != WSize.TINY, lastUpdatedAt = d.lastUpdatedAt, accent = c.event,
+        )
+        if (ws == WSize.FULL && !d.aiInsightCalendar.isNullOrBlank()) {
             Spacer(GlanceModifier.height(sc.spaceSm))
             AiInsightBanner(d.aiInsightCalendar, c, sc)
         }
         Spacer(GlanceModifier.height(sc.spaceSm))
-        // Today summary card
+        // Today summary card — the busy/free line. Dropped on the shortest
+        // slots so the events themselves keep the space.
+        if (ws != WSize.COMPACT) {
         Box(
             GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card)
                 .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
@@ -92,18 +119,22 @@ private fun CalFull(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
             }
         }
         Spacer(GlanceModifier.height(sc.spaceSm))
-        SectionLabel("UPCOMING EVENTS", c.event, c, sc)
-        Spacer(GlanceModifier.height(sc.spaceXs))
-        if (!d.hasCalendarData || d.upcomingEvents.isEmpty()) {
-            Spacer(GlanceModifier.defaultWeight())
-            Box(
-                GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card)
-                    .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
-                contentAlignment = Alignment.Center,
-            ) {
-                NoDataPlaceholder(com.macrotracker.R.drawable.ic_calendar, "No upcoming events", c, sc)
+        }
+        if (ws != WSize.TINY) {
+            SectionLabel("UPCOMING EVENTS", c.event, c, sc)
+            Spacer(GlanceModifier.height(sc.spaceXs))
+        }
+        if (d.upcomingEvents.isEmpty()) {
+            Box(GlanceModifier.fillMaxWidth().defaultWeight()) {
+                WidgetStateMessage(
+                    state = WidgetSourceState.OK,
+                    subject = "Calendar",
+                    iconRes = com.macrotracker.R.drawable.ic_calendar,
+                    c = c,
+                    sc = sc,
+                    emptyMessage = "Nothing scheduled",
+                )
             }
-            Spacer(GlanceModifier.defaultWeight())
         } else {
             LazyColumn(GlanceModifier.defaultWeight().fillMaxWidth()) {
                 items(d.upcomingEvents) { event ->

@@ -38,7 +38,8 @@ import com.macrotracker.MainActivity
  * F1 Standings Widget
  */
 class F1StandingsWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    // A standings table needs width for name + team + points; 3x2 is the floor.
+    override val sizeMode = SizeMode.Responsive(WidgetSizes.F1_TALL)
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = F1WidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { F1StandingsRoot(data) } }

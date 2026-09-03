@@ -71,6 +71,8 @@ import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.HealthActivity
+import com.macrotracker.ui.theme.HealthHeartRate
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.MapSurface
 import com.macrotracker.ui.theme.MapWell
@@ -105,7 +107,7 @@ fun ActivitiesSection(
             Icon(
                 Icons.Outlined.FavoriteBorder,
                 contentDescription = null,
-                tint = Color(0xFF34D399),
+                tint = HealthActivity,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -171,8 +173,13 @@ fun ActivitiesSection(
             is ActivitiesUiState.Success -> {
                 if (state.activities.isEmpty()) {
                     StatusCopy(
-                        title = "No workouts in the last month",
-                        body = "Sync Garmin Connect (or Google Fit, Samsung Health, Strava…) to Health Connect. New walks, runs, and rides will show up here with maps and stats.",
+                        title = "No workouts this month or last",
+                        body = "Health Connect answered, but there were no exercise sessions in the window. Check that Garmin Connect (or Google Fit, Samsung Health, Strava…) is syncing workouts to Health Connect and that DailyDash is allowed to read Exercise.",
+                        actionLabel = "Check permissions",
+                        onAction = {
+                            haptics.tick()
+                            onRequestPermission()
+                        },
                     )
                 } else {
                     ActivitiesList(
@@ -195,7 +202,7 @@ private fun monthSummary(activities: List<HealthActivity>): String {
     val minutes = total.toMinutes() % 60
     return buildString {
         append(if (activities.size == 1) "1 workout" else "${activities.size} workouts")
-        append(" · last 30 days")
+        append(" · this month & last")
         if (distanceKm >= 0.1) append(String.format(Locale.US, " · %.1f km", distanceKm))
         if (hours > 0) append(" · ${hours}h ${minutes}m") else if (minutes > 0) append(" · ${minutes}m")
     }
@@ -349,7 +356,7 @@ private fun FeaturedActivityCard(
         ActivityStatsGrid(activity)
         if (activity.hrSamples.size >= 2) {
             Spacer(modifier = Modifier.height(10.dp))
-            ActivityHrSparkline(samples = activity.hrSamples, accent = Color(0xFFEF5350))
+            ActivityHrSparkline(samples = activity.hrSamples, accent = HealthHeartRate)
         }
         if (activity.laps.size >= 2) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -433,7 +440,7 @@ private fun CompactActivityRow(
                 ActivityStatsGrid(activity)
                 if (activity.hrSamples.size >= 2) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    ActivityHrSparkline(samples = activity.hrSamples, accent = Color(0xFFEF5350))
+                    ActivityHrSparkline(samples = activity.hrSamples, accent = HealthHeartRate)
                 }
             }
         }

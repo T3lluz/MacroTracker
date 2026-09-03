@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -45,6 +47,12 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.width
+import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LocalTickersPaused
@@ -301,5 +309,61 @@ private fun ContentDrawScope.drawScrollChrome(
             size = Size(2.dp.toPx(), thumbH),
             cornerRadius = CornerRadius(2.dp.toPx()),
         )
+    }
+}
+
+/** Reserved heights so a widget slot does not change size when its data lands. */
+object WidgetPlaceholder {
+    /** Cards with a header plus a body (weather, calendar, F1, media hubs). */
+    val MinHeight: Dp = 148.dp
+
+    /** Short cards (progress bars, quick add). */
+    val CompactMinHeight: Dp = 108.dp
+}
+
+/**
+ * The one placeholder every home / health section shows before it has real
+ * content — whether it is waiting on data or has not been activated yet.
+ *
+ * It reserves [minHeight] so the section keeps the same size when content
+ * arrives; the list used to reflow under the user's finger because each widget
+ * grew from a header-only stub to a full card at a different moment.
+ */
+@Composable
+fun WidgetPlaceholderCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    accent: Color = TextSecondary,
+    minHeight: Dp = WidgetPlaceholder.MinHeight,
+    lines: Int = 3,
+    tiles: Int = 0,
+) {
+    MacroCard(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+                Text(
+                    title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            ContentSkeleton(lines = lines, tiles = tiles, accent = Border)
+        }
     }
 }

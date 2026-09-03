@@ -68,6 +68,20 @@ data class F1WidgetData(
     val isLoading: Boolean = false,
 )
 
+/**
+ * Seconds until the next session, rebuilt from the countdown components the
+ * snapshot already carries. Negative when nothing is scheduled or the session
+ * has started.
+ */
+fun F1WidgetData.secondsToNextSession(): Long {
+    if (daysUntil < 0) return -1L
+    if (secondsUntil < 0) {
+        // Date known but no session time — treat as "not close".
+        return daysUntil * 86_400L
+    }
+    return daysUntil * 86_400L + hoursUntil * 3_600L + minutesUntil * 60L + secondsUntil
+}
+
 data class SessionRow(
     val label: String,
     val date: String,

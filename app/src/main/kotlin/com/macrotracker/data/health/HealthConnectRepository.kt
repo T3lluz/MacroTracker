@@ -834,7 +834,7 @@ class HealthConnectRepository @Inject constructor(
         if (!hasPermission(EXERCISE_PERMISSION)) return@withContext emptyList()
 
         val end = Instant.now()
-        val start = end.minus(Duration.ofDays(days.toLong()))
+        val start = activityWindowStart(days, end, ZoneId.systemDefault())
         val granted = getGrantedPermissions()
         val canDistance = DISTANCE_PERMISSION in granted
         val canCalories = ACTIVE_CALORIES_PERMISSION in granted

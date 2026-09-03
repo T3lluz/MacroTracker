@@ -47,7 +47,9 @@ import java.time.format.DateTimeFormatter
  * F1 Schedule Widget
  */
 class F1ScheduleWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    // List-heavy: below 3 cells wide the race rows are unreadable, so the
+    // smallest slot this offers is 3x2.
+    override val sizeMode = SizeMode.Responsive(WidgetSizes.F1_TALL)
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = F1WidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { F1ScheduleRoot(data) } }
@@ -99,7 +101,7 @@ private fun ScheduleHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WSca
 // ——— FULL —————————————————————————————————————————————————————————————————————————————————————————
 @Composable
 private fun ScheduleFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    val w = 368.dp // Fixed width for fallback scaling
+    val w = widgetContentWidth(sc)
     Column(GlanceModifier.fillMaxSize()) {
         ScheduleHeader("Formula 1    ${LocalDate.now().year}", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))

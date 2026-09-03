@@ -14,41 +14,144 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
+/**
+ * Per-metric Health Connect reads for the Health screen.
+ *
+ * Every metric has the same shape — toggle + permission + today/yesterday read
+ * + display format — so they are declared once in [MetricSpec] and driven by a
+ * single loop instead of eight copy-pasted coroutines.
+ */
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val healthConnectRepository: HealthConnectRepository,
     private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
-    private val _heartRateState = MutableStateFlow(HealthMetricUiState())
-    val heartRateState: StateFlow<HealthMetricUiState> = _heartRateState
+    /** Stable identity for a metric, used for the "not shared" summary. */
+    enum class Metric(val label: String) {
+        HEART_RATE("Heart rate"),
+        RESTING_HEART_RATE("Resting HR"),
+        OXYGEN_SATURATION("SpO₂"),
+        RESPIRATORY_RATE("Respiratory rate"),
+        STEPS("Steps"),
+        DISTANCE("Distance"),
+        FLOORS_CLIMBED("Floors"),
+        ACTIVE_CALORIES("Active calories"),
+    }
 
-    private val _restingHeartRateState = MutableStateFlow(HealthMetricUiState())
-    val restingHeartRateState: StateFlow<HealthMetricUiState> = _restingHeartRateState
+    private class MetricSpec(
+        val metric: Metric,
+        val permission: String,
+        val toggle: suspend () -> Boolean,
+        val readToday: suspend () -> Number?,
+        val readYesterday: suspend () -> Number?,
+        /** Shown when the metric is readable but has no reading yet. */
+        val emptyValue: String,
+        val format: (Number) -> String,
+    )
 
-    private val _oxygenSaturationState = MutableStateFlow(HealthMetricUiState())
-    val oxygenSaturationState: StateFlow<HealthMetricUiState> = _oxygenSaturationState
+    private val states: Map<Metric, MutableStateFlow<HealthMetricUiState>> =
+        Metric.entries.associateWith { MutableStateFlow(HealthMetricUiState()) }
 
-    private val _respiratoryRateState = MutableStateFlow(HealthMetricUiState())
-    val respiratoryRateState: StateFlow<HealthMetricUiState> = _respiratoryRateState
+    private fun stateOf(metric: Metric): StateFlow<HealthMetricUiState> = states.getValue(metric)
 
-    private val _stepsState = MutableStateFlow(HealthMetricUiState())
-    val stepsState: StateFlow<HealthMetricUiState> = _stepsState
+    val heartRateState: StateFlow<HealthMetricUiState> = stateOf(Metric.HEART_RATE)
+    val restingHeartRateState: StateFlow<HealthMetricUiState> = stateOf(Metric.RESTING_HEART_RATE)
+    val oxygenSaturationState: StateFlow<HealthMetricUiState> = stateOf(Metric.OXYGEN_SATURATION)
+    val respiratoryRateState: StateFlow<HealthMetricUiState> = stateOf(Metric.RESPIRATORY_RATE)
+    val stepsState: StateFlow<HealthMetricUiState> = stateOf(Metric.STEPS)
+    val distanceState: StateFlow<HealthMetricUiState> = stateOf(Metric.DISTANCE)
+    val floorsClimbedState: StateFlow<HealthMetricUiState> = stateOf(Metric.FLOORS_CLIMBED)
+    val activeCaloriesState: StateFlow<HealthMetricUiState> = stateOf(Metric.ACTIVE_CALORIES)
 
-    private val _distanceState = MutableStateFlow(HealthMetricUiState())
-    val distanceState: StateFlow<HealthMetricUiState> = _distanceState
-
-    private val _floorsClimbedState = MutableStateFlow(HealthMetricUiState())
-    val floorsClimbedState: StateFlow<HealthMetricUiState> = _floorsClimbedState
-
-    private val _activeCaloriesState = MutableStateFlow(HealthMetricUiState())
-    val activeCaloriesState: StateFlow<HealthMetricUiState> = _activeCaloriesState
+    /**
+     * Metrics the user switched on that Health Connect has not granted. The
+     * screen turns this into one actionable row instead of silently rendering
+     * zeros for reads that can never succeed.
+     */
+    private val _missingPermissions = MutableStateFlow<List<Metric>>(emptyList())
+    val missingPermissions: StateFlow<List<Metric>> = _missingPermissions
 
     private var lastLoadMs = 0L
     private var loadJob: Job? = null
 
-    init {
-        // Defer initial load to the screen's ON_RESUME / loadDataThrottled.
+    private val specs: List<MetricSpec> by lazy {
+        val repo = healthConnectRepository
+        val settings = settingsRepository
+        listOf(
+            MetricSpec(
+                metric = Metric.HEART_RATE,
+                permission = HealthConnectRepository.HEART_RATE_PERMISSION,
+                toggle = { settings.heartRateEnabled.first() },
+                readToday = { repo.getLatestHeartRate() },
+                readYesterday = { repo.getLatestHeartRate(yesterday = true) },
+                emptyValue = EMPTY_DASH,
+                format = { it.toString() },
+            ),
+            MetricSpec(
+                metric = Metric.RESTING_HEART_RATE,
+                permission = HealthConnectRepository.RESTING_HEART_RATE_PERMISSION,
+                toggle = { settings.restingHeartRateEnabled.first() },
+                readToday = { repo.getLatestRestingHeartRate() },
+                readYesterday = { repo.getLatestRestingHeartRate(yesterday = true) },
+                emptyValue = EMPTY_DASH,
+                format = { it.toString() },
+            ),
+            MetricSpec(
+                metric = Metric.OXYGEN_SATURATION,
+                permission = HealthConnectRepository.OXYGEN_SATURATION_PERMISSION,
+                toggle = { settings.oxygenSaturationEnabled.first() },
+                readToday = { repo.getLatestOxygenSaturation() },
+                readYesterday = { repo.getLatestOxygenSaturation(yesterday = true) },
+                emptyValue = EMPTY_DASH,
+                format = { String.format(Locale.US, "%.1f", it.toDouble()) },
+            ),
+            MetricSpec(
+                metric = Metric.RESPIRATORY_RATE,
+                permission = HealthConnectRepository.RESPIRATORY_RATE_PERMISSION,
+                toggle = { settings.respiratoryRateEnabled.first() },
+                readToday = { repo.getLatestRespiratoryRate() },
+                readYesterday = { repo.getLatestRespiratoryRate(yesterday = true) },
+                emptyValue = EMPTY_DASH,
+                format = { String.format(Locale.US, "%.1f", it.toDouble()) },
+            ),
+            MetricSpec(
+                metric = Metric.STEPS,
+                permission = HealthConnectRepository.STEPS_PERMISSION,
+                toggle = { settings.stepsEnabled.first() },
+                readToday = { repo.getStepsToday() },
+                readYesterday = { repo.getStepsYesterday() },
+                emptyValue = "0",
+                format = { it.toString() },
+            ),
+            MetricSpec(
+                metric = Metric.DISTANCE,
+                permission = HealthConnectRepository.DISTANCE_PERMISSION,
+                toggle = { settings.distanceEnabled.first() },
+                readToday = { repo.getDistanceToday() },
+                readYesterday = { repo.getDistanceYesterday() },
+                emptyValue = "0",
+                format = { String.format(Locale.US, "%.2f", it.toDouble()) },
+            ),
+            MetricSpec(
+                metric = Metric.FLOORS_CLIMBED,
+                permission = HealthConnectRepository.FLOORS_PERMISSION,
+                toggle = { settings.floorsClimbedEnabled.first() },
+                readToday = { repo.getFloorsClimbedToday() },
+                readYesterday = { repo.getFloorsClimbedYesterday() },
+                emptyValue = "0",
+                format = { String.format(Locale.US, "%.1f", it.toDouble()) },
+            ),
+            MetricSpec(
+                metric = Metric.ACTIVE_CALORIES,
+                permission = HealthConnectRepository.ACTIVE_CALORIES_PERMISSION,
+                toggle = { settings.activeCaloriesEnabled.first() },
+                readToday = { repo.getActiveCaloriesToday() },
+                readYesterday = { repo.getActiveCaloriesYesterday() },
+                emptyValue = "0",
+                format = { it.toDouble().toInt().toString() },
+            ),
+        )
     }
 
     fun loadDataThrottled() {
@@ -66,171 +169,51 @@ class DashboardViewModel @Inject constructor(
 
         loadJob = viewModelScope.launch {
             val masterEnabled = settingsRepository.masterHealthConnectEnabled.first()
-            val granted = if (masterEnabled && healthConnectRepository.isAvailable()) {
+            val available = masterEnabled && healthConnectRepository.isAvailable()
+            val granted = if (available) {
                 healthConnectRepository.getGrantedPermissions()
             } else {
                 emptySet()
             }
 
-            fun canRead(permission: String, toggleOn: Boolean): Boolean =
-                masterEnabled && toggleOn && permission in granted
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.HEART_RATE_PERMISSION,
-                    settingsRepository.heartRateEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getLatestHeartRate()
-                    val yesterday = healthConnectRepository.getLatestHeartRate(yesterday = true)
-                    _heartRateState.value = HealthMetricUiState(
-                        value = today?.toString() ?: "–",
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _heartRateState.value = HealthMetricUiState(isEnabled = false)
-                }
+            val missing = mutableListOf<Metric>()
+            for (spec in specs) {
+                val toggleOn = masterEnabled && spec.toggle()
+                val permissionOk = spec.permission in granted
+                if (toggleOn && available && !permissionOk) missing += spec.metric
+                launch { loadMetric(spec, toggleOn = toggleOn, permissionOk = permissionOk) }
             }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.RESTING_HEART_RATE_PERMISSION,
-                    settingsRepository.restingHeartRateEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getLatestRestingHeartRate()
-                    val yesterday = healthConnectRepository.getLatestRestingHeartRate(yesterday = true)
-                    _restingHeartRateState.value = HealthMetricUiState(
-                        value = today?.toString() ?: "–",
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _restingHeartRateState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.OXYGEN_SATURATION_PERMISSION,
-                    settingsRepository.oxygenSaturationEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getLatestOxygenSaturation()
-                    val yesterday = healthConnectRepository.getLatestOxygenSaturation(yesterday = true)
-                    val formatted = today?.let { String.format(Locale.US, "%.1f", it) } ?: "–"
-                    _oxygenSaturationState.value = HealthMetricUiState(
-                        value = formatted,
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _oxygenSaturationState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.RESPIRATORY_RATE_PERMISSION,
-                    settingsRepository.respiratoryRateEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getLatestRespiratoryRate()
-                    val yesterday = healthConnectRepository.getLatestRespiratoryRate(yesterday = true)
-                    val formatted = today?.let { String.format(Locale.US, "%.1f", it) } ?: "–"
-                    _respiratoryRateState.value = HealthMetricUiState(
-                        value = formatted,
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _respiratoryRateState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.STEPS_PERMISSION,
-                    settingsRepository.stepsEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getStepsToday()
-                    val yesterday = healthConnectRepository.getStepsYesterday()
-                    _stepsState.value = HealthMetricUiState(
-                        value = today?.toString() ?: "0",
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _stepsState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.DISTANCE_PERMISSION,
-                    settingsRepository.distanceEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getDistanceToday()
-                    val yesterday = healthConnectRepository.getDistanceYesterday()
-                    val formatted = today?.let { String.format(Locale.US, "%.2f", it) } ?: "0"
-                    _distanceState.value = HealthMetricUiState(
-                        value = formatted,
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _distanceState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.FLOORS_PERMISSION,
-                    settingsRepository.floorsClimbedEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getFloorsClimbedToday()
-                    val yesterday = healthConnectRepository.getFloorsClimbedYesterday()
-                    val formatted = today?.let { String.format(Locale.US, "%.1f", it) } ?: "0"
-                    _floorsClimbedState.value = HealthMetricUiState(
-                        value = formatted,
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _floorsClimbedState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
-
-            launch {
-                val enabled = canRead(
-                    HealthConnectRepository.ACTIVE_CALORIES_PERMISSION,
-                    settingsRepository.activeCaloriesEnabled.first(),
-                )
-                if (enabled) {
-                    val today = healthConnectRepository.getActiveCaloriesToday()
-                    val yesterday = healthConnectRepository.getActiveCaloriesYesterday()
-                    val formatted = today?.toInt()?.toString() ?: "0"
-                    _activeCaloriesState.value = HealthMetricUiState(
-                        value = formatted,
-                        today = today,
-                        yesterday = yesterday,
-                        isEnabled = true,
-                    )
-                } else {
-                    _activeCaloriesState.value = HealthMetricUiState(isEnabled = false)
-                }
-            }
+            // Ordered by the spec table so the summary reads the same every load.
+            _missingPermissions.value = missing
         }
+    }
+
+    private suspend fun loadMetric(spec: MetricSpec, toggleOn: Boolean, permissionOk: Boolean) {
+        val flow = states.getValue(spec.metric)
+        if (!toggleOn) {
+            flow.value = HealthMetricUiState(isEnabled = false)
+            return
+        }
+        if (!permissionOk) {
+            flow.value = HealthMetricUiState(
+                value = spec.emptyValue,
+                isEnabled = true,
+                permissionMissing = true,
+            )
+            return
+        }
+        val today = spec.readToday()
+        val yesterday = spec.readYesterday()
+        flow.value = HealthMetricUiState(
+            value = today?.let(spec.format) ?: spec.emptyValue,
+            today = today,
+            yesterday = yesterday,
+            isEnabled = true,
+        )
+    }
+
+    companion object {
+        /** En dash placeholder the Health cards already render for "no reading". */
+        const val EMPTY_DASH = "–"
     }
 }
