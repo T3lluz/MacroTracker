@@ -56,6 +56,8 @@ data class HealthActivity(
     val elevationGainM: Double?,
     val route: List<ActivityRoutePoint>,
     val routeConsentRequired: Boolean,
+    /** False while the GPS track for this session has not been read yet. */
+    val routeResolved: Boolean = true,
     val laps: List<ActivityLap> = emptyList(),
     val hrSamples: List<ActivityHrPoint> = emptyList(),
 ) {
@@ -428,7 +430,7 @@ fun pointsFromExerciseRoute(route: ExerciseRoute?): List<ActivityRoutePoint> {
 fun activityAfterRouteAttempt(activity: HealthActivity, route: ExerciseRoute?): HealthActivity {
     val points = pointsFromExerciseRoute(route)
     if (points.size < 2) {
-        return activity.copy(routeConsentRequired = false)
+        return activity.copy(routeConsentRequired = false, routeResolved = true)
     }
     val distance = activity.distanceKm
         ?: routeDistanceKm(points).takeIf { it > 0.02 }
@@ -437,6 +439,7 @@ fun activityAfterRouteAttempt(activity: HealthActivity, route: ExerciseRoute?): 
     return activity.copy(
         route = points,
         routeConsentRequired = false,
+        routeResolved = true,
         distanceKm = distance,
         elevationGainM = elevation,
     )

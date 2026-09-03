@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Hiking
 import androidx.compose.material.icons.filled.Pool
@@ -32,8 +35,10 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +50,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.records.ExerciseSessionRecord
@@ -58,6 +64,8 @@ import com.macrotracker.data.health.formatElevation
 import com.macrotracker.data.health.formatPace
 import com.macrotracker.data.health.pickFeaturedActivity
 import com.macrotracker.ui.components.ContentSkeleton
+import com.macrotracker.ui.components.LoadingSpec
+import com.macrotracker.ui.components.LoadingSpinner
 import com.macrotracker.ui.components.MacroCard
 import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.components.WidgetScrollBox
@@ -71,8 +79,12 @@ import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.HapticHelper
 import com.macrotracker.ui.viewmodel.ActivitiesUiState
+import java.time.Duration
 import java.util.Locale
 import kotlin.math.roundToInt
+
+/** Rows shown before the list asks to be expanded. */
+private const val CollapsedRowCount = 3
 
 @Composable
 fun ActivitiesSection(
@@ -85,6 +97,7 @@ fun ActivitiesSection(
     delayMs: Long = 40L,
 ) {
     MacroCard(delayMs = delayMs) {
+        val activities = (state as? ActivitiesUiState.Success)?.activities.orEmpty()
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 12.dp),
@@ -99,10 +112,17 @@ fun ActivitiesSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Activities", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Text(
-                    "Latest workouts from Garmin and Health Connect",
+                    if (activities.isEmpty()) {
+                        "Workouts from Garmin and Health Connect"
+                    } else {
+                        monthSummary(activities)
+                    },
                     fontSize = 12.sp,
                     color = TextSecondary,
                 )
+            }
+            if (state is ActivitiesUiState.Success && state.isRefreshing) {
+                LoadingSpinner(color = Primary, size = LoadingSpec.SizeInline)
             }
         }
 
@@ -151,7 +171,7 @@ fun ActivitiesSection(
             is ActivitiesUiState.Success -> {
                 if (state.activities.isEmpty()) {
                     StatusCopy(
-                        title = "No workouts yet",
+                        title = "No workouts in the last month",
                         body = "Sync Garmin Connect (or Google Fit, Samsung Health, Strava…) to Health Connect. New walks, runs, and rides will show up here with maps and stats.",
                     )
                 } else {
@@ -167,6 +187,20 @@ fun ActivitiesSection(
     }
 }
 
+/** "12 workouts · 84.2 km · 9h 40m" for the month the card covers. */
+private fun monthSummary(activities: List<HealthActivity>): String {
+    val distanceKm = activities.sumOf { it.distanceKm ?: 0.0 }
+    val total = activities.fold(Duration.ZERO) { acc, activity -> acc.plus(activity.duration) }
+    val hours = total.toHours()
+    val minutes = total.toMinutes() % 60
+    return buildString {
+        append(if (activities.size == 1) "1 workout" else "${activities.size} workouts")
+        append(" · last 30 days")
+        if (distanceKm >= 0.1) append(String.format(Locale.US, " · %.1f km", distanceKm))
+        if (hours > 0) append(" · ${hours}h ${minutes}m") else if (minutes > 0) append(" · ${minutes}m")
+    }
+}
+
 @Composable
 private fun ActivitiesList(
     activities: List<HealthActivity>,
@@ -175,10 +209,17 @@ private fun ActivitiesList(
     onExpandActivity: (HealthActivity) -> Unit,
 ) {
     val featured = pickFeaturedActivity(activities)
-    val rest = if (featured == null) activities else activities.filter { it.id != featured.id }
+    val rest = remember(activities, featured?.id) {
+        if (featured == null) activities else activities.filter { it.id != featured.id }
+    }
     var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
 
     if (featured != null) {
+        // The hero map is what sells the card — make sure its GPS is loaded.
+        LaunchedEffect(featured.id, featured.routeResolved) {
+            if (!featured.routeResolved) onExpandActivity(featured)
+        }
         FeaturedActivityCard(
             activity = featured,
             haptics = haptics,
@@ -186,32 +227,95 @@ private fun ActivitiesList(
         )
     }
 
-    if (rest.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(10.dp))
+    if (rest.isEmpty()) return
+
+    val visible = if (showAll) rest else rest.take(CollapsedRowCount)
+    val canExpand = rest.size > CollapsedRowCount
+
+    Spacer(modifier = Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
         Text(
             "Recent",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             color = TextSecondary,
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier.weight(1f),
         )
-        WidgetScrollBox {
-            rest.forEach { activity ->
-                CompactActivityRow(
-                    activity = activity,
-                    expanded = expandedId == activity.id,
-                    onToggle = {
-                        haptics.tick()
-                        expandedId = if (expandedId == activity.id) null else activity.id
-                        if (expandedId == activity.id) onExpandActivity(activity)
-                    },
-                    onRevealRoute = {
-                        haptics.tick()
-                        onRevealRoute(activity)
-                    },
-                )
-            }
+        Text(
+            "${rest.size}",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary.copy(alpha = 0.8f),
+        )
+    }
+
+    val rows: @Composable () -> Unit = {
+        visible.forEach { activity ->
+            CompactActivityRow(
+                activity = activity,
+                expanded = expandedId == activity.id,
+                onToggle = {
+                    haptics.tick()
+                    val opening = expandedId != activity.id
+                    expandedId = if (opening) activity.id else null
+                    if (opening) onExpandActivity(activity)
+                },
+                onRevealRoute = {
+                    haptics.tick()
+                    onRevealRoute(activity)
+                },
+            )
         }
+    }
+
+    // Collapsed the three rows lay out inline; expanded, a full month scrolls in
+    // place so the card never swallows the whole screen.
+    if (showAll) {
+        WidgetScrollBox { rows() }
+    } else {
+        Column(modifier = Modifier.fillMaxWidth()) { rows() }
+    }
+
+    if (canExpand) {
+        Spacer(modifier = Modifier.height(8.dp))
+        ShowMoreRow(
+            expanded = showAll,
+            hiddenCount = rest.size - CollapsedRowCount,
+            onClick = {
+                haptics.tick()
+                if (showAll) expandedId = null
+                showAll = !showAll
+            },
+        )
+    }
+}
+
+@Composable
+private fun ShowMoreRow(expanded: Boolean, hiddenCount: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Background)
+            .border(1.dp, Border, RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (expanded) "Show less" else "Show $hiddenCount more",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Primary,
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Icon(
+            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = null,
+            tint = Primary,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -272,7 +376,20 @@ private fun CompactActivityRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ActivityTypeBadge(activity.exerciseType, accent)
+            // A route thumbnail reads faster than a generic icon, so show the
+            // real shape of the workout whenever we already have the track.
+            if (activity.hasRoute) {
+                ActivityRouteMap(
+                    points = activity.route,
+                    accent = accent,
+                    height = 44.dp,
+                    animate = false,
+                    chrome = false,
+                    modifier = Modifier.width(56.dp),
+                )
+            } else {
+                ActivityTypeBadge(activity.exerciseType, accent)
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -383,57 +500,72 @@ private fun SourceChip(label: String, accent: Color) {
 private fun ActivityMapBlock(
     activity: HealthActivity,
     accent: Color,
-    height: androidx.compose.ui.unit.Dp,
+    height: Dp,
     onRevealRoute: () -> Unit,
 ) {
     when {
         activity.hasRoute -> {
-            ActivityRouteMap(points = activity.route, accent = accent, height = height)
+            ActivityRouteMap(
+                points = activity.route,
+                accent = accent,
+                height = height,
+                distanceLabel = formatActivityDistance(activity.distanceKm),
+                elevationLabel = formatElevation(activity.elevationGainM),
+            )
+        }
+        !activity.routeResolved -> {
+            // GPS for older sessions is fetched on demand — say so instead of
+            // claiming the workout has no route.
+            MapPlaceholder(height = height) {
+                LoadingSpinner(color = accent, size = LoadingSpec.SizeInline)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Loading map…", fontSize = 12.sp, color = TextSecondary)
+            }
         }
         activity.routeConsentRequired -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MapSurface)
-                    .clickable(onClick = onRevealRoute),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Outlined.Map, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Show GPS map", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                    Text(
-                        "Tap to allow this workout’s route in Health Connect",
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                    )
-                }
+            MapPlaceholder(height = height, onClick = onRevealRoute) {
+                Icon(Icons.Outlined.Map, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Show GPS map", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(
+                    "Tap to allow this workout’s route in Health Connect",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
         }
         else -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(88.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MapSurface),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(activityIcon(activity.exerciseType), null, tint = accent, modifier = Modifier.size(22.dp))
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        if (activity.isOutdoorType) "No GPS saved for this ${activity.typeLabel.lowercase()}"
-                        else "Indoor ${activity.typeLabel.lowercase()} — no map",
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                    )
-                }
+            MapPlaceholder(height = 88.dp) {
+                Icon(activityIcon(activity.exerciseType), null, tint = accent, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    if (activity.isOutdoorType) "No GPS saved for this ${activity.typeLabel.lowercase()}"
+                    else "Indoor ${activity.typeLabel.lowercase()} — no map",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun MapPlaceholder(
+    height: Dp,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MapSurface)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, content = content)
     }
 }
 
