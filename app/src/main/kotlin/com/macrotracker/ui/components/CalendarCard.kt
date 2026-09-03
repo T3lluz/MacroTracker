@@ -50,13 +50,14 @@ import androidx.compose.ui.unit.sp
 import com.macrotracker.data.calendar.CalendarEvent
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
+import com.macrotracker.ui.theme.CalendarBrand
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.LastUpdatedText
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.CalendarUiState
 
-private val CalendarAccent = Color(0xFF4285F4) // Google blue
+private val CalendarAccent = CalendarBrand
 
 @Composable
 fun CalendarCard(
@@ -70,16 +71,11 @@ fun CalendarCard(
     val haptics = rememberHaptics()
 
     if (!isVisible) {
-        MacroCard {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Outlined.CalendarMonth, null, tint = CalendarAccent, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("Calendar", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            }
-        }
+        WidgetPlaceholderCard(
+            title = "Calendar",
+            icon = Icons.Outlined.CalendarMonth,
+            accent = CalendarAccent,
+        )
         return
     }
 

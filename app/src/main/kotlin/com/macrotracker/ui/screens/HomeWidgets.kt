@@ -53,11 +53,17 @@ import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.MetricInfo
 import com.macrotracker.ui.components.WeatherCard
 import com.macrotracker.ui.components.WidgetConfig
+import com.macrotracker.ui.components.WidgetPlaceholder
+import com.macrotracker.ui.components.WidgetPlaceholderCard
 import com.macrotracker.ui.components.TwitchCard
 import com.macrotracker.ui.components.YoutubeCard
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.Error
+import com.macrotracker.ui.theme.HealthHeartRate
+import com.macrotracker.ui.theme.HealthMove
+import com.macrotracker.ui.theme.HealthSleep
+import com.macrotracker.ui.theme.HealthSteps
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
 import com.macrotracker.ui.theme.TextPrimary
@@ -164,14 +170,7 @@ private fun HomeCalendarWidget(
 @Composable
 private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
     if (!isVisible) {
-        MacroCard {
-            Text(
-                "Body Stats",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-            )
-        }
+        WidgetPlaceholderCard(title = "Body Stats", icon = Icons.Outlined.MonitorHeart)
         return
     }
     val healthState by viewModel.healthState.collectAsState()
@@ -221,18 +220,18 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
 
                 val homeMetrics = listOf(
                     Pair(
-                        MetricInfo("Steps", "", Icons.AutoMirrored.Outlined.DirectionsWalk, Primary),
+                        MetricInfo("Steps", "", Icons.AutoMirrored.Outlined.DirectionsWalk, HealthSteps),
                         HealthMetricUiState(value = "%,d".format(stats.steps), isEnabled = true),
                     ),
                     Pair(
-                        MetricInfo("Avg HR", "bpm", Icons.Outlined.MonitorHeart, Color(0xFFEF5350)),
+                        MetricInfo("Avg HR", "bpm", Icons.Outlined.MonitorHeart, HealthHeartRate),
                         HealthMetricUiState(
                             value = if (stats.avgHeartRate > 0) "${stats.avgHeartRate}" else "—",
                             isEnabled = true,
                         ),
                     ),
                     Pair(
-                        MetricInfo("Sleep", "", Icons.Outlined.Bedtime, Color(0xFF7C4DFF)),
+                        MetricInfo("Sleep", "", Icons.Outlined.Bedtime, HealthSleep),
                         HealthMetricUiState(value = sleepDisplay, isEnabled = true),
                     ),
                     Pair(
@@ -240,7 +239,7 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
                             if (stats.activeCaloriesBurned > 0) "Active" else "Total Cal",
                             "kcal",
                             Icons.Outlined.LocalFireDepartment,
-                            Color(0xFFFF9800),
+                            HealthMove,
                         ),
                         HealthMetricUiState(
                             value = when {
@@ -258,9 +257,7 @@ private fun HomeBodyStatsWidget(viewModel: HomeViewModel, isVisible: Boolean) {
             }
         }
         is HomeHealthState.Loading -> {
-            MacroCard {
-                ContentSkeleton(lines = 3, accent = Border)
-            }
+            WidgetPlaceholderCard(title = "Body Stats", icon = Icons.Outlined.MonitorHeart)
         }
         HomeHealthState.Unavailable -> {
             MacroCard {
@@ -288,7 +285,17 @@ private fun HomeProgressWidget(
     val summary by viewModel.summary.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val logsLastUpdatedAt by viewModel.logsLastUpdatedAt.collectAsState()
-    val s = summary ?: return
+    // Rendering nothing until the summary loads left a zero-height slot and
+    // shoved every widget below it down the moment the query returned.
+    val s = summary ?: run {
+        WidgetPlaceholderCard(
+            title = "Today's Progress",
+            icon = Icons.Outlined.Restaurant,
+            minHeight = WidgetPlaceholder.CompactMinHeight,
+            lines = 2,
+        )
+        return
+    }
 
     MacroCard {
         Row(
