@@ -1,5 +1,8 @@
 package com.macrotracker.data.local
 
+import android.content.Context
+import com.macrotracker.widget.WidgetUpdater
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -16,12 +19,22 @@ data class DailySummary(
 @Singleton
 class MacroRepository @Inject constructor(
     private val dao: MacroDao,
+    @ApplicationContext private val context: Context,
 ) {
     private val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
-    suspend fun saveLog(log: MacroLogEntity) = dao.insertLog(log)
+    // Every write goes through here, so this is the one place that has to tell
+    // the home-screen widgets the numbers moved. Doing it per screen meant
+    // logging from Health / AI / the scanner never refreshed them.
+    suspend fun saveLog(log: MacroLogEntity) {
+        dao.insertLog(log)
+        WidgetUpdater.notifyDataChanged(context)
+    }
 
-    suspend fun deleteLog(id: String) = dao.deleteLog(id)
+    suspend fun deleteLog(id: String) {
+        dao.deleteLog(id)
+        WidgetUpdater.notifyDataChanged(context)
+    }
 
     suspend fun getLogsForDate(date: String): List<MacroLogEntity> = dao.getLogsForDate(date)
 
@@ -64,6 +77,7 @@ class MacroRepository @Inject constructor(
 
     suspend fun saveGoals(calories: Int, protein: Int) {
         dao.upsertGoals(GoalsEntity(id = 0, calorieGoal = calories, proteinGoal = protein))
+        WidgetUpdater.notifyDataChanged(context)
     }
 
     suspend fun getGoals(): GoalsEntity = dao.getGoals() ?: GoalsEntity()

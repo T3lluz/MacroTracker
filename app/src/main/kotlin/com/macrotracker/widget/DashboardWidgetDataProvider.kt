@@ -153,8 +153,11 @@ object DashboardWidgetDataProvider {
      * Loads local data, then fetches fresh AI insights from Gemini **in parallel**.
      * Updates both memory and disk caches.
      */
-    suspend fun refreshNow(context: Context): DashboardWidgetData {
-        fetchLiveWeather(context, force = true)
+    suspend fun refreshNow(context: Context, force: Boolean = false): DashboardWidgetData {
+        // Only a user-initiated refresh demands a brand-new GPS fix. Forcing one
+        // on every background pass drained battery and, worse, silently skipped
+        // the whole weather update whenever the fix didn't arrive in time.
+        fetchLiveWeather(context, force = force)
         val merged = loadLocalData(context)
 
         // Fetch all AI insights in parallel (each has its own TTL check)
@@ -213,7 +216,11 @@ object DashboardWidgetDataProvider {
                 locationProvider.clearCache()
             }
 
+            // A forced fix can time out indoors; rather than skipping the whole
+            // update, fall back to the last known position so the forecast still
+            // refreshes.
             val location = locationProvider.getLocation(forceRefresh = force)
+                ?: locationProvider.getLocation(forceRefresh = false)
             if (location == null) {
                 Log.w(TAG, "fetchLiveWeather: location unavailable (force=$force)")
                 return
@@ -272,6 +279,7 @@ object DashboardWidgetDataProvider {
             sleepMinutes = health.sleepMinutes,
             activeCaloriesBurned = health.activeCaloriesBurned,
             hasHealthData = health.hasHealthData,
+            healthState = health.healthState,
             weatherTemp = weather.weatherTemp,
             dailyMinMax = weather.dailyMinMax,
             weatherIconRes = weather.weatherIconRes,
@@ -286,12 +294,15 @@ object DashboardWidgetDataProvider {
             weatherSunrise = weather.weatherSunrise,
             weatherSunset = weather.weatherSunset,
             hasWeatherData = weather.hasWeatherData,
+            weatherState = weather.weatherState,
+            weatherFetchedAt = weather.weatherFetchedAt,
             hourlyForecast = weather.hourlyForecast,
             nextEventTitle = calendar.nextEventTitle,
             nextEventTime = calendar.nextEventTime,
             nextEventRelativeDay = calendar.nextEventRelativeDay,
             eventsToday = calendar.eventsToday,
             hasCalendarData = calendar.hasCalendarData,
+            calendarState = calendar.calendarState,
             upcomingEvents = calendar.upcomingEvents,
         )
     }
@@ -335,7 +346,10 @@ object DashboardWidgetDataProvider {
     private suspend fun loadHealth(context: Context): DashboardWidgetData {
         return try {
             if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) {
-                return DashboardWidgetData(hasHealthData = false)
+                return DashboardWidgetData(
+                    hasHealthData = false,
+                    healthState = WidgetSourceState.UNAVAILABLE,
+                )
             }
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
@@ -344,7 +358,12 @@ object DashboardWidgetDataProvider {
             // Health Connect is available and at least steps is permitted, even if
             // today's activity values happen to be zero.
             val stepsPermission = HealthPermission.getReadPermission(StepsRecord::class)
-            if (stepsPermission !in granted) return DashboardWidgetData(hasHealthData = false)
+            if (stepsPermission !in granted) {
+                return DashboardWidgetData(
+                    hasHealthData = false,
+                    healthState = WidgetSourceState.NO_PERMISSION,
+                )
+            }
             val heartGranted = HealthPermission.getReadPermission(HeartRateRecord::class) in granted
             val sleepGranted = HealthPermission.getReadPermission(SleepSessionRecord::class) in granted
             val calGranted   = HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class) in granted
@@ -385,6 +404,7 @@ object DashboardWidgetDataProvider {
                 activeCaloriesBurned = activeCal,
                 // true as long as permissions are granted — data may legitimately be 0 for today
                 hasHealthData = true,
+                healthState = WidgetSourceState.OK,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load health: ${e.message}", e)
@@ -394,7 +414,11 @@ object DashboardWidgetDataProvider {
             val sdkOk = try {
                 HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
             } catch (_: Exception) { false }
-            DashboardWidgetData(hasHealthData = sdkOk, stepsGoal = 10_000)
+            DashboardWidgetData(
+                hasHealthData = sdkOk,
+                stepsGoal = 10_000,
+                healthState = if (sdkOk) WidgetSourceState.ERROR else WidgetSourceState.UNAVAILABLE,
+            )
         }
     }
 
@@ -442,14 +466,29 @@ object DashboardWidgetDataProvider {
                 weatherWindSpeed = windSpeed,
                 weatherSunrise = sunrise,
                 weatherSunset = sunset,
+                weatherFetchedAt = fetchedAt,
                 hasWeatherData = temp != null,
+                // Without a location fix there is nothing to fetch, so say that
+                // rather than showing an empty forecast panel.
+                weatherState = when {
+                    temp != null -> WidgetSourceState.OK
+                    !hasLocationPermission(context) -> WidgetSourceState.NO_PERMISSION
+                    else -> WidgetSourceState.OK
+                },
                 hourlyForecast = hourlyForecast,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load weather: ${e.message}", e)
-            DashboardWidgetData()
+            DashboardWidgetData(weatherState = WidgetSourceState.ERROR)
         }
     }
+
+    /** Fine or coarse location — either is enough for a forecast. */
+    private fun hasLocationPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun buildHourlyForecastJson(weather: WeatherInfo): String {
         val arr = JSONArray()
@@ -564,7 +603,7 @@ object DashboardWidgetDataProvider {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR)
                 != PackageManager.PERMISSION_GRANTED
             ) {
-                return DashboardWidgetData()
+                return DashboardWidgetData(calendarState = WidgetSourceState.NO_PERMISSION)
             }
 
             val zone = ZoneId.systemDefault()

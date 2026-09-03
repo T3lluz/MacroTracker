@@ -31,6 +31,27 @@ data class CalendarEvent(
 )
 
 /**
+ * Why a widget section has nothing to show.
+ *
+ * A widget must never render a blank panel or a misleading zero: "you haven't
+ * allowed this yet", "the provider isn't installed", "the read failed" and
+ * "granted, nothing recorded" are four different messages.
+ */
+enum class WidgetSourceState {
+    /** Readable — the values in the snapshot are real. */
+    OK,
+
+    /** Readable in principle, but the runtime permission is not granted. */
+    NO_PERMISSION,
+
+    /** The provider (Health Connect, a calendar app) isn't available at all. */
+    UNAVAILABLE,
+
+    /** Permission is granted but the read threw. Values are not trustworthy. */
+    ERROR,
+}
+
+/**
  * Data snapshot for the DailyDash dashboard widget.
  * Collected from Room, SharedPreferences, calendar, and Health Connect.
  */
@@ -59,6 +80,7 @@ data class DashboardWidgetData(
     val sleepMinutes: Long = 0,
     val activeCaloriesBurned: Double = 0.0,
     val hasHealthData: Boolean = false,
+    val healthState: WidgetSourceState = WidgetSourceState.OK,
     // Weather (from cached SharedPreferences)
     val weatherTemp: String? = null,
     val weatherDesc: String? = null,
@@ -74,6 +96,13 @@ data class DashboardWidgetData(
     val weatherSunrise: String? = null,
     val weatherSunset: String? = null,
     val hasWeatherData: Boolean = false,
+    val weatherState: WidgetSourceState = WidgetSourceState.OK,
+    /**
+     * When the forecast itself was fetched — not when the widget last rendered.
+     * The weather widget used to stamp every render as "now" even when the
+     * forecast behind it was hours old.
+     */
+    val weatherFetchedAt: Long = 0L,
     val aiInsightWeather: String? = null,
     val hourlyForecast: List<HourlyForecast> = emptyList(),
 
@@ -83,6 +112,7 @@ data class DashboardWidgetData(
     val nextEventRelativeDay: String? = null,
     val eventsToday: Int = 0,
     val hasCalendarData: Boolean = false,
+    val calendarState: WidgetSourceState = WidgetSourceState.OK,
     // Multiple upcoming events (up to 10, within the next 30 days)
     val upcomingEvents: List<CalendarEvent> = emptyList(),
     // AI insights per domain (cached, updated max once per hour)

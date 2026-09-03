@@ -32,10 +32,13 @@ import androidx.glance.text.TextStyle
 import com.macrotracker.MainActivity
 
 /**
- * Dashboard widget — overview of all domains.
+ * Dashboard widget — one line on each domain the app covers.
+ *
+ * Macros lead because they are the thing the user actively changes during the
+ * day; weather / steps / next event ride along as a strip underneath.
  */
 class DashboardWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    override val sizeMode = SizeMode.Responsive(WidgetSizes.ALL)
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = DashboardWidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { DashRoot(data) } }
@@ -56,13 +59,18 @@ private fun DashRoot(data: DashboardWidgetData) {
 
 @Composable
 private fun DashFull(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
-    val w = 368.dp // Fixed width for fixed scale sizing fallback
-    val halfBarW = ((w - sc.pad * 2 - sc.spaceMd - sc.padSm * 4) / 2).coerceAtLeast(8.dp)
+    val ws = wSize()
+    val contentW = widgetContentWidth(sc)
+    val halfBarW = ((contentW - sc.spaceMd - sc.padSm * 4) / 2).coerceAtLeast(8.dp)
+    val fullBarW = (contentW - sc.padSm * 2).coerceAtLeast(8.dp)
+    // Two heroes only fit side by side once there is real width.
+    val sideBySide = contentW >= 230.dp
     Column(GlanceModifier.fillMaxSize()) {
         WidgetHeader(
-            title = greeting(), c = c, sc = sc, lastUpdatedAt = d.lastUpdatedAt, accent = c.primary,
+            title = if (ws == WSize.TINY) "Today" else greeting(),
+            c = c, sc = sc, lastUpdatedAt = d.lastUpdatedAt, accent = c.primary,
         )
-        if (!d.aiInsight.isNullOrBlank()) {
+        if (ws == WSize.FULL && !d.aiInsight.isNullOrBlank()) {
             Spacer(GlanceModifier.height(sc.spaceSm))
             AiInsightBanner(d.aiInsight, c, sc)
         }
@@ -73,70 +81,94 @@ private fun DashFull(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
                 .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
         ) {
             Column(GlanceModifier.fillMaxWidth()) {
-                Row(GlanceModifier.fillMaxWidth()) {
-                    // Calories half
-                    Column(GlanceModifier.defaultWeight()) {
-                        HeroValue("${d.totalCalories}", "of ${d.calorieGoal} kcal", c.cal, c, sc)
-                        Spacer(GlanceModifier.height(sc.spaceSm))
-                        WidgetProgressBar(pct(d.totalCalories, d.calorieGoal), c.cal, c.track, sc, halfBarW)
+                if (sideBySide) {
+                    Row(GlanceModifier.fillMaxWidth()) {
+                        Column(GlanceModifier.defaultWeight()) {
+                            HeroValue("${d.totalCalories}", "of ${d.calorieGoal} kcal", c.cal, c, sc)
+                            Spacer(GlanceModifier.height(sc.spaceSm))
+                            WidgetProgressBar(pct(d.totalCalories, d.calorieGoal), c.cal, c.track, sc, halfBarW)
+                        }
+                        Spacer(GlanceModifier.width(sc.spaceMd))
+                        Column(GlanceModifier.defaultWeight()) {
+                            HeroValue("${d.totalProtein}g", "of ${d.proteinGoal}g", c.pro, c, sc)
+                            Spacer(GlanceModifier.height(sc.spaceSm))
+                            WidgetProgressBar(pct(d.totalProtein, d.proteinGoal), c.pro, c.track, sc, halfBarW)
+                        }
                     }
-                    Spacer(GlanceModifier.width(sc.spaceMd))
-                    // Protein half
-                    Column(GlanceModifier.defaultWeight()) {
-                        HeroValue("${d.totalProtein}g", "of ${d.proteinGoal}g", c.pro, c, sc)
-                        Spacer(GlanceModifier.height(sc.spaceSm))
-                        WidgetProgressBar(pct(d.totalProtein, d.proteinGoal), c.pro, c.track, sc, halfBarW)
-                    }
+                } else {
+                    HeroValue("${d.totalCalories}", "of ${d.calorieGoal} kcal", c.cal, c, sc)
+                    Spacer(GlanceModifier.height(sc.spaceSm))
+                    WidgetProgressBar(pct(d.totalCalories, d.calorieGoal), c.cal, c.track, sc, fullBarW)
                 }
-                Spacer(GlanceModifier.height(sc.spaceSm))
-                WidgetDivider(c)
-                Spacer(GlanceModifier.height(sc.spaceSm))
-                // Summary pills
-                Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    InfoPill("${d.mealCount} meal${if (d.mealCount != 1) "s" else ""}", c, sc)
-                    if (d.yesterdayCalories > 0) {
-                        Spacer(GlanceModifier.width(sc.spaceSm))
-                        val diff = d.totalCalories - d.yesterdayCalories
-                        val sign = if (diff >= 0) "+" else ""
-                        InfoPill("$sign$diff yday", c, sc)
+                if (ws != WSize.TINY) {
+                    Spacer(GlanceModifier.height(sc.spaceSm))
+                    WidgetDivider(c)
+                    Spacer(GlanceModifier.height(sc.spaceSm))
+                    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        InfoPill("${d.mealCount} meal${if (d.mealCount != 1) "s" else ""}", c, sc)
+                        if (d.yesterdayCalories > 0 && ws != WSize.MEDIUM) {
+                            Spacer(GlanceModifier.width(sc.spaceSm))
+                            val diff = d.totalCalories - d.yesterdayCalories
+                            val sign = if (diff >= 0) "+" else ""
+                            InfoPill("$sign$diff yday", c, sc)
+                        }
+                        Spacer(GlanceModifier.defaultWeight())
+                        val calLeft = (d.calorieGoal - d.totalCalories).coerceAtLeast(0)
+                        Text("$calLeft kcal left", style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
                     }
-                    Spacer(GlanceModifier.defaultWeight())
-                    val calLeft = (d.calorieGoal - d.totalCalories).coerceAtLeast(0)
-                    Text("$calLeft kcal left", style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
                 }
             }
+        }
+        if (ws == WSize.TINY) {
+            Spacer(GlanceModifier.defaultWeight())
+            return@Column
         }
         Spacer(GlanceModifier.height(sc.spaceSm))
         // Domain snapshot strip
         Row(GlanceModifier.fillMaxWidth().defaultWeight()) {
             MetricChip(
                 value = if (d.hasWeatherData && d.weatherTemp != null) "${d.weatherTemp}" else "—",
-                label = d.weatherDescription?.replaceFirstChar { it.uppercase() }?.take(10) ?: "Weather",
+                label = when {
+                    d.hasWeatherData -> d.weatherDescription?.replaceFirstChar { it.uppercase() }?.take(10) ?: "Weather"
+                    d.weatherState == WidgetSourceState.NO_PERMISSION -> "No location"
+                    else -> "Weather"
+                },
                 accent = c.weather, c = c, sc = sc,
                 modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
             )
             Spacer(GlanceModifier.width(sc.spaceSm))
+            // stepsGoal is always > 0 in practice, but a 0 here used to be an
+            // ArithmeticException that took the whole widget down.
+            val stepPct = if (d.stepsGoal > 0) (d.steps * 100 / d.stepsGoal).toInt() else 0
             MetricChip(
                 value = if (d.hasHealthData && d.steps > 0) fmtSteps(d.steps) else "—",
-                label = if (d.hasHealthData && d.steps > 0) "${(d.steps * 100 / d.stepsGoal).toInt()}% goal" else "Steps",
+                label = when {
+                    d.hasHealthData && d.steps > 0 -> "$stepPct% goal"
+                    d.healthState == WidgetSourceState.NO_PERMISSION -> "Not shared"
+                    else -> "Steps"
+                },
                 accent = c.steps, c = c, sc = sc,
                 modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
             )
-            Spacer(GlanceModifier.width(sc.spaceSm))
-            MetricChip(
-                value = when {
-                    d.hasCalendarData && d.nextEventTitle != null -> d.nextEventTitle.take(8)
-                    d.hasCalendarData -> "${d.eventsToday}"
-                    else -> "—"
-                },
-                label = when {
-                    d.hasCalendarData && d.nextEventTime != null -> d.nextEventTime
-                    d.hasCalendarData -> "event${if (d.eventsToday != 1) "s" else ""}"
-                    else -> "Calendar"
-                },
-                accent = c.event, c = c, sc = sc,
-                modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
-            )
+            // The third chip needs real width or its label truncates to noise.
+            if (contentW >= 200.dp) {
+                Spacer(GlanceModifier.width(sc.spaceSm))
+                MetricChip(
+                    value = when {
+                        d.nextEventTitle != null -> d.nextEventTitle.take(10)
+                        d.hasCalendarData -> "${d.eventsToday}"
+                        else -> "—"
+                    },
+                    label = when {
+                        d.nextEventTime != null -> d.nextEventTime
+                        d.hasCalendarData -> "event${if (d.eventsToday != 1) "s" else ""}"
+                        d.calendarState == WidgetSourceState.NO_PERMISSION -> "Not shared"
+                        else -> "Calendar"
+                    },
+                    accent = c.event, c = c, sc = sc,
+                    modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
+                )
+            }
         }
     }
 }

@@ -9,17 +9,25 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Glance ActionCallback that manually refreshes all DailyDash widgets.
- * Triggered by the refresh button in the widget header.
+ * Manual refresh for the dashboard widgets (Dashboard, Macros, Health, Weather,
+ * Calendar), triggered by the ↻ button in [WidgetHeader].
  *
- * Clears location + weather caches, re-resolves the current GPS fix, fetches
- * live weather for that location, then re-renders placed dashboard widgets.
+ * Re-reads every local source and forces a fresh location + forecast. It is
+ * shared by all five widgets, so the feedback has to be about the refresh, not
+ * about weather specifically — the old copy told someone tapping the Macros
+ * widget that their location was being updated.
  */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        toast(context, "Refreshing…")
+        val ok = runCatching { WidgetUpdater.forceRefreshDashboardWidgets(context) }.isSuccess
+        // A tap that appears to do nothing is worse than one that reports failure.
+        toast(context, if (ok) "Widgets updated" else "Couldn't refresh — try again")
+    }
+
+    private suspend fun toast(context: Context, message: String) {
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Updating location & weather…", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
-        WidgetUpdater.forceRefreshDashboardWidgets(context)
     }
 }

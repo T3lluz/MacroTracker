@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.glance.GlanceModifier
 import androidx.glance.LocalSize
+import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
@@ -92,7 +93,31 @@ fun classify(w: Dp, h: Dp): WSize = when {
     else                     -> WSize.FULL      // 4×3 / 5×3
 }
 
-/** How many columns of cards are comfortable at a given width */
+/** The bucket the widget currently being composed falls into. */
+@Composable
+fun wSize(): WSize = LocalSize.current.let { classify(it.width, it.height) }
+
+/** Usable content width inside the widget's own padding. */
+@Composable
+fun widgetContentWidth(sc: WScale): Dp =
+    (LocalSize.current.width - sc.pad * 2).coerceAtLeast(8.dp)
+
+/**
+ * How many stat-card columns fit. Two at phone-narrow widths, three from a
+ * 4-cell widget, four only on the widest slot — the old code hardcoded 4
+ * everywhere, which squeezed labels to unreadable slivers on smaller widgets.
+ */
+@Composable
+fun widgetCardColumns(): Int {
+    val w = LocalSize.current.width
+    return when {
+        w >= 340.dp -> 4
+        w >= 270.dp -> 3
+        w >= 190.dp -> 2
+        else -> 1
+    }
+}
+
 
 // ─────────────────────────────────────────────────────────────────
 //  SCALE TOKENS
@@ -309,6 +334,14 @@ fun WidgetStatusTag(lastUpdatedAt: Long, c: WidgetClr, sc: WScale) {
 //  HEADER  (accent bar + title + status tag + refresh button)
 // ─────────────────────────────────────────────────────────────────
 
+/**
+ * Widget title bar: accent rule, title, freshness tag, refresh button.
+ *
+ * At [WSize.TINY] there is no room for the tag *and* the button, so the tag
+ * drops and a greeting collapses to the plain title — the button stays, because
+ * a widget the user cannot refresh by hand is worse than one without a
+ * timestamp.
+ */
 @Composable
 fun WidgetHeader(
     title: String,
@@ -319,6 +352,7 @@ fun WidgetHeader(
     accent: ColorProvider? = null,
 ) {
     val accentColor = accent ?: c.accent
+    val tiny = wSize() == WSize.TINY
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             GlanceModifier.width(3.dp).height((sc.flg.value + 4).dp)
@@ -326,13 +360,15 @@ fun WidgetHeader(
         ) {}
         Spacer(GlanceModifier.width(sc.spaceSm))
         Text(
-            if (showGreeting) greeting() else title,
+            if (showGreeting && !tiny) greeting() else title,
             style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.flg, color = c.text),
             maxLines = 1,
         )
         Spacer(GlanceModifier.defaultWeight())
-        WidgetStatusTag(lastUpdatedAt, c, sc)
-        Spacer(GlanceModifier.width(sc.spaceSm))
+        if (!tiny) {
+            WidgetStatusTag(lastUpdatedAt, c, sc)
+            Spacer(GlanceModifier.width(sc.spaceSm))
+        }
         Box(
             GlanceModifier.size(sc.btnSize).cornerRadius(sc.btnCorner)
                 .background(c.card)
@@ -364,6 +400,60 @@ fun NoDataPlaceholder(iconRes: Int, message: String, c: WidgetClr, sc: WScale) {
         )
         Spacer(GlanceModifier.height(sc.spaceSm))
         Text(message, style = TextStyle(fontSize = sc.fsm, color = c.sub), maxLines = 2)
+    }
+}
+
+/**
+ * The one non-success panel for every DailyDash widget.
+ *
+ * Generalised from the F1 widgets' status treatment: a widget must never show a
+ * blank panel or a misleading zero, so each [WidgetSourceState] gets its own
+ * headline, explanation and (where it helps) an "open the app" tap target.
+ *
+ * [subject] names the thing that is missing, e.g. "Health data", "Calendar".
+ */
+@Composable
+fun WidgetStateMessage(
+    state: WidgetSourceState,
+    subject: String,
+    iconRes: Int,
+    c: WidgetClr,
+    sc: WScale,
+    emptyMessage: String = "Nothing to show yet",
+) {
+    val (headline, detail, accent) = when (state) {
+        WidgetSourceState.NO_PERMISSION ->
+            Triple("$subject not shared", "Tap to allow it in DailyDash", c.gold)
+        WidgetSourceState.UNAVAILABLE ->
+            Triple("$subject unavailable", "No provider on this device", c.sub)
+        WidgetSourceState.ERROR ->
+            Triple("Couldn't read $subject", "Tap to retry in the app", c.accent)
+        WidgetSourceState.OK ->
+            Triple(emptyMessage, "", c.sub)
+    }
+    Column(
+        GlanceModifier.fillMaxWidth().fillMaxHeight()
+            .clickable(actionStartActivity<com.macrotracker.MainActivity>())
+            .padding(sc.pad),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            provider = ImageProvider(iconRes),
+            contentDescription = null,
+            modifier = GlanceModifier.size(22.dp),
+            colorFilter = ColorFilter.tint(accent),
+        )
+        Spacer(GlanceModifier.height(sc.spaceSm))
+        Text(
+            headline,
+            style = TextStyle(fontSize = sc.fsm, fontWeight = FontWeight.Bold, color = c.text),
+            maxLines = 2,
+        )
+        if (detail.isNotBlank()) {
+            Spacer(GlanceModifier.height(sc.spaceXs))
+            Text(detail, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 2)
+        }
     }
 }
 

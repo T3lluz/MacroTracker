@@ -39,9 +39,13 @@ import com.macrotracker.R
 
 /**
  * Health / Vitals widget.
+ *
+ * Steps against the daily goal is the headline; heart rate, sleep and active
+ * calories fill in as the widget gets bigger.
  */
 class HealthWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    override val sizeMode = SizeMode.Responsive(WidgetSizes.ALL)
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = DashboardWidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { HealthRoot(data) } }
@@ -56,81 +60,149 @@ private fun HealthRoot(data: DashboardWidgetData) {
         modifier = GlanceModifier.fillMaxSize().cornerRadius(sc.corner).background(c.bg)
             .clickable(actionStartActivity<MainActivity>()).padding(sc.pad),
     ) {
-        HealthFull(data, c, sc)
+        HealthContent(data, c, sc)
     }
 }
 
 @Composable
-private fun HealthFull(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
-    val w = 368.dp // Fixed width for fixed scale sizing fallback
-    val cardBarW = (w - sc.pad * 2 - sc.padSm * 2).coerceAtLeast(8.dp)
+private fun HealthContent(d: DashboardWidgetData, c: WidgetClr, sc: WScale) {
+    val ws = wSize()
+    val contentW = widgetContentWidth(sc)
+    val cardBarW = (contentW - sc.padSm * 2).coerceAtLeast(8.dp)
+
     Column(GlanceModifier.fillMaxSize()) {
-        WidgetHeader(title = "Health", c = c, sc = sc, showGreeting = true, lastUpdatedAt = d.lastUpdatedAt, accent = c.steps)
+        WidgetHeader(
+            title = "Health", c = c, sc = sc,
+            showGreeting = ws != WSize.TINY, lastUpdatedAt = d.lastUpdatedAt, accent = c.steps,
+        )
+
         if (!d.hasHealthData) {
-            Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                NoDataPlaceholder(R.drawable.ic_chart_down, "Health data\nunavailable", c, sc)
+            // Permission missing, provider absent and a failed read are three
+            // different problems — say which one instead of "unavailable".
+            Box(GlanceModifier.fillMaxSize()) {
+                WidgetStateMessage(
+                    state = d.healthState,
+                    subject = "Health data",
+                    iconRes = R.drawable.ic_heart,
+                    c = c,
+                    sc = sc,
+                    emptyMessage = "No health data today",
+                )
             }
-        } else {
-            if (!d.aiInsightHealth.isNullOrBlank()) {
-                Spacer(GlanceModifier.height(sc.spaceSm))
-                AiInsightBanner(d.aiInsightHealth, c, sc)
-            }
+            return@Column
+        }
+
+        if (ws == WSize.FULL && !d.aiInsightHealth.isNullOrBlank()) {
             Spacer(GlanceModifier.height(sc.spaceSm))
-            // Steps hero card
-            Box(
-                GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card)
-                    .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
-            ) {
-                Column(GlanceModifier.fillMaxWidth()) {
-                    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(GlanceModifier.width(3.dp).height((sc.fxxl.value + 2f).dp).cornerRadius(2.dp).background(c.steps)) {}
-                        Spacer(GlanceModifier.width(sc.spaceSm))
-                        Column(GlanceModifier.defaultWeight()) {
-                            Text("%,d".format(d.steps), style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.steps), maxLines = 1)
-                            Text("of %,d steps".format(d.stepsGoal), style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-                        }
-                        val stepPct = (pctL(d.steps, d.stepsGoal) * 100).toInt()
-                        Box(GlanceModifier.cornerRadius(sc.cornerSm).background(c.pill).padding(horizontal = sc.spaceSm, vertical = 2.dp)) {
-                            Text("$stepPct%", style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = c.steps))
-                        }
+            AiInsightBanner(d.aiInsightHealth, c, sc)
+        }
+        Spacer(GlanceModifier.height(sc.spaceSm))
+
+        // ── Steps hero ────────────────────────────────────────────────────
+        // Its own card. Everything below used to be nested *inside* this box,
+        // so the whole widget read as one giant steps panel.
+        StepsHeroCard(d, c, sc, cardBarW, compact = ws == WSize.TINY)
+
+        if (ws == WSize.TINY) {
+            Spacer(GlanceModifier.defaultWeight())
+            return@Column
+        }
+
+        // ── Inline vitals ─────────────────────────────────────────────────
+        val vitals = buildInlineVitals(d, c)
+        if (vitals.isNotEmpty()) {
+            Spacer(GlanceModifier.height(sc.spaceSm))
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                vitals.take(if (ws == WSize.COMPACT) 3 else 2).forEachIndexed { i, v ->
+                    if (i > 0) Spacer(GlanceModifier.width(sc.spaceMd))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            provider = ImageProvider(v.iconRes),
+                            contentDescription = null,
+                            modifier = GlanceModifier.size(14.dp),
+                            colorFilter = ColorFilter.tint(v.accent),
+                        )
+                        Spacer(GlanceModifier.width(sc.spaceXs))
+                        Text(v.value, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = v.accent), maxLines = 1)
+                        Spacer(GlanceModifier.width(sc.spaceXs))
+                        Text(v.label, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
                     }
-                    Spacer(GlanceModifier.height(sc.spaceSm))
-                    WidgetProgressBar(pctL(d.steps, d.stepsGoal), c.steps, c.track, sc, cardBarW)
-                    // Inline vitals strip
-                    val vitals = buildInlineVitals(d, c)
-                    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        vitals.take(2).forEachIndexed { i, v ->
-                            if (i > 0) Spacer(GlanceModifier.width(sc.spaceMd))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Image(
-                                    provider = ImageProvider(v.iconRes),
-                                    contentDescription = null,
-                                    modifier = GlanceModifier.size(16.dp),
-                                    colorFilter = ColorFilter.tint(v.accent)
-                                )
-                                Spacer(GlanceModifier.width(sc.spaceXs))
-                                Text(v.value, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = v.accent), maxLines = 1)
-                                Spacer(GlanceModifier.width(sc.spaceXs))
-                                Text(v.label, style = TextStyle(fontSize = sc.fxs, color = c.sub), maxLines = 1)
-                            }
-                        }
-                    }
-                    Spacer(GlanceModifier.height(sc.spaceSm))
-                    WidgetDivider(c)
-                    Spacer(GlanceModifier.height(sc.spaceSm))
-                    // Extra metric cards
-                    val extraCards = buildVitalCards(d, c)
-                    if (extraCards.isNotEmpty()) {
-                        val cols = 4 // Fixed columns for widget grid
-                        Spacer(GlanceModifier.height(sc.spaceSm))
-                        SectionLabel("METRICS", c.steps, c, sc)
-                        Spacer(GlanceModifier.height(sc.spaceXs))
-                        CardGrid(extraCards.take(cols * 2), cols, c, sc, GlanceModifier.fillMaxWidth().defaultWeight(), fillRows = true)
-                    } else {
-                        Spacer(GlanceModifier.defaultWeight())
+                }
+                Spacer(GlanceModifier.defaultWeight())
+            }
+        }
+
+        // ── Metric grid (tall slots only; a *×2 widget has no room) ───────
+        if (ws == WSize.COMPACT) {
+            Spacer(GlanceModifier.defaultWeight())
+            return@Column
+        }
+
+        val extraCards = buildVitalCards(d, c)
+        if (extraCards.isEmpty()) {
+            Spacer(GlanceModifier.defaultWeight())
+            return@Column
+        }
+        val cols = widgetCardColumns()
+        Spacer(GlanceModifier.height(sc.spaceSm))
+        WidgetDivider(c)
+        Spacer(GlanceModifier.height(sc.spaceSm))
+        SectionLabel("METRICS", c.steps, c, sc)
+        Spacer(GlanceModifier.height(sc.spaceXs))
+        CardGrid(
+            extraCards.take(cols),
+            cols,
+            c,
+            sc,
+            GlanceModifier.fillMaxWidth().defaultWeight(),
+            fillRows = true,
+        )
+    }
+}
+
+@Composable
+private fun StepsHeroCard(
+    d: DashboardWidgetData,
+    c: WidgetClr,
+    sc: WScale,
+    barWidth: Dp,
+    compact: Boolean,
+) {
+    val progress = pctL(d.steps, d.stepsGoal)
+    Box(
+        GlanceModifier.fillMaxWidth().cornerRadius(sc.cornerSm).background(c.card)
+            .padding(horizontal = sc.padSm, vertical = sc.spaceSm),
+    ) {
+        Column(GlanceModifier.fillMaxWidth()) {
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(GlanceModifier.width(3.dp).height((sc.fxxl.value + 2f).dp).cornerRadius(2.dp).background(c.steps)) {}
+                Spacer(GlanceModifier.width(sc.spaceSm))
+                Column(GlanceModifier.defaultWeight()) {
+                    Text(
+                        "%,d".format(d.steps),
+                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxxl, color = c.steps),
+                        maxLines = 1,
+                    )
+                    Text(
+                        "of %,d steps".format(d.stepsGoal),
+                        style = TextStyle(fontSize = sc.fxs, color = c.sub),
+                        maxLines = 1,
+                    )
+                }
+                if (!compact) {
+                    Box(
+                        GlanceModifier.cornerRadius(sc.cornerSm).background(c.pill)
+                            .padding(horizontal = sc.spaceSm, vertical = 2.dp),
+                    ) {
+                        Text(
+                            "${(progress * 100).toInt()}%",
+                            style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = c.steps),
+                        )
                     }
                 }
             }
+            Spacer(GlanceModifier.height(sc.spaceSm))
+            WidgetProgressBar(progress, c.steps, c.track, sc, barWidth)
         }
     }
 }
@@ -141,7 +213,7 @@ private fun fmtSleep(minutes: Long): String {
     return "${h}h${m}m"
 }
 
-private data class InlineVital(val iconRes: Int, val value: String, val label: String, val accent: androidx.glance.unit.ColorProvider)
+private data class InlineVital(val iconRes: Int, val value: String, val label: String, val accent: ColorProvider)
 
 private fun buildInlineVitals(d: DashboardWidgetData, c: WidgetClr): List<InlineVital> = buildList {
     if (d.avgHeartRate > 0) add(InlineVital(R.drawable.ic_heart, "${d.avgHeartRate}", "BPM", c.heart))
@@ -157,5 +229,4 @@ private fun buildVitalCards(d: DashboardWidgetData, c: WidgetClr): List<CardInfo
         val net = d.totalCalories - d.activeCaloriesBurned.toInt()
         add(CardInfo(R.drawable.ic_stats, "$net", "Net kcal", if (net < d.calorieGoal) c.pro else c.cal))
     }
-    add(CardInfo(R.drawable.ic_steps, "%,d".format(d.steps), "Steps", c.steps))
 }

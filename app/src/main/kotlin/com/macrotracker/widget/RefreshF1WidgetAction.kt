@@ -34,8 +34,9 @@ class RefreshF1WidgetAction : ActionCallback {
         // 2. Invalidate in-memory cache
         F1WidgetDataProvider.invalidate()
 
-        // 3. Attempt immediate force-refresh from the network (best-effort; failures are silent)
-        runCatching { F1WidgetDataProvider.refreshNow(context, force = true) }
+        // 3. Attempt immediate force-refresh from the network
+        val ok = runCatching { F1WidgetDataProvider.refreshNow(context, force = true) }
+            .getOrDefault(false)
 
         // 4. Also enqueue via WorkManager with replace=true — matches the in-app refresh path
         //    so the full background worker pipeline (retry, backoff, network constraint) is used
@@ -48,5 +49,21 @@ class RefreshF1WidgetAction : ActionCallback {
             F1StandingsWidget().updateAll(context)
         if (WidgetStateProvider.isInstalled(context, WidgetStateProvider.WidgetType.F1_SCHEDULE))
             F1ScheduleWidget().updateAll(context)
+
+        // 6. Say what happened — a silent tap reads as a broken button, and a
+        //    failed fetch leaves the cached (stale) data on screen.
+        withContext(Dispatchers.Main) {
+            Toast.makeText(
+                context,
+                if (ok) "F1 data updated" else "Couldn't reach F1 — showing cached data",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+
+        // 7. Re-arm the countdown tick against the new session time.
+        WidgetRefreshWorker.scheduleCountdownTick(
+            context,
+            F1WidgetDataProvider.loadData(context).secondsToNextSession(),
+        )
     }
 }

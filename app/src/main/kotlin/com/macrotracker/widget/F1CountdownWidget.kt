@@ -41,7 +41,7 @@ import java.time.format.DateTimeFormatter
  * F1 Countdown Widget
  */
 class F1CountdownWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    override val sizeMode = SizeMode.Responsive(WidgetSizes.F1_SMALL)
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = F1WidgetDataProvider.loadData(context)
         provideContent { GlanceTheme { F1CountdownRoot(data) } }
@@ -57,7 +57,54 @@ private fun F1CountdownRoot(data: F1WidgetData) {
         modifier = GlanceModifier.fillMaxSize().cornerRadius(sc.corner).background(c.bg)
             .clickable(actionStartActivity<MainActivity>()).padding(sc.pad),
     ) {
-        CdFull(data, c, sc)
+        // Small slots get the one thing a countdown is for: how long until the
+        // next session. The full weekend breakdown needs real height.
+        if (wSize() == WSize.TINY) CdTiny(data, c, sc) else CdFull(data, c, sc)
+    }
+}
+
+/** 2x2 — flag, race name, countdown. Nothing else fits legibly. */
+@Composable
+private fun CdTiny(d: F1WidgetData, c: F1Clr, sc: WScale) {
+    Column(GlanceModifier.fillMaxSize()) {
+        CdHeader("Next GP", d, c, sc)
+        Spacer(GlanceModifier.defaultWeight())
+        if (!d.hasData || d.nextRaceName == null) {
+            Text(
+                f1WidgetEmptyMessage(d, "No race data"),
+                style = TextStyle(fontSize = sc.fsm, color = c.sub),
+                maxLines = 2,
+            )
+        } else {
+            Text(
+                cleanRaceName(d.nextRaceName),
+                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fmd, color = c.text),
+                maxLines = 2,
+            )
+            Spacer(GlanceModifier.height(sc.spaceSm))
+            if (isLive(d)) {
+                Box(
+                    GlanceModifier.cornerRadius(sc.cornerSm).background(c.red)
+                        .padding(horizontal = sc.spaceSm, vertical = 2.dp),
+                ) {
+                    Text(
+                        "LIVE NOW",
+                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fsm, color = c.text),
+                    )
+                }
+            } else {
+                TimerBlocks(d, c, sc, large = false)
+                if (d.nextSessionLabel != null) {
+                    Spacer(GlanceModifier.height(sc.spaceXs))
+                    Text(
+                        abbrev(d.nextSessionLabel),
+                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = sc.fxs, color = c.sub),
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        Spacer(GlanceModifier.defaultWeight())
     }
 }
 
@@ -94,7 +141,7 @@ private fun CdHeader(title: String, data: F1WidgetData, c: F1Clr, sc: WScale) {
 // ════════════════════════════════════════════════════════
 @Composable
 private fun CdFull(d: F1WidgetData, c: F1Clr, sc: WScale) {
-    val w = 368.dp // Fixed width for scaling fallback
+    val w = widgetContentWidth(sc)
     Column(GlanceModifier.fillMaxSize()) {
         CdHeader("Next Grand Prix", d, c, sc)
         Spacer(GlanceModifier.height(sc.spaceSm))
