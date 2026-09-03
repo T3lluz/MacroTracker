@@ -617,20 +617,14 @@ private fun F1CollapsedWidget(data: F1Standings) {
     }
     val trackUrl = remember(next?.circuitId) { next?.circuitId?.let { getCircuitSvgUrl(it) } }
     val context = LocalContext.current
-    val countdownLabel = when {
-        days == 0L -> null to "Today"
-        days == 1L -> "1" to "d"
-        days < 0L -> null to "—"
-        else -> "$days" to "d"
-    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ── Next race — large circuit map + countdown on the right ────────
+        // ── Next race — circuit map behind the race copy + live countdown ──
         if (next != null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = if (trackUrl != null) 168.dp else 0.dp)
+                    .heightIn(min = if (trackUrl != null) 196.dp else 0.dp)
                     .clip(SharpShape),
             ) {
                 if (trackUrl != null) {
@@ -641,29 +635,39 @@ private fun F1CollapsedWidget(data: F1Standings) {
                         model = request,
                         contentDescription = null,
                         modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.62f)
-                            .padding(end = 4.dp, top = 4.dp, bottom = 4.dp)
-                            .graphicsLayer { alpha = 0.55f },
+                            .align(Alignment.TopEnd)
+                            .fillMaxHeight(0.72f)
+                            .fillMaxWidth(0.56f)
+                            .padding(end = 4.dp, top = 6.dp)
+                            .graphicsLayer { alpha = 0.5f },
                         contentScale = ContentScale.Fit,
-                        alignment = Alignment.CenterEnd,
+                        alignment = Alignment.TopEnd,
                     ) {
                         when (painter.state) {
                             is AsyncImagePainter.State.Success -> SubcomposeAsyncImageContent()
                             else -> Unit
                         }
                     }
-                    // Keep left race copy readable over the larger map.
+                    // Keep the race copy and the countdown readable over the map.
                     Box(
                         modifier = Modifier
                             .matchParentSize()
                             .background(
                                 Brush.horizontalGradient(
-                                    0.0f to Color(0xFF111827).copy(alpha = 0.92f),
-                                    0.38f to Color(0xFF111827).copy(alpha = 0.62f),
-                                    0.62f to Color(0xFF111827).copy(alpha = 0.18f),
+                                    0.0f to Color(0xFF111827).copy(alpha = 0.94f),
+                                    0.44f to Color(0xFF111827).copy(alpha = 0.68f),
+                                    0.72f to Color(0xFF111827).copy(alpha = 0.24f),
                                     1.0f to Color.Transparent,
+                                ),
+                            ),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0.5f to Color.Transparent,
+                                    1.0f to Color(0xFF111827).copy(alpha = 0.85f),
                                 ),
                             ),
                     )
@@ -673,127 +677,75 @@ private fun F1CollapsedWidget(data: F1Standings) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 2.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Text(
-                                    "NEXT",
-                                    color = accent,
-                                    style = F1MetaTextStyle,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                )
-                                Text(
-                                    "R${next.round}/${data.schedule.size}",
-                                    color = TextSecondary,
-                                    style = F1MetaTextStyle.copy(fontWeight = FontWeight.SemiBold),
-                                    maxLines = 1,
-                                    softWrap = false,
-                                )
-                                if (next.sprintDate != null) {
-                                    Text(
-                                        "SPRINT",
-                                        color = SprintPink,
-                                        style = F1MetaTextStyle,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                    )
-                                }
-                            }
+                        Text(
+                            "NEXT",
+                            color = accent,
+                            style = F1MetaTextStyle,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        Text(
+                            "R${next.round}/${data.schedule.size}",
+                            color = TextSecondary,
+                            style = F1MetaTextStyle.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        if (next.sprintDate != null) {
                             Text(
-                                shortGP(next.raceName),
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
-                                letterSpacing = (-0.4).sp,
-                                lineHeight = 26.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                listOfNotNull(
-                                    next.locality?.takeIf { it.isNotBlank() },
-                                    countryLabel(next.countryCode).takeIf { it != "—" },
-                                ).joinToString(", ").ifBlank { "Round ${next.round}" },
-                                color = TextSecondary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
+                                "SPRINT",
+                                color = SprintPink,
+                                style = F1MetaTextStyle,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                buildString {
-                                    append(formatShort(next.raceDate))
-                                    if (localRaceTime.isNotEmpty()) append(" · $localRaceTime")
-                                },
-                                color = TextSecondary.copy(alpha = 0.9f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                softWrap = false,
                             )
                         }
-
-                        // Far-right countdown — hero type over the map
-                        val (countValue, countUnit) = countdownLabel
-                        Box(
-                            modifier = Modifier.widthIn(min = 72.dp),
-                            contentAlignment = Alignment.CenterEnd,
-                        ) {
-                            if (countValue != null) {
-                                Row(
-                                    verticalAlignment = Alignment.Bottom,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                ) {
-                                    Text(
-                                        countValue,
-                                        color = accent,
-                                        style = F1CountdownHeroStyle.copy(
-                                            fontSize = if (countValue.length > 2) 48.sp else 64.sp,
-                                            letterSpacing = (-2).sp,
-                                        ),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                    )
-                                    Text(
-                                        countUnit,
-                                        color = accent.copy(alpha = 0.85f),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 22.sp,
-                                        modifier = Modifier.padding(bottom = 10.dp),
-                                        style = TextStyle(
-                                            platformStyle = PlatformTextStyle(includeFontPadding = false),
-                                        ),
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    countUnit,
-                                    color = accent,
-                                    style = F1CountdownHeroStyle.copy(fontSize = 28.sp, letterSpacing = (-0.3).sp),
-                                    maxLines = 1,
-                                    softWrap = false,
-                                )
-                            }
-                        }
                     }
+                    Text(
+                        shortGP(next.raceName),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        letterSpacing = (-0.4).sp,
+                        lineHeight = 26.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(0.72f),
+                    )
+                    Text(
+                        buildString {
+                            val place = listOfNotNull(
+                                next.locality?.takeIf { it.isNotBlank() },
+                                countryLabel(next.countryCode).takeIf { it != "—" },
+                            ).joinToString(", ")
+                            append(place)
+                            if (place.isNotBlank()) append(" · ")
+                            append(formatShort(next.raceDate))
+                            if (localRaceTime.isNotEmpty()) append(" · $localRaceTime")
+                        },
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
 
-                    if (isSoon) {
-                        Spacer(Modifier.height(10.dp))
-                        LiveCountdown(next.raceDate, next.raceTime, F1Red)
-                    }
+                    // The live countdown *is* the hero here — it replaces the
+                    // frozen "23 d" number, which only moved once a day and
+                    // disagreed with this ticker either side of midnight.
+                    Spacer(Modifier.height(8.dp))
+                    LiveCountdown(
+                        dateStr = next.raceDate,
+                        timeStr = next.raceTime,
+                        accentColor = accent,
+                        style = CountdownStyle.Hero,
+                    )
                 }
             }
         }
@@ -1134,17 +1086,6 @@ private fun CompactNextRace(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    when {
-                        days == 0L -> "Today"
-                        days < 0 -> "—"
-                        else -> "In ${days}d"
-                    },
-                    color = accent,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
             }
             if (showTrack && trackUrl != null) {
                 Spacer(Modifier.width(8.dp))
@@ -1179,38 +1120,39 @@ private fun CompactNextRace(
                         }
                     }
                 }
-            } else {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        when {
-                            days == 0L -> "TODAY"
-                            days < 0 -> "—"
-                            else -> "${days}D"
-                        },
-                        color = accent,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 22.sp,
-                    )
-                    if (completedRounds > 0 && totalRounds > 0) {
-                        Text(
-                            "$completedRounds/$totalRounds done",
-                            color = TextSecondary,
-                            fontSize = 10.sp,
-                        )
-                    }
-                }
+            } else if (completedRounds > 0 && totalRounds > 0) {
+                Text(
+                    "$completedRounds/$totalRounds done",
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                )
             }
         }
-        if (isSoon) {
-            HorizontalDivider(color = Hairline, thickness = 0.5.dp)
-            LiveCountdown(race.raceDate, race.raceTime, accent)
-        }
+        // Always ticking — the static day badge that used to sit here went stale
+        // the moment the clock passed midnight.
+        HorizontalDivider(color = Hairline, thickness = 0.5.dp)
+        LiveCountdown(race.raceDate, race.raceTime, accent)
     }
 }
 
 // ── Live Race Countdown ────────────────────────────────────────────────────────
+
+/** How prominent the countdown is: the glance hero, or a one-line footnote. */
+private enum class CountdownStyle { Hero, Inline }
+
+/**
+ * Ticking days · hours · minutes · seconds to lights out.
+ *
+ * This is the *only* countdown on the collapsed glance — the static "23 d" hero
+ * number it replaced never moved and disagreed with this one across midnight.
+ */
 @Composable
-private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color) {
+private fun LiveCountdown(
+    dateStr: String,
+    timeStr: String?,
+    accentColor: Color,
+    style: CountdownStyle = CountdownStyle.Inline,
+) {
     val tickersPaused = LocalTickersPaused.current
     var secondsLeft by remember(dateStr, timeStr) { mutableLongStateOf(secondsUntilRace(dateStr, timeStr)) }
 
@@ -1222,30 +1164,89 @@ private fun LiveCountdown(dateStr: String, timeStr: String?, accentColor: Color)
         }
     }
 
-    if (secondsLeft <= 0 || secondsLeft > 7 * 24 * 3600) return
+    // -1 means the schedule entry didn't parse; 0 means we're at or past lights out.
+    if (secondsLeft < 0) return
+    if (secondsLeft == 0L) {
+        Text(
+            "Lights out",
+            color = accentColor,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (style == CountdownStyle.Hero) 20.sp else 13.sp,
+        )
+        return
+    }
 
     val days = secondsLeft / 86400
     val hours = (secondsLeft % 86400) / 3600
     val mins = (secondsLeft % 3600) / 60
     val secs = secondsLeft % 60
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Starts in", color = TextSecondary, fontSize = 11.sp)
-        Spacer(Modifier.weight(1f))
-        if (days > 0) {
-            CountdownUnit("${days}", "d", accentColor)
-            CountdownSep()
+    when (style) {
+        CountdownStyle.Hero -> Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "LIGHTS OUT IN",
+                color = TextSecondary,
+                style = F1MetaTextStyle.copy(fontSize = 10.sp),
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CountdownBlock(days.toString(), "DAYS", accentColor)
+                CountdownColon()
+                CountdownBlock(hours.toString().padStart(2, '0'), "HRS", accentColor)
+                CountdownColon()
+                CountdownBlock(mins.toString().padStart(2, '0'), "MIN", accentColor)
+                CountdownColon()
+                CountdownBlock(secs.toString().padStart(2, '0'), "SEC", accentColor)
+            }
         }
-        CountdownUnit(hours.toString().padStart(2, '0'), "h", accentColor)
-        CountdownSep()
-        CountdownUnit(mins.toString().padStart(2, '0'), "m", accentColor)
-        CountdownSep()
-        CountdownUnit(secs.toString().padStart(2, '0'), "s", accentColor)
+
+        CountdownStyle.Inline -> Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Starts in", color = TextSecondary, fontSize = 11.sp)
+            Spacer(Modifier.weight(1f))
+            if (days > 0) {
+                CountdownUnit("$days", "d", accentColor)
+                CountdownSep()
+            }
+            CountdownUnit(hours.toString().padStart(2, '0'), "h", accentColor)
+            CountdownSep()
+            CountdownUnit(mins.toString().padStart(2, '0'), "m", accentColor)
+            CountdownSep()
+            CountdownUnit(secs.toString().padStart(2, '0'), "s", accentColor)
+        }
     }
+}
+
+/** One hero digit pair with its unit caption underneath. */
+@Composable
+private fun CountdownBlock(value: String, label: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            value,
+            color = color,
+            style = F1CountdownHeroStyle.copy(fontSize = 34.sp, letterSpacing = (-1).sp),
+            maxLines = 1,
+            softWrap = false,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(label, color = TextSecondary, style = F1MetaTextStyle.copy(fontSize = 9.sp))
+    }
+}
+
+@Composable
+private fun CountdownColon() {
+    Text(
+        ":",
+        color = TextSecondary.copy(alpha = 0.45f),
+        style = F1CountdownHeroStyle.copy(fontSize = 28.sp, letterSpacing = 0.sp),
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }
 
 @Composable

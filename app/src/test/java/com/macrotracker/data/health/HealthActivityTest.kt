@@ -268,6 +268,50 @@ class HealthActivityTest {
         assertTrue(tilesY in 1..4)
     }
 
+    @Test
+    fun routeAttemptMarksTheTrackResolvedEitherWay() {
+        val pending = sampleActivity("pending", routeConsentRequired = true).copy(routeResolved = false)
+        assertFalse(pending.routeResolved)
+
+        // Denied / no GPS still counts as resolved, so the row stops showing
+        // "Loading map…" forever.
+        assertTrue(activityAfterRouteAttempt(pending, null).routeResolved)
+
+        val granted = activityAfterRouteAttempt(
+            pending,
+            ExerciseRoute(
+                listOf(
+                    ExerciseRoute.Location(noon, 51.5, -0.12),
+                    ExerciseRoute.Location(noon.plusSeconds(20), 51.501, -0.119),
+                ),
+            ),
+        )
+        assertTrue(granted.routeResolved)
+        assertTrue(granted.hasRoute)
+    }
+
+    @Test
+    fun routesPermissionAloneIsNotEnoughToClaimHealthData() {
+        // READ_EXERCISE_ROUTES reads nothing by itself — treating it as data
+        // access showed an all-zero dashboard as a successful read.
+        assertFalse(
+            HealthConnectRepository.EXERCISE_ROUTES_PERMISSION in
+                HealthConnectRepository.DATA_PERMISSIONS,
+        )
+        assertTrue(HealthConnectRepository.STEPS_PERMISSION in HealthConnectRepository.DATA_PERMISSIONS)
+        assertEquals(
+            HealthConnectRepository.PERMISSIONS.size - 1,
+            HealthConnectRepository.DATA_PERMISSIONS.size,
+        )
+    }
+
+    @Test
+    fun activityHistoryCoversAFullMonth() {
+        assertTrue(HealthConnectRepository.ACTIVITY_HISTORY_DAYS >= 30)
+        assertTrue(HealthConnectRepository.ACTIVITY_HISTORY_LIMIT >= 30)
+        assertTrue(HealthConnectRepository.EAGER_ROUTE_COUNT < HealthConnectRepository.ACTIVITY_HISTORY_LIMIT)
+    }
+
     private fun sampleActivity(
         id: String,
         start: Instant = noon,

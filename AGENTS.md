@@ -46,7 +46,14 @@ com.macrotracker/
                               reads: Steps, HeartRate, RestingHeartRate, OxygenSaturation,
                               RespiratoryRate, Distance, FloorsClimbed, ActiveCaloriesBurned,
                               SleepSession, TotalCaloriesBurned; has throttle cache to avoid
-                              hammering Health Connect IPC on rapid ViewModel refreshes
+                              hammering Health Connect IPC on rapid ViewModel refreshes.
+                              **Aggregates must be permission-scoped** — Health Connect fails the
+                              whole `aggregate()` call when any requested metric is not granted,
+                              so build the set from `grantedAggregateMetrics()` and let
+                              `aggregateResilient()` retry metric-by-metric on failure.
+                              `hasAnyPermissions()` ignores READ_EXERCISE_ROUTES (it reads no data
+                              on its own). `readTodayStats()` throws only when every granted
+                              metric failed, so the ViewModel can tell "empty" from "broken".
     f1/                    ← F1Repository via Ktor + OpenF1 API (https://api.openf1.org/v1/);
                               15-min in-memory + SharedPrefs disk cache; F1RepositoryEntryPoint for widgets
     youtube/               ← YouTubeRepository via RSS feeds + optional Google OAuth subscription
@@ -81,7 +88,13 @@ com.macrotracker/
 navigation/            ← Screen.kt (sealed class, 4 bottom-nav tabs) + OnboardingRoutes (const routes)
                          + DailyDashNavHost.kt
     components/            ← shared Composables (MacroCard, PillNavigationBar, DraggableWidgetColumn,
-                              WidgetEditor, WidgetExpandBar, …)
+                              WidgetEditor, WidgetExpandBar, …); DottedFrost.kt holds the
+                              Cinema-Info glass chrome — use `Modifier.dottedGlass(hazeState, shape)`
+                              on any frosted surface above a `hazeSource` (nav pill, AI composer).
+                              It stacks two masked haze passes: heavy blur everywhere *except* the
+                              dot cores, then a light blur *only* at the cores. `Modifier.dottedFrost()`
+                              is just the painted-dot fallback for surfaces with nothing to blur
+                              (and for API < 31) — don't reach for it as the effect itself.
     theme/                 ← Color, Theme, Animation (MacroMotion object — single source for all specs)
     util/                  ← HapticHelper (Compose-friendly performHapticFeedback wrapper, ui/util/Haptics.kt)
                               + LastUpdatedText composable + rememberRelativeTime (ui/util/LastUpdated.kt)
@@ -141,7 +154,7 @@ The **Health screen** uses the same draggable pattern with a separate key (`heal
 ```
 "DAILY_HEALTH:true,ACTIVITIES:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
 ```
-`DAILY_HEALTH` is the hero Daily Health card (Apple-style activity rings + dynamic today metrics). **`ACTIVITIES`** lists recent workouts synced through Health Connect (Garmin Connect, Google Fit, Samsung Health, Strava, and others): type, source, duration, distance, pace, heart rate, elevation, and a GPS route map when the session includes one. `WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
+`DAILY_HEALTH` is the hero Daily Health card (Apple-style activity rings + dynamic today metrics). **`ACTIVITIES`** lists the **last month** of workouts synced through Health Connect (Garmin Connect, Google Fit, Samsung Health, Strava, and others): type, source, duration, distance, pace, heart rate, elevation, and a GPS route map when the session includes one. A featured hero card sits above three compact rows, with **Show N more** revealing the rest in a scroll box. GPS is read up front only for the newest `EAGER_ROUTE_COUNT` sessions; the rest resolve through `HealthViewModel.onActivityExpanded()` when a row is opened (`routeResolved` gates the "Loading map…" placeholder). `WEEK_AT_A_GLANCE` is the Macro Trends widget (7/14/30-day nutrition chart + per-day food logs), moved from the former History tab.
 
 ### App Widgets (Glance)
 All Glance widgets are refreshed together via `WidgetUpdater.updateAllWidgets(context)` (call from the app) or `WidgetRefreshWorker` (periodic WorkManager task, 30-min interval, requires network). F1 widgets share a disk/memory cache through `F1WidgetDataProvider`. Full widget list: `DashboardWidget`, `MacrosWidget`, `HealthWidget`, `WeatherWidget`, `CalendarWidget`, `F1CountdownWidget`, `F1StandingsWidget`, `F1ScheduleWidget`.

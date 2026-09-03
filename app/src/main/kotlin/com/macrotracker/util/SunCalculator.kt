@@ -5,6 +5,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.*
+import java.util.Locale
 
 object SunCalculator {
 
@@ -100,7 +101,7 @@ object SunCalculator {
 
                 val ampm = if (h < 12) "AM" else "PM"
                 val h12 = if (h == 0) 12 else if (h > 12) h - 12 else h
-                return String.format("%d:%02d %s", h12, m, ampm)
+                return String.format(Locale.US, "%d:%02d %s", h12, m, ampm)
             }
 
             return formatTime(localRise) to formatTime(localSet)

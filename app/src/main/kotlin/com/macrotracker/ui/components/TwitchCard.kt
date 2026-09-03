@@ -116,6 +116,7 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import java.util.Locale
 
 private val TwPurple = Color(0xFF9146FF)
 private val TwPurpleDeep = Color(0xFF5C16C5)
@@ -137,9 +138,9 @@ private fun openUrl(context: Context, url: String) {
 }
 
 private fun formatViewers(count: Int): String = when {
-    count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000.0)
-    count >= 10_000 -> String.format("%.1fK", count / 1_000.0)
-    count >= 1_000 -> String.format("%.1fK", count / 1_000.0)
+    count >= 1_000_000 -> String.format(Locale.US, "%.1fM", count / 1_000_000.0)
+    count >= 10_000 -> String.format(Locale.US, "%.1fK", count / 1_000.0)
+    count >= 1_000 -> String.format(Locale.US, "%.1fK", count / 1_000.0)
     else -> count.toString()
 }
 

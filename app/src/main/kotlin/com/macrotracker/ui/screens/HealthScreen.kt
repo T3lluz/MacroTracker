@@ -375,7 +375,7 @@ fun HealthScreen(
                                 haptics.tick()
                                 revealActivityRoute(activity)
                             },
-                            onExpandActivity = { healthViewModel.loadActivityHeartRate(it) },
+                            onExpandActivity = { healthViewModel.onActivityExpanded(it) },
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                     }

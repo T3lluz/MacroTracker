@@ -20,6 +20,7 @@ import com.macrotracker.ui.screens.health.WeekHealthInsights
 import com.macrotracker.ui.screens.health.computeMacroInsights
 import com.macrotracker.ui.screens.health.computeWeekInsights
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -137,6 +138,9 @@ class HealthViewModel @Inject constructor(
     private var healthJob: Job? = null
     private var detailJob: Job? = null
     private var pendingRouteApply: Pair<String, ExerciseRoute?>? = null
+    private val routeLoadsInFlight = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<String, Boolean>(),
+    )
 
     /** Which detail panel (if any) should load heavy intraday datasets. */
     private var detailMetric: DetailMetric = DetailMetric.NONE
@@ -343,8 +347,10 @@ class HealthViewModel @Inject constructor(
 
             try {
                 coroutineScope {
-                    val statsDeferred = async { healthConnectRepository.readTodayStats() }
-                    val historyDeferred = async { loadWeekHistory() }
+                    // runCatching so one failing read reports itself instead of
+                    // cancelling the workouts / week history running beside it.
+                    val statsDeferred = async { runCatching { healthConnectRepository.readTodayStats() } }
+                    val historyDeferred = async { runCatching { loadWeekHistory() } }
                     val todaySleepDeferred = async {
                         if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
                             healthConnectRepository.readSleepSessions(LocalDate.now())
@@ -353,18 +359,35 @@ class HealthViewModel @Inject constructor(
                         }
                     }
                     val activitiesDeferred = async { loadActivitiesInternal(silent) }
-                    val stats = statsDeferred.await()
+                    val statsResult = statsDeferred.await()
                     historyDeferred.await()
                     _todaySleepSessions.value = todaySleepDeferred.await()
                     activitiesDeferred.await()
-                    if (stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0) {
-                        _healthConnectState.value = current.copy(isRefreshing = false)
-                    } else {
-                        _healthConnectState.value = HealthConnectUiState.Success(stats)
+
+                    val stats = statsResult.getOrNull()
+                    when {
+                        stats == null -> {
+                            val error = statsResult.exceptionOrNull()
+                            Log.e(TAG, "Failed to read today's health stats", error)
+                            _healthConnectState.value = if (current is HealthConnectUiState.Success) {
+                                // Keep the numbers already on screen rather than zeroing them.
+                                current.copy(isRefreshing = false)
+                            } else {
+                                HealthConnectUiState.Error(
+                                    error?.message ?: "Failed to read health data",
+                                )
+                            }
+                        }
+                        // A momentary empty read shouldn't wipe a good snapshot.
+                        stats.steps == 0L && current is HealthConnectUiState.Success && current.stats.steps > 0 ->
+                            _healthConnectState.value = current.copy(isRefreshing = false)
+                        else -> _healthConnectState.value = HealthConnectUiState.Success(stats)
                     }
                 }
                 // Detail datasets only when the HR/Sleep panel is open.
                 loadDetailedData(_selectedDate.value, detailMetric)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to read health data", e)
                 if (current !is HealthConnectUiState.Success) {
@@ -400,6 +423,8 @@ class HealthViewModel @Inject constructor(
             } ?: activities
             _activitiesState.value = ActivitiesUiState.Success(merged)
             pickFeaturedActivity(merged)?.let { loadActivityHeartRate(it) }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read activities", e)
             if (current is ActivitiesUiState.Success) {
@@ -424,6 +449,32 @@ class HealthViewModel @Inject constructor(
                 },
             )
         }
+    }
+
+    /**
+     * A month of workouts is listed without GPS beyond the newest few; pull the
+     * track for one on demand (opening a row, or scrolling it into view).
+     */
+    fun loadActivityRoute(activity: HealthActivity) {
+        if (activity.routeResolved) return
+        if (!routeLoadsInFlight.add(activity.id)) return
+        viewModelScope.launch {
+            try {
+                val resolved = healthConnectRepository.resolveRoute(activity)
+                val current = _activitiesState.value as? ActivitiesUiState.Success ?: return@launch
+                _activitiesState.value = current.copy(
+                    activities = current.activities.map { if (it.id == activity.id) resolved else it },
+                )
+            } finally {
+                routeLoadsInFlight.remove(activity.id)
+            }
+        }
+    }
+
+    /** Everything the Activities card needs when a row is opened. */
+    fun onActivityExpanded(activity: HealthActivity) {
+        loadActivityRoute(activity)
+        loadActivityHeartRate(activity)
     }
 
     fun applyExerciseRoute(activityId: String, route: ExerciseRoute?) {

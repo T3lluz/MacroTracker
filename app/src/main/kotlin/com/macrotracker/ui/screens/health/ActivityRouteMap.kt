@@ -3,12 +3,14 @@ package com.macrotracker.ui.screens.health
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -52,6 +54,13 @@ import com.macrotracker.ui.theme.TextSecondary
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/**
+ * GPS track drawn over OSM/CARTO tiles.
+ *
+ * [chrome] off gives a bare thumbnail (used for the compact workout rows);
+ * [distanceLabel] / [elevationLabel] render as a small glass readout so the map
+ * carries the headline numbers instead of repeating them below it.
+ */
 @Composable
 fun ActivityRouteMap(
     points: List<ActivityRoutePoint>,
@@ -59,6 +68,9 @@ fun ActivityRouteMap(
     modifier: Modifier = Modifier,
     height: Dp = 168.dp,
     animate: Boolean = true,
+    chrome: Boolean = true,
+    distanceLabel: String? = null,
+    elevationLabel: String? = null,
 ) {
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
     val aspect = if (sizePx.width > 0 && sizePx.height > 0) {
@@ -77,21 +89,24 @@ fun ActivityRouteMap(
         }
     }
 
+    val shape = RoundedCornerShape(if (chrome) 14.dp else 10.dp)
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .then(if (chrome) Modifier.fillMaxWidth() else Modifier)
             .height(height)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
             .background(MapSurface)
             .onSizeChanged { sizePx = it },
         contentAlignment = Alignment.Center,
     ) {
         if (points.size < 2 || viewport == null) {
-            Text(
-                "No GPS path for this activity",
-                color = TextSecondary,
-                fontSize = 12.sp,
-            )
+            if (chrome) {
+                Text(
+                    "No GPS path for this activity",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                )
+            }
         } else {
             MapTiles(viewport = viewport)
             RouteOverlay(
@@ -99,45 +114,70 @@ fun ActivityRouteMap(
                 viewport = viewport,
                 accent = accent,
                 progress = reveal.value,
+                strokeScale = if (chrome) 1f else 0.7f,
+                markers = chrome,
             )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.22f),
-                            0.18f to Color.Transparent,
-                            0.78f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.38f),
+            if (chrome) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.22f),
+                                0.18f to Color.Transparent,
+                                0.78f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.38f),
+                            ),
                         ),
-                    ),
-            )
-            Text(
-                "© OSM · CARTO",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 8.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp),
-            )
-            Text(
-                "Start",
-                color = MapStart,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp),
-            )
-            Text(
-                "Finish",
-                color = MapFinish,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp),
-            )
+                )
+                Text(
+                    "© OSM · CARTO",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 8.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                )
+                val readout = listOfNotNull(distanceLabel, elevationLabel?.let { "↑ $it" })
+                if (readout.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        readout.forEach { label ->
+                            Text(
+                                label,
+                                color = Color.White.copy(alpha = 0.92f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Start",
+                    color = MapStart,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp),
+                )
+                Text(
+                    "Finish",
+                    color = MapFinish,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp),
+                )
+            }
         }
     }
 }
@@ -192,8 +232,10 @@ private fun RouteOverlay(
     viewport: RouteMapViewport,
     accent: Color,
     progress: Float,
+    strokeScale: Float = 1f,
+    markers: Boolean = true,
 ) {
-    Canvas(modifier = Modifier.fillMaxSize().padding(0.dp)) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
         val count = max(2, (points.size * progress).toInt().coerceAtLeast(2))
@@ -214,20 +256,22 @@ private fun RouteOverlay(
         drawPath(
             path,
             color = Color.Black.copy(alpha = 0.45f),
-            style = Stroke(width = 10f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            style = Stroke(width = 10f * strokeScale, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
         drawPath(
             path,
             color = accent.copy(alpha = 0.28f),
-            style = Stroke(width = 14f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            style = Stroke(width = 14f * strokeScale, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
         drawPath(
             path,
             brush = Brush.horizontalGradient(
                 listOf(accent.copy(alpha = 0.85f), accent, Color.White.copy(alpha = 0.95f)),
             ),
-            style = Stroke(width = 4.5f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            style = Stroke(width = 4.5f * strokeScale, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
+
+        if (!markers) return@Canvas
 
         val start = Offset(firstX, firstY)
         val last = visible.last()

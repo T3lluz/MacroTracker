@@ -10,10 +10,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -61,7 +63,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -76,15 +77,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -98,7 +104,7 @@ import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.ScreenHeader
 import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.components.TypingDots
-import com.macrotracker.ui.components.dottedFrost
+import com.macrotracker.ui.components.dottedGlass
 import com.macrotracker.ui.screens.ai.DishSuggestion
 import com.macrotracker.ui.screens.ai.refineDraft
 import com.macrotracker.ui.screens.ai.suggestionStripTitle
@@ -106,7 +112,6 @@ import com.macrotracker.ui.screens.ai.suggestionsForDraft
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.GlassHairline
-import com.macrotracker.ui.theme.GlassTint
 import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
@@ -117,6 +122,9 @@ import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 import com.macrotracker.ui.viewmodel.AiViewModel
 import com.macrotracker.ui.viewmodel.NutritionChatMessage
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.delay
@@ -135,7 +143,10 @@ private suspend fun LazyListState.followChatBottom() {
     // First jump to the last item, then nudge so tall estimate cards aren't clipped.
     animateScrollToItem(lastIndex)
     val lastItem = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
-    val overflow = (lastItem.offset + lastItem.size) - layoutInfo.viewportEndOffset
+    // Stop above the reserved strip the floating composer sits in, not at the
+    // raw viewport edge — otherwise the newest bubble ends up behind it.
+    val visibleBottom = layoutInfo.viewportEndOffset - layoutInfo.afterContentPadding
+    val overflow = (lastItem.offset + lastItem.size) - visibleBottom
     if (overflow > 0) {
         animateScrollBy(overflow.toFloat())
     }
@@ -295,96 +306,130 @@ fun AIScreen(
         }
     }
 
-    Column(
+    // The composer is glass over the conversation, so the chat is its own haze
+    // source — the app-level one belongs to the nav pill and would feed back.
+    val chatHaze = rememberHazeState()
+    // The composer floats over the list, so reserve exactly its height at the
+    // bottom of the chat instead of guessing a constant.
+    var composerHeight by remember { mutableStateOf(0.dp) }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Background)
             .imePadding(),
     ) {
-        AiChatHeader(
-            loggedCount = loggedCount,
-            loading = loading,
-            onCameraScan = {
-                haptics.click()
-                onNavigateToCameraScan()
-            },
-            onClear = {
-                haptics.tick()
-                viewModel.clearChat()
-                draft = ""
-                forceFollow = true
-            },
-            onCancel = {
-                haptics.tick()
-                forceFollow = true
-                viewModel.cancelEstimate()
-            },
-            canClear = messages.size > 1 && !loading,
-        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            AiChatHeader(
+                loggedCount = loggedCount,
+                loading = loading,
+                onCameraScan = {
+                    haptics.click()
+                    onNavigateToCameraScan()
+                },
+                onClear = {
+                    haptics.tick()
+                    viewModel.clearChat()
+                    draft = ""
+                    forceFollow = true
+                },
+                onCancel = {
+                    haptics.tick()
+                    forceFollow = true
+                    viewModel.cancelEstimate()
+                },
+                canClear = messages.size > 1 && !loading,
+            )
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(messages, key = { it.id }) { message ->
-                when (message) {
-                    is NutritionChatMessage.Doctor -> DoctorBubble(
-                        message = message,
-                        onLog = { estimate ->
-                            haptics.confirm()
-                            forceFollow = true
-                            viewModel.logEstimate(message.id, estimate)
-                        },
-                        onRetry = { query ->
-                            haptics.click()
-                            forceFollow = true
-                            viewModel.retryQuery(query)
-                        },
-                        onOpenSettings = {
-                            haptics.click()
-                            onNavigateToAiSettings()
-                        },
-                    )
-                    is NutritionChatMessage.User -> UserBubble(text = message.text)
-                    is NutritionChatMessage.Typing -> TypingBubble(
-                        onCancel = {
-                            haptics.tick()
-                            forceFollow = true
-                            viewModel.cancelEstimate()
-                        },
-                    )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .hazeSource(state = chatHaze),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = composerHeight + 10.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(messages, key = { it.id }) { message ->
+                    when (message) {
+                        is NutritionChatMessage.Doctor -> DoctorBubble(
+                            message = message,
+                            onLog = { estimate ->
+                                haptics.confirm()
+                                forceFollow = true
+                                viewModel.logEstimate(message.id, estimate)
+                            },
+                            onRetry = { query ->
+                                haptics.click()
+                                forceFollow = true
+                                viewModel.retryQuery(query)
+                            },
+                            onOpenSettings = {
+                                haptics.click()
+                                onNavigateToAiSettings()
+                            },
+                        )
+                        is NutritionChatMessage.User -> UserBubble(text = message.text)
+                        is NutritionChatMessage.Typing -> TypingBubble(
+                            onCancel = {
+                                haptics.tick()
+                                forceFollow = true
+                                viewModel.cancelEstimate()
+                            },
+                        )
+                    }
                 }
             }
         }
 
-        AnimatedVisibility(
-            visible = showSuggestions,
-            enter = fadeIn(MacroMotion.fadeTween()) + slideInVertically(
-                animationSpec = MacroMotion.slideTween(),
-                initialOffsetY = { it / 4 },
-            ),
-            exit = fadeOut(MacroMotion.fadeTween()),
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                // Fade the conversation out under the floating bar so chips and
+                // bubbles never collide.
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.35f to Background.copy(alpha = 0.92f),
+                        1f to Background,
+                    ),
+                )
+                .onSizeChanged { size ->
+                    composerHeight = with(density) { size.height.toDp() }
+                },
         ) {
-            SuggestionStrip(
-                title = suggestionStripTitle(draft),
-                suggestions = liveSuggestions,
-                refining = draft.isNotBlank(),
-                onPick = ::onSuggestion,
+            AnimatedVisibility(
+                visible = showSuggestions,
+                enter = fadeIn(MacroMotion.fadeTween()) + slideInVertically(
+                    animationSpec = MacroMotion.slideTween(),
+                    initialOffsetY = { it / 4 },
+                ),
+                exit = fadeOut(MacroMotion.fadeTween()),
+            ) {
+                SuggestionStrip(
+                    title = suggestionStripTitle(draft),
+                    suggestions = liveSuggestions,
+                    refining = draft.isNotBlank(),
+                    onPick = ::onSuggestion,
+                )
+            }
+
+            ChatComposer(
+                value = draft,
+                onValueChange = { draft = it },
+                onSend = { send() },
+                onTakePhoto = ::onTakeMealPhoto,
+                onAddPhoto = ::onAddMealPhoto,
+                enabled = !loading,
+                hazeState = chatHaze,
             )
         }
-
-        ChatComposer(
-            value = draft,
-            onValueChange = { draft = it },
-            onSend = { send() },
-            onTakePhoto = ::onTakeMealPhoto,
-            onAddPhoto = ::onAddMealPhoto,
-            enabled = !loading,
-        )
     }
 }
 
@@ -423,6 +468,9 @@ private fun mealPhotoToBase64(bitmap: Bitmap): String {
     return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
 }
 
+
+// ── Chrome ───────────────────────────────────────────────────────────────────
+
 @Composable
 private fun AiChatHeader(
     loggedCount: Int,
@@ -434,37 +482,34 @@ private fun AiChatHeader(
 ) {
     val status = when {
         loading -> "Estimating macros…"
-        loggedCount > 0 -> "Logged $loggedCount this chat"
-        else -> "Describe a meal, photo, or label"
+        loggedCount == 1 -> "1 meal logged this chat"
+        loggedCount > 1 -> "$loggedCount meals logged this chat"
+        else -> "Describe a meal, snap it, or scan the label"
     }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 10.dp),
     ) {
         ScreenHeaderSpacer()
         ScreenHeader(
             title = "AI",
-            subtitle = status,
-            trailing = {
-                Image(
-                    painter = painterResource(R.drawable.ic_clanker),
-                    contentDescription = "Clanker",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Surface)
-                        .border(1.dp, Border, CircleShape)
-                        .padding(3.dp),
-                )
-            },
+            trailing = { ClankerAvatar(size = 44.dp, live = loading) },
         )
+
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusDot(active = loading)
+            Spacer(modifier = Modifier.width(7.dp))
+            // 16.sp keeps this in step with the Home/Health header subtitles.
+            Text(status, fontSize = 16.sp, color = TextSecondary)
+        }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 12.dp),
+            modifier = Modifier.padding(top = 14.dp),
         ) {
             HeaderAction(
                 icon = Icons.Outlined.CameraAlt,
@@ -473,25 +518,59 @@ private fun AiChatHeader(
                 onClick = onCameraScan,
             )
             if (loading) {
-                HeaderAction(
-                    icon = Icons.Outlined.Close,
-                    label = "Cancel",
-                    onClick = onCancel,
-                )
+                HeaderAction(icon = Icons.Outlined.Close, label = "Stop", onClick = onCancel)
             } else if (canClear) {
-                HeaderAction(
-                    icon = Icons.Outlined.DeleteSweep,
-                    label = "New",
-                    onClick = onClear,
-                )
+                HeaderAction(icon = Icons.Outlined.DeleteSweep, label = "New chat", onClick = onClear)
             }
         }
     }
 }
 
+/** Clanker, framed by a soft accent ring that lifts while he is thinking. */
+@Composable
+private fun ClankerAvatar(size: Dp, live: Boolean, modifier: Modifier = Modifier) {
+    val ring by animateColorAsState(
+        targetValue = if (live) Primary.copy(alpha = 0.55f) else Border,
+        animationSpec = MacroMotion.colorTween(),
+        label = "clanker_ring",
+    )
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Surface)
+            .border(1.5.dp, ring, CircleShape)
+            .padding(size * 0.08f),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_clanker),
+            contentDescription = "Clanker",
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape),
+        )
+    }
+}
+
+@Composable
+private fun StatusDot(active: Boolean) {
+    val alpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0.6f,
+        animationSpec = MacroMotion.fadeTween(),
+        label = "status_dot",
+    )
+    Box(
+        modifier = Modifier
+            .size(7.dp)
+            .clip(CircleShape)
+            .background((if (active) Primary else Secondary).copy(alpha = alpha)),
+    )
+}
+
 @Composable
 private fun HeaderAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     emphasized: Boolean = false,
@@ -499,21 +578,21 @@ private fun HeaderAction(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (emphasized) Primary.copy(alpha = 0.14f) else Color.Transparent)
+            .clip(PillShape)
+            .background(if (emphasized) Primary.copy(alpha = 0.16f) else Surface)
             .border(
                 1.dp,
-                if (emphasized) Primary.copy(alpha = 0.35f) else Border.copy(alpha = 0.7f),
-                RoundedCornerShape(999.dp),
+                if (emphasized) Primary.copy(alpha = 0.38f) else Border,
+                PillShape,
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = 13.dp, vertical = 8.dp),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = if (emphasized) Primary else TextSecondary,
-            modifier = Modifier.size(14.dp),
+            modifier = Modifier.size(15.dp),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
@@ -534,23 +613,24 @@ private fun SuggestionStrip(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            title,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextSecondary,
+            title.uppercase(),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            color = TextSecondary.copy(alpha = 0.8f),
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
         )
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier.padding(bottom = 8.dp),
         ) {
             items(suggestions, key = { it.label }) { suggestion ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .border(1.dp, Border, RoundedCornerShape(12.dp))
+                        .clip(PillShape)
+                        .border(1.dp, Border, PillShape)
                         .background(Surface)
                         .clickable { onPick(suggestion) }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -559,7 +639,7 @@ private fun SuggestionStrip(
                         Image(
                             painter = painterResource(suggestion.iconRes),
                             contentDescription = null,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(20.dp),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     } else if (refining) {
@@ -578,6 +658,16 @@ private fun SuggestionStrip(
     }
 }
 
+// ── Bubbles ──────────────────────────────────────────────────────────────────
+
+/** Chat radii: square off the corner nearest the speaker, like a tail. */
+private val DoctorBubbleShape =
+    RoundedCornerShape(topStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp)
+private val UserBubbleShape =
+    RoundedCornerShape(topStart = 18.dp, topEnd = 6.dp, bottomEnd = 18.dp, bottomStart = 18.dp)
+private val CardShape = RoundedCornerShape(16.dp)
+private val PillShape = RoundedCornerShape(999.dp)
+
 @Composable
 private fun DoctorBubble(
     message: NutritionChatMessage.Doctor,
@@ -590,37 +680,28 @@ private fun DoctorBubble(
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.Top,
     ) {
-        Image(
-            painter = painterResource(R.drawable.ic_clanker),
-            contentDescription = null,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(Surface)
-                .border(1.dp, Border, CircleShape)
-                .padding(2.dp),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
+        ClankerAvatar(size = 30.dp, live = false, modifier = Modifier.padding(top = 2.dp))
+        Spacer(modifier = Modifier.width(9.dp))
         Column(
-            modifier = Modifier.widthIn(max = 320.dp),
+            modifier = Modifier.widthIn(max = 330.dp),
             horizontalAlignment = Alignment.Start,
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(DoctorBubbleShape)
                     .background(if (message.isError) Error.copy(alpha = 0.10f) else Surface)
                     .border(
                         1.dp,
-                        if (message.isError) Error.copy(alpha = 0.4f) else Border,
-                        RoundedCornerShape(14.dp),
+                        if (message.isError) Error.copy(alpha = 0.35f) else Border,
+                        DoctorBubbleShape,
                     )
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
             ) {
                 Text(
                     text = message.text,
                     color = if (message.isError) Error else TextPrimary,
                     fontSize = 14.sp,
-                    lineHeight = 20.sp,
+                    lineHeight = 21.sp,
                 )
             }
 
@@ -660,25 +741,84 @@ private fun DoctorBubble(
 }
 
 @Composable
+private fun UserBubble(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .clip(UserBubbleShape)
+                .background(Primary)
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TypingBubble(onCancel: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        ClankerAvatar(size = 30.dp, live = true)
+        Spacer(modifier = Modifier.width(9.dp))
+        Row(
+            modifier = Modifier
+                .clip(DoctorBubbleShape)
+                .background(Surface)
+                .border(1.dp, Border, DoctorBubbleShape)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TypingDots(color = TextSecondary)
+            Text("Estimating…", fontSize = 12.sp, color = TextSecondary)
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            "Stop",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary,
+            modifier = Modifier
+                .clip(PillShape)
+                .clickable(onClick = onCancel)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
 private fun SmallActionChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     onClick: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, Border, RoundedCornerShape(10.dp))
+            .clip(PillShape)
+            .border(1.dp, Border, PillShape)
             .background(Surface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
         Icon(icon, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(6.dp))
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
     }
 }
+
+// ── Estimate card ────────────────────────────────────────────────────────────
 
 @Composable
 private fun EstimateCard(
@@ -701,54 +841,85 @@ private fun EstimateCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, Border, RoundedCornerShape(14.dp))
+            .clip(CardShape)
+            .border(1.dp, Border, CardShape)
             .background(Surface)
             .padding(14.dp),
     ) {
-        Text(
-            estimate.foodName,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-        )
-        Text(
-            estimate.servingDescription,
-            fontSize = 12.sp,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
-        )
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    estimate.foodName,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    lineHeight = 19.sp,
+                )
+                Text(
+                    estimate.servingDescription,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            ConfidenceChip(estimate.confidence)
+        }
 
+        Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             StatBox(
-                label = "kcal",
+                label = "CALORIES",
                 value = finalCalories.toString(),
+                unit = "kcal",
+                accent = Primary,
                 modifier = Modifier.weight(1f),
             )
             StatBox(
-                label = "protein",
-                value = "${finalProtein}g",
+                label = "PROTEIN",
+                value = finalProtein.toString(),
+                unit = "g",
+                accent = Secondary,
                 modifier = Modifier.weight(1f),
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        ConfidenceBar(confidence = estimate.confidence)
-
         if (!logged) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "Portion",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextSecondary,
-            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "PORTION",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = TextSecondary.copy(alpha = 0.8f),
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (editMode) "Done" else "Edit values",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Primary,
+                    modifier = Modifier
+                        .clip(PillShape)
+                        .clickable { editMode = !editMode }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            // One segmented track reads cleaner than four loose buttons.
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(PillShape)
+                    .background(Background)
+                    .border(1.dp, Border, PillShape)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 PortionOptions.forEach { option ->
                     val selected = portion == option
@@ -757,29 +928,20 @@ private fun EstimateCard(
                         text = label,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (selected) Color.White else TextPrimary,
+                        textAlign = TextAlign.Center,
+                        color = if (selected) Color.White else TextSecondary,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) Primary else Background)
-                            .border(1.dp, if (selected) Primary else Border, RoundedCornerShape(8.dp))
+                            .weight(1f)
+                            .clip(PillShape)
+                            .background(if (selected) Primary else Color.Transparent)
                             .clickable { portion = option }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(vertical = 7.dp),
                     )
                 }
             }
 
-            Text(
-                if (editMode) "Hide edit" else "Edit values",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Primary,
-                modifier = Modifier
-                    .padding(top = 10.dp)
-                    .clickable { editMode = !editMode },
-            )
-
             AnimatedVisibility(visible = editMode) {
-                Column(modifier = Modifier.padding(top = 8.dp)) {
+                Column(modifier = Modifier.padding(top = 10.dp)) {
                     MacroTextField(
                         value = caloriesText,
                         onValueChange = { caloriesText = it.filter { c -> c.isDigit() } },
@@ -795,9 +957,9 @@ private fun EstimateCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             MacroButton(
-                text = "Log ${finalCalories} kcal · ${finalProtein}g",
+                text = "Log $finalCalories kcal · ${finalProtein}g",
                 onClick = {
                     onLog(
                         estimate.copy(
@@ -814,19 +976,30 @@ private fun EstimateCard(
                 variant = ButtonVariant.SECONDARY,
             )
         } else {
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                "Logged to today",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Secondary,
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(Secondary.copy(alpha = 0.12f))
-                    .border(1.dp, Secondary.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            )
+                    .border(1.dp, Secondary.copy(alpha = 0.32f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = Secondary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Logged to today",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Secondary,
+                )
+            }
         }
     }
 }
@@ -835,127 +1008,82 @@ private fun EstimateCard(
 private fun StatBox(
     label: String,
     value: String,
+    unit: String,
+    accent: Color,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Background)
-            .border(1.dp, Border, RoundedCornerShape(10.dp))
-            .padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .clip(RoundedCornerShape(12.dp))
+            .background(accent.copy(alpha = 0.08f))
+            .border(1.dp, accent.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 11.dp),
     ) {
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-        Text(label, fontSize = 11.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
-    }
-}
-
-@Composable
-private fun ConfidenceBar(confidence: String) {
-    val level = when (confidence.lowercase()) {
-        "high" -> 1f
-        "low" -> 0.34f
-        else -> 0.67f
-    }
-    val label = when (confidence.lowercase()) {
-        "high" -> "High confidence"
-        "low" -> "Rough estimate"
-        else -> "Medium confidence"
-    }
-    val color = when (confidence.lowercase()) {
-        "high" -> Secondary
-        "low" -> Error
-        else -> Primary
-    }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-            Text("${(level * 100).roundToInt()}%", fontSize = 12.sp, color = color, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        LinearProgressIndicator(
-            progress = { level },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(999.dp)),
-            color = color,
-            trackColor = Border,
+        Text(
+            label,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            color = accent.copy(alpha = 0.85f),
         )
-    }
-}
-
-@Composable
-private fun UserBubble(text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Primary)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
-                text = text,
-                color = Color.White,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
+                unit,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextSecondary,
+                modifier = Modifier.padding(bottom = 3.dp),
             )
         }
     }
 }
 
+/** Three ticks, because the old bar showed a percentage nobody computed. */
 @Composable
-private fun TypingBubble(onCancel: () -> Unit) {
+private fun ConfidenceChip(confidence: String) {
+    val level = when (confidence.lowercase()) {
+        "high" -> 3
+        "low" -> 1
+        else -> 2
+    }
+    val label = when (level) {
+        3 -> "High"
+        1 -> "Rough"
+        else -> "Medium"
+    }
+    val color = when (level) {
+        3 -> Secondary
+        1 -> Error
+        else -> Primary
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .clip(PillShape)
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
     ) {
-        Image(
-            painter = painterResource(R.drawable.ic_clanker),
-            contentDescription = null,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(Surface)
-                .border(1.dp, Border, CircleShape)
-                .padding(2.dp),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(Surface)
-                .border(1.dp, Border, RoundedCornerShape(14.dp))
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TypingDots(color = TextSecondary)
-            Text("Estimating…", fontSize = 12.sp, color = TextSecondary)
+        repeat(3) { index ->
+            Box(
+                modifier = Modifier
+                    .padding(end = 2.dp)
+                    .size(width = 4.dp, height = 8.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (index < level) color else color.copy(alpha = 0.22f)),
+            )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            "Cancel",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextSecondary,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onCancel)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = color)
     }
 }
 
-private val ComposerSendShape = RoundedCornerShape(10.dp)
+// ── Composer ─────────────────────────────────────────────────────────────────
+
+private val ComposerShape = RoundedCornerShape(22.dp)
+private val ComposerSendShape = RoundedCornerShape(999.dp)
 
 @Composable
 private fun ChatComposer(
@@ -965,6 +1093,7 @@ private fun ChatComposer(
     onTakePhoto: () -> Unit,
     onAddPhoto: () -> Unit,
     enabled: Boolean,
+    hazeState: HazeState?,
 ) {
     val density = LocalDensity.current
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -972,17 +1101,21 @@ private fun ChatComposer(
     val bottomPad = if (imeOpen) 10.dp else navBottom + PillNavClearance
     val canSend = enabled && value.isNotBlank()
     var attachMenuOpen by remember { mutableStateOf(false) }
+    val sendBackground by animateColorAsState(
+        targetValue = if (canSend) Primary else Border,
+        animationSpec = MacroMotion.colorTween(),
+        label = "composer_send",
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
             .padding(top = 6.dp, bottom = bottomPad)
-            .clip(RoundedCornerShape(16.dp))
-            .background(GlassTint.copy(alpha = 0.92f))
-            .dottedFrost()
-            .border(1.dp, GlassHairline, RoundedCornerShape(16.dp))
-            .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            .clip(ComposerShape)
+            .dottedGlass(hazeState = hazeState, shape = ComposerShape)
+            .border(1.dp, GlassHairline, ComposerShape)
+            .padding(start = 4.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
         Box {
@@ -1063,24 +1196,19 @@ private fun ChatComposer(
         )
         Box(
             modifier = Modifier
-                .padding(bottom = 4.dp)
-                .size(34.dp)
+                .padding(bottom = 2.dp)
+                .size(38.dp)
                 .clip(ComposerSendShape)
-                .background(if (canSend) Primary else Border, ComposerSendShape)
+                .background(sendBackground, ComposerSendShape)
                 .clickable(enabled = canSend, onClick = onSend),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Send,
                 contentDescription = "Send",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
+                tint = if (canSend) Color.White else TextSecondary,
+                modifier = Modifier.size(17.dp),
             )
         }
     }
-}
-
-@Composable
-fun ResultPill(label: String, value: String, modifier: Modifier = Modifier) {
-    StatBox(label = label, value = value, modifier = modifier)
 }

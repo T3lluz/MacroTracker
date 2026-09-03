@@ -18,6 +18,9 @@ import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.aggregate.AggregateMetric
+import androidx.health.connect.client.aggregate.AggregationResult
+import androidx.health.connect.client.aggregate.AggregationResultGroupedByPeriod
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -36,6 +39,7 @@ import java.time.Period
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -97,6 +101,24 @@ class HealthConnectRepository @Inject constructor(
         val EXERCISE_PERMISSION = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
         val ELEVATION_PERMISSION = HealthPermission.getReadPermission(ElevationGainedRecord::class)
         val EXERCISE_ROUTES_PERMISSION = "android.permission.health.READ_EXERCISE_ROUTES"
+
+        /** Everything in [PERMISSIONS] that actually reads data (routes is a modifier). */
+        val DATA_PERMISSIONS: Set<String> = PERMISSIONS - EXERCISE_ROUTES_PERMISSION
+
+        /** Granted-permission snapshots are cheap to re-read but not free. */
+        private const val GRANTED_CACHE_TTL = 30_000L
+
+        /** The Activities card lists a full month of workouts. */
+        const val ACTIVITY_HISTORY_DAYS = 31
+
+        /** Generous headroom for a heavy training month. */
+        const val ACTIVITY_HISTORY_LIMIT = 60
+
+        /** Sessions enriched per round trip so a month doesn't flood the IPC. */
+        private const val ENRICH_BATCH = 8
+
+        /** GPS is read up front only for what the card shows without expanding. */
+        const val EAGER_ROUTE_COUNT = 6
     }
 
     private val client: HealthConnectClient? by lazy {
@@ -116,27 +138,48 @@ class HealthConnectRepository @Inject constructor(
     fun isAvailable(): Boolean = client != null
 
     // ── Lightweight in-memory cache for individual metric reads ───────────
+    // Written from the parallel per-metric coroutines DashboardViewModel launches,
+    // so it has to be concurrent — a plain HashMap here lost and corrupted entries.
     private val METRIC_CACHE_TTL = 5 * 60 * 1000L // 5 minutes
-    private val metricCache = mutableMapOf<String, Pair<Long, Any?>>()
+    private val metricCache = ConcurrentHashMap<String, CacheEntry>()
 
-    @Suppress("UNCHECKED_CAST")
-    private fun <T> getCached(key: String): T? {
-        val (ts, value) = metricCache[key] ?: return null
-        return if (System.currentTimeMillis() - ts < METRIC_CACHE_TTL) value as? T else null
+    private class CacheEntry(val timestamp: Long, val value: Any?)
+
+    private inline fun <reified T> getCached(key: String): T? {
+        val entry = metricCache[key] ?: return null
+        if (System.currentTimeMillis() - entry.timestamp >= METRIC_CACHE_TTL) {
+            metricCache.remove(key, entry)
+            return null
+        }
+        // Reified so a key/type mismatch fails here instead of at the call site.
+        return entry.value as? T
     }
 
     private fun putCache(key: String, value: Any?) {
-        metricCache[key] = System.currentTimeMillis() to value
+        metricCache[key] = CacheEntry(System.currentTimeMillis(), value)
     }
 
     fun clearMetricCache() {
         metricCache.clear()
+        grantedCache = null
     }
+
+    // A single load asks "is X granted?" a dozen times; without this each one is
+    // its own Health Connect IPC round trip.
+    @Volatile
+    private var grantedCache: CacheEntry? = null
 
     suspend fun getGrantedPermissions(): Set<String> {
         val hc = client ?: return emptySet()
+        val cached = grantedCache
+        @Suppress("UNCHECKED_CAST")
+        if (cached != null && System.currentTimeMillis() - cached.timestamp < GRANTED_CACHE_TTL) {
+            return cached.value as Set<String>
+        }
         return try {
-            hc.permissionController.getGrantedPermissions()
+            val granted = hc.permissionController.getGrantedPermissions()
+            grantedCache = CacheEntry(System.currentTimeMillis(), granted)
+            granted
         } catch (e: Exception) {
             Log.e(TAG, "Error reading granted permissions: ${e.message}")
             emptySet()
@@ -148,10 +191,14 @@ class HealthConnectRepository @Inject constructor(
         return PERMISSIONS.all { it in granted }
     }
 
-    /** True when at least one Health Connect read permission we request is granted. */
+    /**
+     * True when at least one Health Connect **data** read permission is granted.
+     * READ_EXERCISE_ROUTES alone reads nothing on its own, so it doesn't count —
+     * treating it as "we have data" showed the dashboard as an all-zero success.
+     */
     suspend fun hasAnyPermissions(): Boolean {
         val granted = getGrantedPermissions()
-        return PERMISSIONS.any { it in granted }
+        return DATA_PERMISSIONS.any { it in granted }
     }
 
     suspend fun hasPermission(permission: String): Boolean {
@@ -355,11 +402,17 @@ class HealthConnectRepository @Inject constructor(
         }
     }
 
+    /**
+     * Start of [date] to the end of it, clamped to now — asking Health Connect
+     * for the rest of today made these per-metric reads disagree with
+     * [readTodayStats], which has always ended at `now`.
+     */
     private fun getTimeRangeForDate(date: LocalDate): Pair<Instant, Instant> {
         val zone = ZoneId.systemDefault()
         val start = date.atStartOfDay(zone).toInstant()
-        val end = date.plusDays(1).atStartOfDay(zone).toInstant()
-        return start to end
+        val endOfDay = date.plusDays(1).atStartOfDay(zone).toInstant()
+        val now = Instant.now()
+        return start to if (endOfDay.isAfter(now)) now else endOfDay
     }
 
     private fun getTodayTimeRange(): Pair<Instant, Instant> = getTimeRangeForDate(LocalDate.now())
@@ -378,62 +431,142 @@ class HealthConnectRepository @Inject constructor(
         return start to end
     }
 
+    // ── Aggregate plumbing ────────────────────────────────────────────────
+    //
+    // Health Connect fails a whole `aggregate()` call when *any* metric in the set
+    // is not granted (or not supported by the provider). Requesting a fixed set
+    // therefore zeroed every metric the moment one permission was missing, which
+    // is what made Health look empty. Ask only for what is granted, and if the
+    // batch still fails, retry metric-by-metric so one bad metric can't take the
+    // rest down with it.
+
+    /** Aggregate metrics whose backing permission is granted. */
+    private fun grantedAggregateMetrics(granted: Set<String>): Set<AggregateMetric<*>> = buildSet {
+        if (STEPS_PERMISSION in granted) add(StepsRecord.COUNT_TOTAL)
+        if (HEART_RATE_PERMISSION in granted) add(HeartRateRecord.BPM_AVG)
+        if (TOTAL_CALORIES_PERMISSION in granted) add(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
+        if (ACTIVE_CALORIES_PERMISSION in granted) add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
+        if (DISTANCE_PERMISSION in granted) add(DistanceRecord.DISTANCE_TOTAL)
+        if (FLOORS_PERMISSION in granted) add(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL)
+    }
+
+    /** Mutable running totals so batch and per-metric results merge the same way. */
+    private class StatsAccumulator {
+        var steps: Long? = null
+        var avgHeartRate: Long? = null
+        var restingHeartRate: Long? = null
+        var totalCalories: Double? = null
+        var activeCalories: Double? = null
+        var distance: Double? = null
+        var floors: Double? = null
+
+        /** [AggregationResult] returns null for metrics that weren't asked for. */
+        fun absorb(result: AggregationResult) {
+            result[StepsRecord.COUNT_TOTAL]?.let { steps = it }
+            result[HeartRateRecord.BPM_AVG]?.let { avgHeartRate = it }
+            result[RestingHeartRateRecord.BPM_AVG]?.let { restingHeartRate = it }
+            result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.let { totalCalories = it.inKilocalories }
+            result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.let {
+                activeCalories = it.inKilocalories
+            }
+            result[DistanceRecord.DISTANCE_TOTAL]?.let { distance = it.inKilometers }
+            result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]?.let { floors = it }
+        }
+
+        fun toStats(sleepMinutes: Long = 0L): HealthStats = HealthStats(
+            steps = steps ?: 0L,
+            avgHeartRate = avgHeartRate ?: 0L,
+            sleepMinutes = sleepMinutes,
+            totalCaloriesBurned = totalCalories ?: 0.0,
+            activeCaloriesBurned = activeCalories ?: 0.0,
+            restingHeartRate = restingHeartRate ?: 0L,
+            distance = distance ?: 0.0,
+            floorsClimbed = floors ?: 0.0,
+        )
+    }
+
+    /** Outcome of a resilient aggregate: what we read, and whether anything worked. */
+    private class AggregateOutcome(val anySucceeded: Boolean, val lastError: Exception?)
+
+    private suspend fun aggregateResilient(
+        hc: HealthConnectClient,
+        metrics: Set<AggregateMetric<*>>,
+        range: TimeRangeFilter,
+        into: StatsAccumulator,
+    ): AggregateOutcome {
+        if (metrics.isEmpty()) return AggregateOutcome(anySucceeded = true, lastError = null)
+        try {
+            into.absorb(hc.aggregate(AggregateRequest(metrics = metrics, timeRangeFilter = range)))
+            return AggregateOutcome(anySucceeded = true, lastError = null)
+        } catch (batchError: Exception) {
+            Log.w(TAG, "Batch aggregate failed, retrying per metric: ${batchError.message}")
+            var anySucceeded = false
+            var lastError: Exception = batchError
+            for (metric in metrics) {
+                try {
+                    into.absorb(
+                        hc.aggregate(AggregateRequest(metrics = setOf(metric), timeRangeFilter = range)),
+                    )
+                    anySucceeded = true
+                } catch (metricError: Exception) {
+                    lastError = metricError
+                    Log.w(TAG, "Aggregate failed for one metric: ${metricError.message}")
+                }
+            }
+            return AggregateOutcome(anySucceeded, if (anySucceeded) null else lastError)
+        }
+    }
+
     /**
      * Reads today's stats using the Aggregate API + latest sparse vitals.
+     *
+     * Throws only when every granted metric failed to read — a partial read
+     * returns what it got, so one flaky metric doesn't blank the screen.
      */
     suspend fun readTodayStats(): HealthStats = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext HealthStats()
+        val granted = getGrantedPermissions()
 
         val zone = ZoneId.systemDefault()
         val now = Instant.now()
         val startOfDay = LocalDate.now(zone).atStartOfDay(zone).toInstant()
         val todayRange = TimeRangeFilter.between(startOfDay, now)
 
-        val sleepStart = LocalDate.now(zone).minusDays(1).atTime(18, 0).atZone(zone).toInstant()
-        val sleepRange = TimeRangeFilter.between(sleepStart, now)
-
-        try {
-            val response = hc.aggregate(
-                AggregateRequest(
-                    metrics = setOf(
-                        StepsRecord.COUNT_TOTAL,
-                        HeartRateRecord.BPM_AVG,
-                        TotalCaloriesBurnedRecord.ENERGY_TOTAL,
-                        ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
-                        DistanceRecord.DISTANCE_TOTAL,
-                        FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
-                    ),
-                    timeRangeFilter = todayRange,
-                ),
-            )
-
-            val sleepResponse = hc.aggregate(
-                AggregateRequest(
-                    metrics = setOf(SleepSessionRecord.SLEEP_DURATION_TOTAL),
-                    timeRangeFilter = sleepRange,
-                ),
-            )
-
-            val restingHeartRate = getLatestRestingHeartRate() ?: 0L
-            val oxygenSaturation = getLatestOxygenSaturation() ?: 0.0
-            val respiratoryRate = getLatestRespiratoryRate() ?: 0.0
-
-            HealthStats(
-                steps = response[StepsRecord.COUNT_TOTAL] ?: 0L,
-                avgHeartRate = response[HeartRateRecord.BPM_AVG] ?: 0L,
-                sleepMinutes = sleepResponse[SleepSessionRecord.SLEEP_DURATION_TOTAL]?.toMinutes() ?: 0L,
-                totalCaloriesBurned = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
-                activeCaloriesBurned = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0,
-                restingHeartRate = restingHeartRate,
-                oxygenSaturation = oxygenSaturation,
-                respiratoryRate = respiratoryRate,
-                distance = response[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
-                floorsClimbed = response[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to aggregate health stats: ${e.message}", e)
-            HealthStats()
+        val accumulator = StatsAccumulator()
+        val outcome = aggregateResilient(
+            hc = hc,
+            metrics = grantedAggregateMetrics(granted),
+            range = todayRange,
+            into = accumulator,
+        )
+        if (!outcome.anySucceeded) {
+            throw outcome.lastError ?: IllegalStateException("Health Connect returned no data")
         }
+
+        // Summed from the same sessions the week chart uses, over the same
+        // 18:00→18:00 sleep day. The aggregate this replaced counted a different
+        // window, so today's hero and today's bar disagreed.
+        val sleepMinutes = if (SLEEP_PERMISSION in granted) {
+            try {
+                readSleepSessions(LocalDate.now(zone)).sumOf { session ->
+                    ChronoUnit.MINUTES.between(session.startTime, session.endTime).coerceAtLeast(0)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read sleep sessions: ${e.message}")
+                0L
+            }
+        } else {
+            0L
+        }
+
+        val stats = accumulator.toStats(sleepMinutes)
+        // Sparse vitals are latest-sample reads, not aggregates — each is already
+        // independently guarded and returns null when it has nothing.
+        stats.copy(
+            restingHeartRate = getLatestRestingHeartRate() ?: stats.restingHeartRate,
+            oxygenSaturation = getLatestOxygenSaturation() ?: 0.0,
+            respiratoryRate = getLatestRespiratoryRate() ?: 0.0,
+        )
     }
 
     /**
@@ -453,76 +586,54 @@ class HealthConnectRepository @Inject constructor(
             val dailyStatsMap = mutableMapOf<LocalDate, HealthStats>()
 
             if (!startDateTime.isAfter(now)) {
-                try {
-                    val range = TimeRangeFilter.between(startDateTime, endDateTime)
-
-                    val response = hc.aggregateGroupByPeriod(
-                        AggregateGroupByPeriodRequest(
-                            metrics = setOf(
-                                StepsRecord.COUNT_TOTAL,
-                                HeartRateRecord.BPM_AVG,
-                                TotalCaloriesBurnedRecord.ENERGY_TOTAL,
-                                ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
-                                DistanceRecord.DISTANCE_TOTAL,
-                                FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
-                                RestingHeartRateRecord.BPM_AVG,
-                            ),
-                            timeRangeFilter = range,
-                            timeRangeSlicer = Period.ofDays(1),
-                        ),
-                    )
-
-                    response.forEach { bucket ->
-                        val bucketDate = bucket.startTime.toLocalDate()
-                        val result = bucket.result
-                        dailyStatsMap[bucketDate] = HealthStats(
-                            steps = result[StepsRecord.COUNT_TOTAL] ?: 0L,
-                            avgHeartRate = result[HeartRateRecord.BPM_AVG] ?: 0L,
-                            totalCaloriesBurned = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
-                            activeCaloriesBurned = result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
-                                ?: 0.0,
-                            restingHeartRate = result[RestingHeartRateRecord.BPM_AVG] ?: 0L,
-                            distance = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
-                            floorsClimbed = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
-                        )
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to aggregate history stats: ${e.message}", e)
-                    // Retry without RHR aggregate (some providers reject unknown metrics).
-                    try {
-                        val range = TimeRangeFilter.between(startDateTime, endDateTime)
-                        val response = hc.aggregateGroupByPeriod(
-                            AggregateGroupByPeriodRequest(
-                                metrics = setOf(
-                                    StepsRecord.COUNT_TOTAL,
-                                    HeartRateRecord.BPM_AVG,
-                                    TotalCaloriesBurnedRecord.ENERGY_TOTAL,
-                                    ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
-                                    DistanceRecord.DISTANCE_TOTAL,
-                                    FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
-                                ),
-                                timeRangeFilter = range,
-                                timeRangeSlicer = Period.ofDays(1),
-                            ),
-                        )
-                        response.forEach { bucket ->
-                            val bucketDate = bucket.startTime.toLocalDate()
-                            val result = bucket.result
-                            dailyStatsMap[bucketDate] = HealthStats(
-                                steps = result[StepsRecord.COUNT_TOTAL] ?: 0L,
-                                avgHeartRate = result[HeartRateRecord.BPM_AVG] ?: 0L,
-                                totalCaloriesBurned = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories
-                                    ?: 0.0,
-                                activeCaloriesBurned = result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
-                                    ?.inKilocalories ?: 0.0,
-                                distance = result[DistanceRecord.DISTANCE_TOTAL]?.inKilometers ?: 0.0,
-                                floorsClimbed = result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL] ?: 0.0,
-                            )
-                        }
-                    } catch (e2: Exception) {
-                        Log.e(TAG, "Failed history aggregate retry: ${e2.message}", e2)
+                val range = TimeRangeFilter.between(startDateTime, endDateTime)
+                val granted = getGrantedPermissions()
+                val metrics = buildSet {
+                    addAll(grantedAggregateMetrics(granted))
+                    if (RESTING_HEART_RATE_PERMISSION in granted) add(RestingHeartRateRecord.BPM_AVG)
+                }
+                // Same per-metric fallback as today's read: one rejected metric used
+                // to wipe the whole week's chart.
+                val perDay = mutableMapOf<LocalDate, StatsAccumulator>()
+                fun absorbBuckets(buckets: List<AggregationResultGroupedByPeriod>) {
+                    buckets.forEach { bucket ->
+                        perDay.getOrPut(bucket.startTime.toLocalDate()) { StatsAccumulator() }
+                            .absorb(bucket.result)
                     }
                 }
+
+                if (metrics.isNotEmpty()) {
+                    try {
+                        absorbBuckets(
+                            hc.aggregateGroupByPeriod(
+                                AggregateGroupByPeriodRequest(
+                                    metrics = metrics,
+                                    timeRangeFilter = range,
+                                    timeRangeSlicer = Period.ofDays(1),
+                                ),
+                            ),
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "History batch aggregate failed, retrying per metric: ${e.message}")
+                        for (metric in metrics) {
+                            try {
+                                absorbBuckets(
+                                    hc.aggregateGroupByPeriod(
+                                        AggregateGroupByPeriodRequest(
+                                            metrics = setOf(metric),
+                                            timeRangeFilter = range,
+                                            timeRangeSlicer = Period.ofDays(1),
+                                        ),
+                                    ),
+                                )
+                            } catch (metricError: Exception) {
+                                Log.w(TAG, "History aggregate failed for one metric: ${metricError.message}")
+                            }
+                        }
+                    }
+                }
+
+                perDay.forEach { (date, accumulator) -> dailyStatsMap[date] = accumulator.toStats() }
 
                 enrichHistoryWithSleep(hc, startDate, endDate, zone, dailyStatsMap)
                 enrichHistoryWithSparseVitals(hc, startDate, endDate, zone, dailyStatsMap)
@@ -715,8 +826,9 @@ class HealthConnectRepository @Inject constructor(
      * [ExerciseRouteResult.NoData]. Not cached — consent can change mid-session.
      */
     suspend fun readRecentActivities(
-        days: Int = 14,
-        limit: Int = 16,
+        days: Int = ACTIVITY_HISTORY_DAYS,
+        limit: Int = ACTIVITY_HISTORY_LIMIT,
+        eagerRoutes: Int = EAGER_ROUTE_COUNT,
     ): List<HealthActivity> = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext emptyList()
         if (!hasPermission(EXERCISE_PERMISSION)) return@withContext emptyList()
@@ -744,21 +856,56 @@ class HealthConnectRepository @Inject constructor(
             return@withContext emptyList()
         }
 
-        coroutineScope {
-            sessions.map { session ->
-                async {
-                    enrichSession(
-                        hc = hc,
-                        session = session,
-                        canDistance = canDistance,
-                        canCalories = canCalories,
-                        canHr = canHr,
-                        canSteps = canSteps,
-                        canElevation = canElevation,
-                    )
-                }
-            }.awaitAll()
+        // A month of workouts is 2 IPC calls each; fan them out in small batches
+        // so Health Connect isn't hit with 60 concurrent reads, and only resolve
+        // GPS eagerly for the newest few (the rest load when a row is opened).
+        sessions.chunked(ENRICH_BATCH).flatMapIndexed { batchIndex, batch ->
+            coroutineScope {
+                batch.mapIndexed { indexInBatch, session ->
+                    val index = batchIndex * ENRICH_BATCH + indexInBatch
+                    async {
+                        enrichSession(
+                            hc = hc,
+                            session = session,
+                            canDistance = canDistance,
+                            canCalories = canCalories,
+                            canHr = canHr,
+                            canSteps = canSteps,
+                            canElevation = canElevation,
+                            resolveRoute = index < eagerRoutes,
+                        )
+                    }
+                }.awaitAll()
+            }
         }
+    }
+
+    /**
+     * Loads the GPS track for a workout that was listed without one. Returns the
+     * activity unchanged when it already has a resolved route.
+     */
+    suspend fun resolveRoute(activity: HealthActivity): HealthActivity = withContext(Dispatchers.IO) {
+        if (activity.routeResolved) return@withContext activity
+        val hc = client ?: return@withContext activity.copy(routeResolved = true)
+        val session = try {
+            hc.readRecord(ExerciseSessionRecord::class, activity.id).record
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to re-read session ${activity.id}: ${e.message}")
+            return@withContext activity.copy(routeResolved = true)
+        }
+        val resolved = resolveActivityRoute(readSessionRoute(hc, session))
+        val points = resolved.points
+        activity.copy(
+            route = points,
+            routeResolved = true,
+            routeConsentRequired = activityNeedsRouteConsent(
+                points = points,
+                hcConsentRequired = resolved.consentRequired,
+                exerciseType = activity.exerciseType,
+            ),
+            distanceKm = activity.distanceKm ?: routeDistanceKm(points).takeIf { it > 0.02 },
+            elevationGainM = activity.elevationGainM ?: routeElevationGainM(points).takeIf { it >= 1.0 },
+        )
     }
 
     fun activityWithRoute(activity: HealthActivity, route: ExerciseRoute?): HealthActivity =
@@ -796,6 +943,7 @@ class HealthConnectRepository @Inject constructor(
         canHr: Boolean,
         canSteps: Boolean,
         canElevation: Boolean,
+        resolveRoute: Boolean,
     ): HealthActivity {
         val origin = session.metadata.dataOrigin
         val device = session.metadata.device
@@ -860,9 +1008,13 @@ class HealthConnectRepository @Inject constructor(
             }
         }
 
-        val resolvedRoute = resolveActivityRoute(readSessionRoute(hc, session))
-        val routePoints = resolvedRoute.points
-        val consentRequired = activityNeedsRouteConsent(
+        val resolvedRoute = if (resolveRoute) {
+            resolveActivityRoute(readSessionRoute(hc, session))
+        } else {
+            null
+        }
+        val routePoints = resolvedRoute?.points.orEmpty()
+        val consentRequired = resolvedRoute != null && activityNeedsRouteConsent(
             points = routePoints,
             hcConsentRequired = resolvedRoute.consentRequired,
             exerciseType = session.exerciseType,
@@ -903,6 +1055,7 @@ class HealthConnectRepository @Inject constructor(
             elevationGainM = elevationM,
             route = routePoints,
             routeConsentRequired = consentRequired,
+            routeResolved = resolvedRoute != null,
             laps = laps,
         )
     }
