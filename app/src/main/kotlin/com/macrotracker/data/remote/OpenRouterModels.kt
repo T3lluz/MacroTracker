@@ -1,5 +1,7 @@
 package com.macrotracker.data.remote
 
+import java.util.Locale
+
 /**
  * Curated OpenRouter models for DailyDash workloads (short JSON estimates,
  * nutrition-label vision, weather tips, widget blurbs). Sorted cheapest-first.
@@ -29,8 +31,8 @@ data class OpenRouterModelOption(
             val usd = approxRequestUsd()
             return when {
                 usd < 0.00005 -> "< $0.0001 / request"
-                usd < 0.001 -> "~$${String.format("%.4f", usd)} / request"
-                else -> "~$${String.format("%.3f", usd)} / request"
+                usd < 0.001 -> "~$${String.format(Locale.US, "%.4f", usd)} / request"
+                else -> "~$${String.format(Locale.US, "%.3f", usd)} / request"
             }
         }
 
@@ -42,7 +44,7 @@ data class OpenRouterModelOption(
             (outputTokens / 1_000_000.0) * outputPerMillionUsd
 
     private fun formatUsd(value: Double): String =
-        if (value >= 1.0) String.format("%.2f", value) else String.format("%.2f", value).trimEnd('0').trimEnd('.')
+        if (value >= 1.0) String.format(Locale.US, "%.2f", value) else String.format(Locale.US, "%.2f", value).trimEnd('0').trimEnd('.')
 }
 
 object OpenRouterModels {
