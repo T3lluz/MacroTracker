@@ -1,27 +1,198 @@
 package com.macrotracker.ui.components
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
+import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.createBitmap
 import com.macrotracker.ui.theme.GlassDot
+import com.macrotracker.ui.theme.GlassTint
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.materials.CupertinoMaterials
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 /**
- * Cinema-Info dotted frost: a fine dot grid over frosted glass.
+ * Cinema-Info dotted frost, ported from its `--dot-cell` / `--dot-core` tokens.
  *
- * Pair with haze (or a translucent fill) — this draws the texture only,
- * not a second blur. Static [drawWithCache] so scrolling stays cheap.
+ * The web version stacks two backdrop-filter layers on one surface:
+ *  - **glass** — heavy blur + tint, masked to everything *except* the dot cores;
+ *  - **dots**  — a much lighter blur, masked to the dot cores only.
+ *
+ * The result is a frosted pane perforated by a grid of pin-sharp windows, not a
+ * grid of painted dots. [dottedGlass] reproduces that with two stacked haze
+ * passes over the same source; [dottedFrost] is the flat painted-dot fallback
+ * the web build also ships behind `prefers-reduced-motion`.
+ */
+object DottedFrostSpec {
+    /** `--dot-cell` — grid pitch. */
+    val Cell: Dp = 8.dp
+
+    /** `--dot-core` — fully opaque centre of each dot. */
+    val Core: Dp = 1.85.dp
+
+    /** `--dot-edge` — where the dot has faded out completely. */
+    val Edge: Dp = 2.25.dp
+
+    /** `.header-glass` backdrop-filter blur. */
+    val GlassBlur: Dp = 28.dp
+
+    /** `.header-frost-dots` backdrop-filter blur — the sharp pinprick. */
+    val DotBlur: Dp = 6.dp
+}
+
+// ── Tiling dot masks ─────────────────────────────────────────────────────────
+
+/**
+ * One dot cell rendered to a repeating [BitmapShader], mirroring the CSS
+ * `radial-gradient(circle at center, … core, transparent edge)` mask tile.
+ *
+ * [invert] flips it into the `.header-glass` mask: opaque everywhere with the
+ * dot cores punched out.
+ */
+private fun dotMaskBitmap(
+    cellPx: Int,
+    corePx: Float,
+    edgePx: Float,
+    invert: Boolean,
+): Bitmap {
+    val size = cellPx.coerceAtLeast(2)
+    val bitmap = createBitmap(size, size)
+    val canvas = android.graphics.Canvas(bitmap)
+    val center = size / 2f
+    val edge = edgePx.coerceAtLeast(0.75f)
+    val coreStop = (corePx / edge).coerceIn(0f, 0.95f)
+
+    if (invert) canvas.drawColor(android.graphics.Color.BLACK)
+
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    paint.shader = RadialGradient(
+        center,
+        center,
+        edge,
+        intArrayOf(
+            android.graphics.Color.BLACK,
+            android.graphics.Color.BLACK,
+            android.graphics.Color.TRANSPARENT,
+        ),
+        floatArrayOf(0f, coreStop, 1f),
+        android.graphics.Shader.TileMode.CLAMP,
+    )
+    // Opaque tile + DST_OUT carves the holes; a transparent tile keeps the dots.
+    if (invert) paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+    canvas.drawCircle(center, center, edge, paint)
+    return bitmap
+}
+
+private fun dotMaskBrush(
+    density: Density,
+    cell: Dp,
+    core: Dp,
+    edge: Dp,
+    invert: Boolean,
+): Brush {
+    val cellPx = with(density) { cell.toPx() }.roundToInt().coerceAtLeast(2)
+    val corePx = with(density) { core.toPx() } / 2f
+    val edgePx = with(density) { edge.toPx() } / 2f
+    val bitmap = dotMaskBitmap(cellPx, corePx, edgePx, invert)
+    val shader = BitmapShader(
+        bitmap,
+        android.graphics.Shader.TileMode.REPEAT,
+        android.graphics.Shader.TileMode.REPEAT,
+    )
+    return ShaderBrush(shader)
+}
+
+@Composable
+private fun rememberDotMask(cell: Dp, core: Dp, edge: Dp, invert: Boolean): Brush {
+    val density = LocalDensity.current
+    return remember(density.density, cell, core, edge, invert) {
+        dotMaskBrush(density, cell, core, edge, invert)
+    }
+}
+
+// ── The real thing: masked double-blur ───────────────────────────────────────
+
+/**
+ * Frosted glass perforated by a dot grid — the Cinema-Info chrome.
+ *
+ * Apply to a surface that sits above a `hazeSource`, after `clip(shape)`.
+ * When [hazeState] is null (or the device can't blur) it degrades to the tinted
+ * fill + painted dots, which is the same fallback the web build uses.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun Modifier.dottedGlass(
+    hazeState: HazeState?,
+    shape: Shape,
+    tint: Color = GlassTint,
+    dotColor: Color = GlassDot,
+    glassBlur: Dp = DottedFrostSpec.GlassBlur,
+    dotBlur: Dp = DottedFrostSpec.DotBlur,
+    cell: Dp = DottedFrostSpec.Cell,
+    core: Dp = DottedFrostSpec.Core,
+    edge: Dp = DottedFrostSpec.Edge,
+): Modifier {
+    // RenderEffect blur needs API 31; below that haze can only flat-fill, so take
+    // the painted-dot route rather than washing the surface with an unmasked tint.
+    if (hazeState == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        return this
+            .background(tint.copy(alpha = 0.92f), shape)
+            .dottedFrost(color = dotColor, cell = cell, core = core)
+    }
+
+    val glassMask = rememberDotMask(cell, core, edge, invert = true)
+    val dotMask = rememberDotMask(cell, core, edge, invert = false)
+    val glassStyle = CupertinoMaterials.ultraThin(containerColor = tint)
+
+    return this
+        // `.header-glass` — the pane itself.
+        .hazeEffect(state = hazeState, style = glassStyle) {
+            blurRadius = glassBlur
+            mask = glassMask
+            // Dots are the texture; grain would compete with them.
+            noiseFactor = 0f
+            fallbackTint = HazeTint(tint.copy(alpha = 0.92f))
+        }
+        // `.header-frost-dots` — sharp windows onto the backdrop.
+        .hazeEffect(state = hazeState, style = glassStyle) {
+            blurRadius = dotBlur
+            mask = dotMask
+            noiseFactor = 0f
+            tints = listOf(HazeTint(dotColor))
+            fallbackTint = HazeTint(dotColor)
+        }
+}
+
+// ── Painted-dot fallback (reduced-motion / no haze source) ───────────────────
+
+/**
+ * Flat dot grid painted over whatever is already drawn. Use only where there is
+ * no haze source to sample — [dottedGlass] is the real effect.
  */
 fun Modifier.dottedFrost(
     color: Color = GlassDot,
-    cell: Dp = 8.dp,
-    core: Dp = 1.85.dp,
+    cell: Dp = DottedFrostSpec.Cell,
+    core: Dp = DottedFrostSpec.Core,
 ): Modifier = drawWithCache {
     val cellPx = cell.toPx().coerceAtLeast(1f)
     val radius = (core.toPx() / 2f).coerceAtLeast(0.4f)
@@ -45,26 +216,5 @@ fun Modifier.dottedFrost(
             }
             yIndex++
         }
-    }
-}
-
-@Composable
-fun DottedFrostOverlay(
-    modifier: Modifier = Modifier,
-    color: Color = GlassDot,
-) {
-    Box(modifier = modifier.dottedFrost(color = color))
-}
-
-/** Clip-friendly wrapper when the overlay needs to sit above [content]. */
-@Composable
-fun DottedFrostLayer(
-    modifier: Modifier = Modifier,
-    color: Color = GlassDot,
-    content: @Composable BoxScope.() -> Unit,
-) {
-    Box(modifier = modifier) {
-        content()
-        DottedFrostOverlay(modifier = Modifier.matchParentSize(), color = color)
     }
 }

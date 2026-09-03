@@ -35,13 +35,9 @@ import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.materials.CupertinoMaterials
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 
 private val NavPillShape = RoundedCornerShape(percent = 50)
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun PillNavigationBar(
     items: List<Screen>,
@@ -81,21 +77,7 @@ fun PillNavigationBar(
                     spotColor = Color.Black.copy(alpha = 0.32f),
                 )
                 .clip(NavPillShape)
-                .then(
-                    if (hazeState != null) {
-                        Modifier.hazeEffect(
-                            state = hazeState,
-                            style = CupertinoMaterials.ultraThin(containerColor = GlassTint),
-                        ) {
-                            blurRadius = 48.dp
-                            // Dotted frost is the texture; grain would compete with the dots.
-                            noiseFactor = 0f
-                        }
-                    } else {
-                        Modifier.background(GlassTint.copy(alpha = 0.72f))
-                    },
-                )
-                .dottedFrost()
+                .dottedGlass(hazeState = hazeState, shape = NavPillShape)
                 .border(BorderStroke(0.5.dp, GlassHairline), NavPillShape),
         )
 
