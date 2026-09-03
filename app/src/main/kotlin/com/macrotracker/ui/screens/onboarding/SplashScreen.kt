@@ -1,9 +1,6 @@
 package com.macrotracker.ui.screens.onboarding
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,14 +26,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.macrotracker.R
 import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private val EntranceEasing = CubicBezierEasing(0.16f, 1f,  0.3f, 1f)
-private val WarpEasing     = CubicBezierEasing(0.7f,  0f,  1f,  1f)
-private val ExitEasing     = CubicBezierEasing(0.4f,  0f,  1f,  1f)
 
 /**
  * Full-screen splash overlay. Rendered as a plain Box on top of the
@@ -65,16 +59,16 @@ fun SplashOverlay(onFinished: () -> Unit) {
     LaunchedEffect(Unit) {
 
         // ── Phase 1: entrance ────────────────────────────────────────────────
-        launch { logoAlpha.animateTo(1f,    tween(400, easing = EntranceEasing)) }
-        launch { glowAlpha.animateTo(0.55f, tween(500, easing = EntranceEasing)) }
-        logoScale.animateTo(1f, tween(550, easing = EntranceEasing))
+        launch { logoAlpha.animateTo(1f, MacroMotion.Splash.logoFadeIn()) }
+        launch { glowAlpha.animateTo(0.55f, MacroMotion.Splash.glowFadeIn()) }
+        logoScale.animateTo(1f, MacroMotion.Splash.logoScaleIn())
 
         // ── Phase 2: glow breathes (2 pulses, then stop) ─────────────────────
         repeat(2) {
-            launch { glowAlpha.animateTo(0.85f, tween(400, easing = LinearEasing)) }
-            delay(400)
-            launch { glowAlpha.animateTo(0.35f, tween(400, easing = LinearEasing)) }
-            delay(400)
+            launch { glowAlpha.animateTo(0.85f, MacroMotion.Splash.glowPulse()) }
+            delay(MacroMotion.Splash.PULSE_MS.toLong())
+            launch { glowAlpha.animateTo(0.35f, MacroMotion.Splash.glowPulse()) }
+            delay(MacroMotion.Splash.PULSE_MS.toLong())
         }
         delay(100)
 
@@ -88,23 +82,23 @@ fun SplashOverlay(onFinished: () -> Unit) {
         //   560 – warp zoom completes
         coroutineScope {
             // Glow off
-            launch { glowAlpha.animateTo(0f, tween(160, easing = LinearEasing)) }
+            launch { glowAlpha.animateTo(0f, MacroMotion.Splash.glowOut()) }
 
             // Chroma: fade in quickly, spread, then fade away
             launch {
-                chromaAlpha.animateTo(0.6f, tween(140, easing = LinearEasing))
+                chromaAlpha.animateTo(0.6f, MacroMotion.Splash.chromaIn())
                 coroutineScope {
-                    launch { chromaSpread.animateTo(18f, tween(240, easing = ExitEasing)) }
+                    launch { chromaSpread.animateTo(18f, MacroMotion.Splash.chromaSpread()) }
                     delay(180)
                 }
-                chromaAlpha.animateTo(0f, tween(220, easing = LinearEasing))
+                chromaAlpha.animateTo(0f, MacroMotion.Splash.chromaOut())
             }
 
             // Bg overlay seals the screen — starts slightly after warp begins
-            launch { bgAlpha.animateTo(1f, tween(480, easing = ExitEasing)) }
+            launch { bgAlpha.animateTo(1f, MacroMotion.Splash.backdropSeal()) }
 
             // Warp zoom — logo rockets to fill screen
-            warpScale.animateTo(44f, tween(560, easing = WarpEasing))
+            warpScale.animateTo(44f, MacroMotion.Splash.warpZoom())
         }
 
         onFinished()

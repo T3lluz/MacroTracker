@@ -44,20 +44,35 @@ import kotlin.math.roundToInt
  * the web build also ships behind `prefers-reduced-motion`.
  */
 object DottedFrostSpec {
+    /**
+     * The web tokens are CSS pixels on a desktop pane; carried across 1:1 as dp
+     * the dots read as faint specks on a phone. The whole grid is scaled up by
+     * [WEB_TO_DP] so the pattern keeps Cinema-Info's proportions (cell : core :
+     * edge) at a size that actually reads at arm's length.
+     */
+    private const val WEB_TO_DP = 1.65f
+
     /** `--dot-cell` — grid pitch. */
-    val Cell: Dp = 8.dp
+    val Cell: Dp = (8f * WEB_TO_DP).dp
 
     /** `--dot-core` — fully opaque centre of each dot. */
-    val Core: Dp = 1.85.dp
+    val Core: Dp = (1.85f * WEB_TO_DP).dp
 
     /** `--dot-edge` — where the dot has faded out completely. */
-    val Edge: Dp = 2.25.dp
+    val Edge: Dp = (2.25f * WEB_TO_DP).dp
 
     /** `.header-glass` backdrop-filter blur. */
     val GlassBlur: Dp = 28.dp
 
     /** `.header-frost-dots` backdrop-filter blur — the sharp pinprick. */
     val DotBlur: Dp = 6.dp
+
+    /**
+     * Tighter grid for painted-dot texture inside small chrome (expand bars),
+     * where the full-size pattern would dominate the strip.
+     */
+    val CompactCell: Dp = (Cell.value * 0.62f).dp
+    val CompactCore: Dp = (Core.value * 0.62f).dp
 }
 
 // ── Tiling dot masks ─────────────────────────────────────────────────────────

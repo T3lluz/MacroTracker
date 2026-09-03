@@ -4,6 +4,7 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.InfiniteRepeatableSpec
@@ -105,12 +106,49 @@ object MacroMotion {
         repeatMode = RepeatMode.Reverse,
     )
 
+    /**
+     * Live "on air" halo — expands outward and fades, then restarts. Restart
+     * (not Reverse) so it reads as a broadcast ping rather than a breath.
+     */
+    fun livePulseSpec(durationMs: Int = 1400): InfiniteRepeatableSpec<Float> = infiniteRepeatable(
+        animation = tween(durationMs, easing = FastOutSlowInEasing),
+        repeatMode = RepeatMode.Restart,
+    )
+
     /** Chart reveal (area/line/bar grow-in). Slightly longer than fades for presence. */
     fun <T> chartRevealTween(durationMs: Int = 700): FiniteAnimationSpec<T> =
         tween(durationMs, easing = FastOutSlowInEasing)
 
     /** Stagger delay between chart bars / insight chips (ms). */
     fun chartStaggerMs(index: Int, stepMs: Int = 45): Int = index * stepMs
+
+    /**
+     * Splash overlay — the one cinematic sequence in the app, and the only place
+     * with bespoke easings. They live here, not at the call site, so
+     * [MacroMotion] really is the single source for every spec.
+     */
+    object Splash {
+        val EntranceEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
+        val WarpEasing = CubicBezierEasing(0.7f, 0f, 1f, 1f)
+        val ExitEasing = CubicBezierEasing(0.4f, 0f, 1f, 1f)
+
+        /** Phase 1 — logo fade / glow / scale in. */
+        fun <T> logoFadeIn(): FiniteAnimationSpec<T> = tween(400, easing = EntranceEasing)
+        fun <T> glowFadeIn(): FiniteAnimationSpec<T> = tween(500, easing = EntranceEasing)
+        fun <T> logoScaleIn(): FiniteAnimationSpec<T> = tween(550, easing = EntranceEasing)
+
+        /** Phase 2 — the glow breathes. */
+        const val PULSE_MS = 400
+        fun <T> glowPulse(): FiniteAnimationSpec<T> = tween(PULSE_MS, easing = LinearEasing)
+
+        /** Phase 3 — warp zoom + chromatic dissolve. */
+        fun <T> glowOut(): FiniteAnimationSpec<T> = tween(160, easing = LinearEasing)
+        fun <T> chromaIn(): FiniteAnimationSpec<T> = tween(140, easing = LinearEasing)
+        fun <T> chromaSpread(): FiniteAnimationSpec<T> = tween(240, easing = ExitEasing)
+        fun <T> chromaOut(): FiniteAnimationSpec<T> = tween(220, easing = LinearEasing)
+        fun <T> backdropSeal(): FiniteAnimationSpec<T> = tween(480, easing = ExitEasing)
+        fun <T> warpZoom(): FiniteAnimationSpec<T> = tween(560, easing = WarpEasing)
+    }
 
     // ── Tab / content-switch transitions (NavHost top-level tabs) ────
     val contentEnter: EnterTransition = fadeIn(tween(FADE_IN_MS, easing = FastOutSlowInEasing))
