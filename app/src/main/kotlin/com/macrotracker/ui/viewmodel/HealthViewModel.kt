@@ -7,7 +7,6 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.health.DailyHealthStats
-import com.macrotracker.data.health.HealthAccess
 import com.macrotracker.data.health.HealthActivity
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.health.HealthStats
@@ -125,22 +124,13 @@ class HealthViewModel @Inject constructor(
     val healthConnectPermissions = HealthConnectRepository.PERMISSIONS
 
     /**
-     * What Health Connect has actually granted, per data type. Empty until the
-     * first load. The screen shows this whenever something is refused, because a
-     * partial grant is invisible otherwise — the refused metrics just read as
-     * zero, which looks identical to a quiet day.
+     * Health Connect is refusing reads for permissions it reports as granted —
+     * the AppOp behind them has desynced from the grant. Only re-granting in
+     * Health Connect fixes it, so the screen has to say so.
      */
-    private val _accessReport = MutableStateFlow<List<HealthAccess>>(emptyList())
-    val accessReport: StateFlow<List<HealthAccess>> = _accessReport
-
-    fun refreshAccessReport() {
-        viewModelScope.launch {
-            // Always a fresh read — this is the authoritative readout the user
-            // acts on, so it must not answer from the 30s snapshot cache.
-            healthConnectRepository.clearPermissionCache()
-            _accessReport.value = healthConnectRepository.readAccessReport()
-        }
-    }
+    val readRefusedDespiteGrant: StateFlow<Boolean> =
+        healthConnectRepository.readRefusedDespiteGrant
+    val exerciseRoutesPermission = HealthConnectRepository.EXERCISE_ROUTES_PERMISSION
 
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
     val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay
@@ -151,9 +141,6 @@ class HealthViewModel @Inject constructor(
     val healthWidgetOrder: StateFlow<String> = settingsRepository.healthWidgetOrder
 
     private var lastResumeLoadMs = 0L
-
-    /** Last seen grant set, so a change made outside the app beats the throttle. */
-    private var lastGrantedSnapshot: Set<String>? = null
     private var macrosJob: Job? = null
     private var macroHistoryJob: Job? = null
     private var healthJob: Job? = null
@@ -178,24 +165,11 @@ class HealthViewModel @Inject constructor(
      * Call from ON_RESUME. Skips if called within 30 s of the previous load unless [force] is true.
      */
     fun loadDataOnResume(force: Boolean = false) {
-        viewModelScope.launch {
-            // The user may have just come back from granting in Health Connect, so
-            // re-read the permission snapshot rather than trusting the 30s cache.
-            // A changed grant beats the throttle — otherwise the fix they just made
-            // in another app appears to do nothing for half a minute.
-            healthConnectRepository.clearPermissionCache()
-            val granted = healthConnectRepository.getGrantedPermissions()
-            val grantChanged = lastGrantedSnapshot != null && granted != lastGrantedSnapshot
-            lastGrantedSnapshot = granted
-
-            val now = System.currentTimeMillis()
-            if (!force && !grantChanged && lastResumeLoadMs > 0 && now - lastResumeLoadMs < 30_000L) {
-                return@launch
-            }
-            lastResumeLoadMs = now
-            loadData()
-            loadHealthConnect(silent = !grantChanged && !force)
-        }
+        val now = System.currentTimeMillis()
+        if (!force && lastResumeLoadMs > 0 && now - lastResumeLoadMs < 30_000L) return
+        lastResumeLoadMs = now
+        loadData()
+        loadHealthConnect(silent = true)
     }
 
     fun updateHealthWidgetOrder(order: String) {
@@ -325,13 +299,18 @@ class HealthViewModel @Inject constructor(
         if (metric == DetailMetric.NONE) return
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
-            // Both reads return empty when Health Connect refuses them, so ask
-            // rather than pre-checking a snapshot that may under-report.
+            if (!healthConnectRepository.hasAnyPermissions()) return@launch
             when (metric) {
-                DetailMetric.HEART_RATE ->
-                    _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
-                DetailMetric.SLEEP ->
-                    _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+                DetailMetric.HEART_RATE -> {
+                    if (healthConnectRepository.hasPermission(HealthConnectRepository.HEART_RATE_PERMISSION)) {
+                        _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
+                    }
+                }
+                DetailMetric.SLEEP -> {
+                    if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
+                        _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
+                    }
+                }
                 DetailMetric.NONE -> Unit
             }
         }
@@ -340,6 +319,7 @@ class HealthViewModel @Inject constructor(
     fun loadHealthConnect(permissionsGranted: Boolean = false, silent: Boolean = false) {
         healthJob?.cancel()
         healthJob = viewModelScope.launch {
+            healthConnectRepository.beginReadCycle()
             if (permissionsGranted) {
                 settingsRepository.setMasterHealthConnectEnabled(true)
             }
@@ -357,12 +337,12 @@ class HealthViewModel @Inject constructor(
                 return@launch
             }
 
-            refreshAccessReport()
-
-            // Deliberately no "are any permissions granted?" gate here. That
-            // snapshot is a cached IPC result, and when it came back short the
-            // screen stopped reading altogether. Read first; if everything really
-            // is refused the read fails and the Connect card goes up below.
+            val hasPerms = permissionsGranted || healthConnectRepository.hasAnyPermissions()
+            if (!hasPerms) {
+                _healthConnectState.value = HealthConnectUiState.PermissionRequired
+                _activitiesState.value = ActivitiesUiState.PermissionRequired
+                return@launch
+            }
 
             val current = _healthConnectState.value
             if (!silent) {
@@ -380,11 +360,12 @@ class HealthViewModel @Inject constructor(
                     // cancelling the workouts / week history running beside it.
                     val statsDeferred = async { runCatching { healthConnectRepository.readTodayStats() } }
                     val historyDeferred = async { runCatching { loadWeekHistory() } }
-                    // No permission pre-check: readSleepSessions already returns
-                    // empty on refusal, and gating on the granted snapshot is what
-                    // blanked sleep whenever that snapshot came back short.
                     val todaySleepDeferred = async {
-                        healthConnectRepository.readSleepSessions(LocalDate.now())
+                        if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
+                            healthConnectRepository.readSleepSessions(LocalDate.now())
+                        } else {
+                            emptyList()
+                        }
                     }
                     val activitiesDeferred = async { loadActivitiesInternal(silent) }
                     val statsResult = statsDeferred.await()
@@ -397,15 +378,11 @@ class HealthViewModel @Inject constructor(
                         stats == null -> {
                             val error = statsResult.exceptionOrNull()
                             Log.e(TAG, "Failed to read today's health stats", error)
-                            _healthConnectState.value = when {
-                                // Every metric was refused and nothing is granted:
-                                // this really is a disconnected account.
-                                !healthConnectRepository.hasAnyPermissions() ->
-                                    HealthConnectUiState.PermissionRequired
+                            _healthConnectState.value = if (current is HealthConnectUiState.Success) {
                                 // Keep the numbers already on screen rather than zeroing them.
-                                current is HealthConnectUiState.Success ->
-                                    current.copy(isRefreshing = false)
-                                else -> HealthConnectUiState.Error(
+                                current.copy(isRefreshing = false)
+                            } else {
+                                HealthConnectUiState.Error(
                                     error?.message ?: "Failed to read health data",
                                 )
                             }
@@ -434,6 +411,10 @@ class HealthViewModel @Inject constructor(
     }
 
     private suspend fun loadActivitiesInternal(silent: Boolean) {
+        if (!healthConnectRepository.hasPermission(HealthConnectRepository.EXERCISE_PERMISSION)) {
+            _activitiesState.value = ActivitiesUiState.PermissionRequired
+            return
+        }
         val current = _activitiesState.value
         if (!silent || current !is ActivitiesUiState.Success) {
             _activitiesState.value = ActivitiesUiState.Loading
@@ -449,15 +430,7 @@ class HealthViewModel @Inject constructor(
                     else activity
                 }
             } ?: activities
-            // Only claim "permission required" once the read has actually come
-            // back with nothing and Health Connect confirms the refusal.
-            _activitiesState.value = if (merged.isEmpty() &&
-                !healthConnectRepository.hasPermission(HealthConnectRepository.EXERCISE_PERMISSION)
-            ) {
-                ActivitiesUiState.PermissionRequired
-            } else {
-                ActivitiesUiState.Success(merged)
-            }
+            _activitiesState.value = ActivitiesUiState.Success(merged)
             pickFeaturedActivity(merged)?.let { loadActivityHeartRate(it) }
         } catch (e: CancellationException) {
             throw e

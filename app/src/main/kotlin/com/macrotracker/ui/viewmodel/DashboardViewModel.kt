@@ -10,10 +10,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /**
@@ -76,9 +74,6 @@ class DashboardViewModel @Inject constructor(
 
     private var lastLoadMs = 0L
     private var loadJob: Job? = null
-
-    /** Last seen grant set, so a change made outside the app beats the throttle. */
-    private var lastGrantedSnapshot: Set<String>? = null
 
     private val specs: List<MetricSpec> by lazy {
         val repo = healthConnectRepository
@@ -160,19 +155,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun loadDataThrottled() {
-        viewModelScope.launch {
-            // Re-read the grant snapshot instead of trusting its 30s cache: this
-            // runs on resume, which is exactly when the user may have just granted
-            // something in Health Connect. A change beats the throttle and forces a
-            // refresh, so the newly-shared metrics appear immediately.
-            healthConnectRepository.clearPermissionCache()
-            val granted = healthConnectRepository.getGrantedPermissions()
-            val grantChanged = lastGrantedSnapshot != null && granted != lastGrantedSnapshot
-
-            val now = System.currentTimeMillis()
-            if (!grantChanged && lastLoadMs > 0 && now - lastLoadMs < 30_000L) return@launch
-            loadData(forceRefresh = grantChanged)
-        }
+        val now = System.currentTimeMillis()
+        if (lastLoadMs > 0 && now - lastLoadMs < 30_000L) return
+        loadData()
     }
 
     fun loadData(forceRefresh: Boolean = false) {
@@ -190,60 +175,41 @@ class DashboardViewModel @Inject constructor(
             } else {
                 emptySet()
             }
-            lastGrantedSnapshot = granted
 
-            val blocked = ConcurrentHashMap.newKeySet<Metric>()
-            val reads = specs.map { spec ->
+            val missing = mutableListOf<Metric>()
+            for (spec in specs) {
                 val toggleOn = masterEnabled && spec.toggle()
                 val permissionOk = spec.permission in granted
-                launch {
-                    if (loadMetric(spec, toggleOn = toggleOn, permissionOk = permissionOk) && available) {
-                        blocked += spec.metric
-                    }
-                }
+                if (toggleOn && available && !permissionOk) missing += spec.metric
+                launch { loadMetric(spec, toggleOn = toggleOn, permissionOk = permissionOk) }
             }
-            reads.joinAll()
             // Ordered by the spec table so the summary reads the same every load.
-            _missingPermissions.value = specs.map { it.metric }.filter { it in blocked }
+            _missingPermissions.value = missing
         }
     }
 
-    /**
-     * Loads one metric. Returns true when it came back empty *and* Health Connect
-     * says the permission is missing — the only case worth reporting to the user.
-     *
-     * The read is attempted even when [permissionOk] is false. That snapshot is a
-     * cached IPC result that comes back empty or short on any hiccup, and skipping
-     * the read on its word turned a momentary blip into a permanent, silent zero.
-     * An actually-refused read just throws, and lands in the same empty state.
-     */
-    private suspend fun loadMetric(
-        spec: MetricSpec,
-        toggleOn: Boolean,
-        permissionOk: Boolean,
-    ): Boolean {
+    private suspend fun loadMetric(spec: MetricSpec, toggleOn: Boolean, permissionOk: Boolean) {
         val flow = states.getValue(spec.metric)
         if (!toggleOn) {
             flow.value = HealthMetricUiState(isEnabled = false)
-            return false
+            return
         }
-        val today = runCatching { spec.readToday() }.getOrNull()
-        val yesterday = runCatching { spec.readYesterday() }.getOrNull()
-        if (today == null && !permissionOk) {
+        if (!permissionOk) {
             flow.value = HealthMetricUiState(
                 value = spec.emptyValue,
                 isEnabled = true,
                 permissionMissing = true,
             )
-            return true
+            return
         }
+        val today = spec.readToday()
+        val yesterday = spec.readYesterday()
         flow.value = HealthMetricUiState(
             value = today?.let(spec.format) ?: spec.emptyValue,
             today = today,
             yesterday = yesterday,
             isEnabled = true,
         )
-        return false
     }
 
     companion object {

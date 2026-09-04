@@ -1,14 +1,8 @@
 package com.macrotracker.data.health
 
-import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
-import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.FloorsClimbedRecord
-import androidx.health.connect.client.records.HeartRateRecord
-import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import com.macrotracker.data.local.SettingsRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -297,40 +291,18 @@ class HealthActivityTest {
     }
 
     @Test
-    fun requestedPermissionsAreAllReadableByHealthConnect() {
-        // Health Connect validates the whole requested list and cancels the
-        // request when one entry is unrecognised — no dialog, nothing granted.
-        // READ_EXERCISE_ROUTES is not a HealthPermission in 1.1.0-alpha10, so
-        // including it here left Health stuck on whatever was granted before.
+    fun routesPermissionAloneIsNotEnoughToClaimHealthData() {
+        // READ_EXERCISE_ROUTES reads nothing by itself — treating it as data
+        // access showed an all-zero dashboard as a successful read.
         assertFalse(
-            HealthConnectRepository.PERMISSIONS.any { it.contains("EXERCISE_ROUTES") },
+            HealthConnectRepository.EXERCISE_ROUTES_PERMISSION in
+                HealthConnectRepository.DATA_PERMISSIONS,
         )
-        assertTrue(HealthConnectRepository.STEPS_PERMISSION in HealthConnectRepository.PERMISSIONS)
-        assertTrue(
-            HealthConnectRepository.PERMISSIONS.all {
-                it.startsWith("android.permission.health.READ_")
-            },
+        assertTrue(HealthConnectRepository.STEPS_PERMISSION in HealthConnectRepository.DATA_PERMISSIONS)
+        assertEquals(
+            HealthConnectRepository.PERMISSIONS.size - 1,
+            HealthConnectRepository.DATA_PERMISSIONS.size,
         )
-        // Every requested permission reads data, so "any granted" spans them all.
-        assertEquals(HealthConnectRepository.PERMISSIONS, HealthConnectRepository.DATA_PERMISSIONS)
-    }
-
-    @Test
-    fun everyAggregateIsRequestedRegardlessOfPermissionSnapshot() {
-        // Health used to build this set from getGrantedPermissions(). That
-        // snapshot is a cached IPC result that comes back short on any hiccup,
-        // and a metric left out of the request was never attempted — a silent,
-        // permanent zero for steps, calories and the rest while heart rate (read
-        // through readRecords, not aggregate) carried on working. The set is
-        // fixed now; aggregateResilient retries metric-by-metric on refusal.
-        val metrics = HealthConnectRepository.ALL_AGGREGATE_METRICS
-        assertEquals(6, metrics.size)
-        assertTrue(StepsRecord.COUNT_TOTAL in metrics)
-        assertTrue(HeartRateRecord.BPM_AVG in metrics)
-        assertTrue(TotalCaloriesBurnedRecord.ENERGY_TOTAL in metrics)
-        assertTrue(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL in metrics)
-        assertTrue(DistanceRecord.DISTANCE_TOTAL in metrics)
-        assertTrue(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL in metrics)
     }
 
     @Test

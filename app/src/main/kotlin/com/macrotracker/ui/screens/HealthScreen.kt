@@ -76,7 +76,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.ui.screens.health.ActivitiesSection
 import com.macrotracker.ui.screens.health.AnimatedMacroBarChart
 import com.macrotracker.ui.screens.health.DailyHealthSection
-import com.macrotracker.ui.screens.health.HealthAccessCard
 import com.macrotracker.ui.screens.health.HealthMetric
 import com.macrotracker.ui.screens.health.HealthMetricEntry
 import com.macrotracker.ui.screens.health.HealthMetricGrid
@@ -96,6 +95,7 @@ import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.ScreenHeader
+import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.WidgetPlaceholder
@@ -150,6 +150,7 @@ fun HealthScreen(
     val healthHistory by healthViewModel.healthHistory.collectAsState()
     val healthWidgetOrder by healthViewModel.healthWidgetOrder.collectAsState()
     val healthConnectState by healthViewModel.healthConnectState.collectAsState()
+    val readRefusedDespiteGrant by healthViewModel.readRefusedDespiteGrant.collectAsState()
     val activitiesState by healthViewModel.activitiesState.collectAsState()
 
     val selectedDate by healthViewModel.selectedDate.collectAsState()
@@ -204,31 +205,7 @@ fun HealthScreen(
     val distanceState by dashboardViewModel.distanceState.collectAsState()
     val floorsClimbedState by dashboardViewModel.floorsClimbedState.collectAsState()
     val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
-    val accessReport by healthViewModel.accessReport.collectAsState()
-
-    // Metrics the user switched off in DailyDash. Every state starts disabled, so
-    // an all-off list means "not loaded yet", not "all hidden" — say nothing then.
-    val metricsDisabledInApp = remember(
-        heartRateState, restingHeartRateState, oxygenSaturationState, respiratoryRateState,
-        stepsState, distanceState, floorsClimbedState, activeCaloriesState,
-    ) {
-        val labelled = listOf(
-            "Steps" to stepsState,
-            "Active calories" to activeCaloriesState,
-            "Distance" to distanceState,
-            "Floors" to floorsClimbedState,
-            "Heart rate" to heartRateState,
-            "Resting HR" to restingHeartRateState,
-            "SpO₂" to oxygenSaturationState,
-            "Respiratory rate" to respiratoryRateState,
-        )
-        if (labelled.none { it.second.isEnabled }) {
-            emptyList()
-        } else {
-            labelled.filter { !it.second.isEnabled }.map { it.first }
-        }
-    }
-
+    val missingPermissions by dashboardViewModel.missingPermissions.collectAsState()
 
     var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
     val routeLauncher = rememberLauncherForActivityResult(
@@ -239,10 +216,7 @@ fun HealthScreen(
         healthViewModel.applyExerciseRoute(id, route)
     }
 
-    // Health Connect permission launcher. It is only ever handed
-    // `HealthConnectRepository.PERMISSIONS`: Health Connect validates the whole
-    // requested list and cancels the request when one entry is unrecognised, so
-    // slipping READ_EXERCISE_ROUTES in here silently granted nothing at all.
+    // Health Connect permission launcher
     val hcPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { granted ->
@@ -252,10 +226,10 @@ fun HealthScreen(
     }
 
     fun revealActivityRoute(activity: HealthActivity) {
-        // GPS consent is per workout and has its own contract — the standard
-        // permission screen never grants READ_EXERCISE_ROUTES. A declined sheet
-        // comes back as a null route, which marks the row resolved so
-        // “Show GPS map” stops looping.
+        // Straight to the per-workout consent sheet. READ_EXERCISE_ROUTES cannot
+        // be obtained through the normal permission request — Android ignores it
+        // there, so the old flow always saw it ungranted and threw the map away
+        // before ExerciseRouteRequestContract was ever reached.
         pendingRouteActivityId = activity.id
         routeLauncher.launch(activity.id)
     }
@@ -264,16 +238,12 @@ fun HealthScreen(
     // ON_RESUME never fires. Load now, then again on later resumes (30s throttle).
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(Unit) {
-        // Read the grant state on its own too: the access card is the one thing
-        // that must appear even when the load throttles or stalls.
-        healthViewModel.refreshAccessReport()
         healthViewModel.loadDataOnResume()
         dashboardViewModel.loadDataThrottled()
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                healthViewModel.refreshAccessReport()
                 healthViewModel.loadDataOnResume()
                 dashboardViewModel.loadDataThrottled()
             }
@@ -358,24 +328,22 @@ fun HealthScreen(
                 Spacer(modifier = Modifier.height(20.dp))
             }
             else -> {
-                // One granted permission already counts as "connected", so a
-                // partial grant — the state that leaves Health showing heart rate
-                // and nothing else — never reaches the cards above. This names
-                // exactly which types are refused, and leads with Health Connect
-                // itself because the in-app sheet stops appearing once dismissed.
-                HealthAccessCard(
-                    access = accessReport,
-                    disabledInApp = metricsDisabledInApp,
-                    onOpenHealthConnect = {
-                        haptics.tick()
-                        openHealthConnectSettings(context)
-                    },
-                    onRequestInApp = {
-                        haptics.tick()
-                        hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
-                    },
-                )
-                if (accessReport.any { !it.isGranted } || metricsDisabledInApp.isNotEmpty()) {
+                // Permissions read as granted but Health Connect refuses the
+                // reads — its AppOp has desynced from the grant. Only re-granting
+                // in Health Connect resyncs it, so send the user straight there
+                // rather than leaving the screen looking empty.
+                if (readRefusedDespiteGrant) {
+                    HealthConnectCard(
+                        title = "Health Connect is blocking access",
+                        message = "DailyDash has permission, but Health Connect is refusing to " +
+                            "share the data. Open it, turn DailyDash’s permissions off and " +
+                            "back on, then come back.",
+                        actionLabel = "Open Health Connect",
+                        onRequestPermission = {
+                            haptics.tick()
+                            openHealthConnectSettings(context)
+                        },
+                    )
                     Spacer(modifier = Modifier.height(20.dp))
                 }
             }
@@ -466,10 +434,22 @@ fun HealthScreen(
                                     modifier = Modifier.padding(bottom = 12.dp),
                                 )
 
-                                // The "not shared" prompt lives at the top of the
-                                // screen now, so it survives hiding or reordering
-                                // this card. Each card still says "Not shared".
                                 HealthMetricGrid(entries = metricEntries)
+
+                                if (missingPermissions.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    StatusCopy(
+                                        title = "Some metrics aren’t shared",
+                                        body = "Health Connect hasn’t granted " +
+                                            missingPermissions.joinToString { it.label } +
+                                            ". Allow them to see real numbers instead of placeholders.",
+                                        actionLabel = "Allow in Health Connect",
+                                        onAction = {
+                                            haptics.tick()
+                                            hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+                                        },
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(20.dp))
@@ -980,12 +960,14 @@ private fun MacroDayStatCard(label: String, value: String, modifier: Modifier = 
 }
 
 /**
- * Health Connect stops showing the permission sheet after a couple of refusals,
- * and the request then returns instantly having granted nothing. Sending the
- * user to Health Connect itself is the only way back from that state.
+ * Health Connect's own permission screen. Re-granting there is the only thing
+ * that resyncs the AppOp behind health reads once it has drifted from the
+ * runtime grant — the app cannot set an AppOp itself.
  */
 private fun openHealthConnectSettings(context: Context) {
     val candidates = listOf(
+        Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS")
+            .putExtra(Intent.EXTRA_PACKAGE_NAME, context.packageName),
         Intent("android.health.connect.action.HEALTH_HOME_SETTINGS"),
         Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"),
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(
