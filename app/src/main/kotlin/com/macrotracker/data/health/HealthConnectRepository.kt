@@ -1193,6 +1193,42 @@ class HealthConnectRepository @Inject constructor(
                 agg[ElevationGainedRecord.ELEVATION_GAINED_TOTAL]?.inMeters
                     ?.takeIf { it >= 1.0 }?.let { elevationM = it }
             }
+
+            // Same raw-record fallback as the daily read: where aggregate() answers
+            // with nothing, every workout row would otherwise lose its distance,
+            // calories and heart rate even though the records are right there.
+            if (distanceKm == null || calories == null || steps == null || avgHr == null ||
+                elevationM == null
+            ) {
+                val from = session.startTime
+                val to = session.endTime
+                if (distanceKm == null) {
+                    distanceKm = readAllPaged(hc, DistanceRecord::class, from, to)
+                        .sumOf { it.distance.inKilometers }.takeIf { it > 0.0 }
+                }
+                if (calories == null) {
+                    calories = readAllPaged(hc, ActiveCaloriesBurnedRecord::class, from, to)
+                        .sumOf { it.energy.inKilocalories }.takeIf { it > 0.0 }
+                }
+                if (steps == null) {
+                    steps = readAllPaged(hc, StepsRecord::class, from, to)
+                        .sumOf { it.count }.takeIf { it > 0L }
+                }
+                if (elevationM == null) {
+                    elevationM = readAllPaged(hc, ElevationGainedRecord::class, from, to)
+                        .sumOf { it.elevation.inMeters }.takeIf { it >= 1.0 }
+                }
+                if (avgHr == null) {
+                    val bpm = readAllPaged(hc, HeartRateRecord::class, from, to)
+                        .flatMap { it.samples }
+                        .map { it.beatsPerMinute }
+                    if (bpm.isNotEmpty()) {
+                        avgHr = bpm.average().roundToLong()
+                        maxHr = maxHr ?: bpm.max()
+                        minHr = minHr ?: bpm.min()
+                    }
+                }
+            }
         }
 
         val resolvedRoute = if (resolveRoute) {
