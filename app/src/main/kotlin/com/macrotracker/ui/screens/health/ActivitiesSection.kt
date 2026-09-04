@@ -93,7 +93,6 @@ fun ActivitiesSection(
     state: ActivitiesUiState,
     haptics: HapticHelper,
     onRequestPermission: () -> Unit,
-    onRevealRoute: (HealthActivity) -> Unit,
     onExpandActivity: (HealthActivity) -> Unit,
     onRetry: () -> Unit = onRequestPermission,
     delayMs: Long = 40L,
@@ -185,7 +184,6 @@ fun ActivitiesSection(
                     ActivitiesList(
                         activities = state.activities,
                         haptics = haptics,
-                        onRevealRoute = onRevealRoute,
                         onExpandActivity = onExpandActivity,
                     )
                 }
@@ -212,7 +210,6 @@ private fun monthSummary(activities: List<HealthActivity>): String {
 private fun ActivitiesList(
     activities: List<HealthActivity>,
     haptics: HapticHelper,
-    onRevealRoute: (HealthActivity) -> Unit,
     onExpandActivity: (HealthActivity) -> Unit,
 ) {
     val featured = pickFeaturedActivity(activities)
@@ -223,14 +220,9 @@ private fun ActivitiesList(
     var showAll by rememberSaveable { mutableStateOf(false) }
 
     if (featured != null) {
-        // The hero map is what sells the card — make sure its GPS is loaded.
-        LaunchedEffect(featured.id, featured.routeResolved) {
-            if (!featured.routeResolved) onExpandActivity(featured)
-        }
         FeaturedActivityCard(
             activity = featured,
             haptics = haptics,
-            onRevealRoute = onRevealRoute,
         )
     }
 
@@ -266,12 +258,7 @@ private fun ActivitiesList(
                     val opening = expandedId != activity.id
                     expandedId = if (opening) activity.id else null
                     if (opening) onExpandActivity(activity)
-                },
-                onRevealRoute = {
-                    haptics.tick()
-                    onRevealRoute(activity)
-                },
-            )
+                },            )
         }
     }
 
@@ -330,7 +317,6 @@ private fun ShowMoreRow(expanded: Boolean, hiddenCount: Int, onClick: () -> Unit
 private fun FeaturedActivityCard(
     activity: HealthActivity,
     haptics: HapticHelper,
-    onRevealRoute: (HealthActivity) -> Unit,
 ) {
     val accent = activityAccent(activity.exerciseType)
     Column(
@@ -342,16 +328,6 @@ private fun FeaturedActivityCard(
             .padding(12.dp),
     ) {
         ActivityHeader(activity = activity, accent = accent)
-        Spacer(modifier = Modifier.height(10.dp))
-        ActivityMapBlock(
-            activity = activity,
-            accent = accent,
-            height = 176.dp,
-            onRevealRoute = {
-                haptics.tick()
-                onRevealRoute(activity)
-            },
-        )
         Spacer(modifier = Modifier.height(10.dp))
         ActivityStatsGrid(activity)
         if (activity.hrSamples.size >= 2) {
@@ -370,7 +346,6 @@ private fun CompactActivityRow(
     activity: HealthActivity,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onRevealRoute: () -> Unit,
 ) {
     val accent = activityAccent(activity.exerciseType)
     Column(
@@ -383,20 +358,7 @@ private fun CompactActivityRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // A route thumbnail reads faster than a generic icon, so show the
-            // real shape of the workout whenever we already have the track.
-            if (activity.hasRoute) {
-                ActivityRouteMap(
-                    points = activity.route,
-                    accent = accent,
-                    height = 44.dp,
-                    animate = false,
-                    chrome = false,
-                    modifier = Modifier.width(56.dp),
-                )
-            } else {
-                ActivityTypeBadge(activity.exerciseType, accent)
-            }
+            ActivityTypeBadge(activity.exerciseType, accent)
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -435,8 +397,6 @@ private fun CompactActivityRow(
         }
         AnimatedVisibility(visible = expanded, enter = MacroMotion.expandEnter, exit = MacroMotion.expandExit) {
             Column(modifier = Modifier.padding(top = 10.dp)) {
-                ActivityMapBlock(activity = activity, accent = accent, height = 148.dp, onRevealRoute = onRevealRoute)
-                Spacer(modifier = Modifier.height(10.dp))
                 ActivityStatsGrid(activity)
                 if (activity.hrSamples.size >= 2) {
                     Spacer(modifier = Modifier.height(10.dp))
@@ -503,78 +463,7 @@ private fun SourceChip(label: String, accent: Color) {
     )
 }
 
-@Composable
-private fun ActivityMapBlock(
-    activity: HealthActivity,
-    accent: Color,
-    height: Dp,
-    onRevealRoute: () -> Unit,
-) {
-    when {
-        activity.hasRoute -> {
-            ActivityRouteMap(
-                points = activity.route,
-                accent = accent,
-                height = height,
-                distanceLabel = formatActivityDistance(activity.distanceKm),
-                elevationLabel = formatElevation(activity.elevationGainM),
-            )
-        }
-        !activity.routeResolved -> {
-            // GPS for older sessions is fetched on demand — say so instead of
-            // claiming the workout has no route.
-            MapPlaceholder(height = height) {
-                LoadingSpinner(color = accent, size = LoadingSpec.SizeInline)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Loading map…", fontSize = 12.sp, color = TextSecondary)
-            }
-        }
-        activity.routeConsentRequired -> {
-            MapPlaceholder(height = height, onClick = onRevealRoute) {
-                Icon(Icons.Outlined.Map, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Show GPS map", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Text(
-                    "Tap to allow this workout’s route in Health Connect",
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                )
-            }
-        }
-        else -> {
-            MapPlaceholder(height = 88.dp) {
-                Icon(activityIcon(activity.exerciseType), null, tint = accent, modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    if (activity.isOutdoorType) "No GPS saved for this ${activity.typeLabel.lowercase()}"
-                    else "Indoor ${activity.typeLabel.lowercase()} — no map",
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                )
-            }
-        }
-    }
-}
 
-@Composable
-private fun MapPlaceholder(
-    height: Dp,
-    onClick: (() -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MapSurface)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, content = content)
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
