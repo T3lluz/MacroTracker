@@ -60,7 +60,16 @@ fun HealthAccessCard(
     modifier: Modifier = Modifier,
 ) {
     val missing = access.filter { !it.isGranted }
-    if (missing.isEmpty() && disabledInApp.isEmpty()) return
+
+    // Nothing to report only once we have actually read the grant state. Hiding
+    // on an empty report made "no card" mean both "all good" and "never checked",
+    // which is exactly the ambiguity this card exists to remove.
+    if (access.isEmpty()) return
+
+    if (missing.isEmpty() && disabledInApp.isEmpty()) {
+        AllSharedRow(count = access.size, modifier = modifier)
+        return
+    }
 
     MacroCard(delayMs = 0, modifier = modifier) {
         Text(
@@ -138,6 +147,33 @@ fun HealthAccessCard(
                 )
             }
         }
+    }
+}
+
+/**
+ * The everything-is-fine state: one quiet line rather than a full card, so the
+ * readout is always on screen without shouting when there is nothing to fix.
+ */
+@Composable
+private fun AllSharedRow(count: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = null,
+            tint = Success,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            "Health Connect: all $count data types shared",
+            fontSize = 12.sp,
+            color = TextSecondary,
+        )
     }
 }
 

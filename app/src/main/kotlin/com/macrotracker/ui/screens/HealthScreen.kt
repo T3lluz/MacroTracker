@@ -264,12 +264,16 @@ fun HealthScreen(
     // ON_RESUME never fires. Load now, then again on later resumes (30s throttle).
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(Unit) {
+        // Read the grant state on its own too: the access card is the one thing
+        // that must appear even when the load throttles or stalls.
+        healthViewModel.refreshAccessReport()
         healthViewModel.loadDataOnResume()
         dashboardViewModel.loadDataThrottled()
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                healthViewModel.refreshAccessReport()
                 healthViewModel.loadDataOnResume()
                 dashboardViewModel.loadDataThrottled()
             }

@@ -135,6 +135,9 @@ class HealthViewModel @Inject constructor(
 
     fun refreshAccessReport() {
         viewModelScope.launch {
+            // Always a fresh read — this is the authoritative readout the user
+            // acts on, so it must not answer from the 30s snapshot cache.
+            healthConnectRepository.clearPermissionCache()
             _accessReport.value = healthConnectRepository.readAccessReport()
         }
     }
