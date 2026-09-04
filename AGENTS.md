@@ -51,9 +51,14 @@ com.macrotracker/
                               whole `aggregate()` call when any requested metric is not granted,
                               so build the set from `grantedAggregateMetrics()` and let
                               `aggregateResilient()` retry metric-by-metric on failure.
-                              `hasAnyPermissions()` ignores READ_EXERCISE_ROUTES (it reads no data
-                              on its own). `readTodayStats()` throws only when every granted
-                              metric failed, so the ViewModel can tell "empty" from "broken".
+                              **`PERMISSIONS` must contain only permissions the SDK knows** —
+                              Health Connect validates the whole requested list and cancels the
+                              request when one entry is unrecognised (no sheet, nothing granted).
+                              `READ_EXERCISE_ROUTES` is not a `HealthPermission` in 1.1.0-alpha10,
+                              so it must never go in that set; GPS consent is per workout through
+                              `ExerciseRouteRequestContract`. `readTodayStats()` throws only when
+                              every granted metric failed, so the ViewModel can tell "empty" from
+                              "broken".
     f1/                    ← F1Repository via Ktor + OpenF1 API (https://api.openf1.org/v1/);
                               15-min in-memory + SharedPrefs disk cache; F1RepositoryEntryPoint for widgets
     youtube/               ← YouTubeRepository via RSS feeds + optional Google OAuth subscription

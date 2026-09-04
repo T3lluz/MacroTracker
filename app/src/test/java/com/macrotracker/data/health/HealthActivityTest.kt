@@ -291,18 +291,22 @@ class HealthActivityTest {
     }
 
     @Test
-    fun routesPermissionAloneIsNotEnoughToClaimHealthData() {
-        // READ_EXERCISE_ROUTES reads nothing by itself — treating it as data
-        // access showed an all-zero dashboard as a successful read.
+    fun requestedPermissionsAreAllReadableByHealthConnect() {
+        // Health Connect validates the whole requested list and cancels the
+        // request when one entry is unrecognised — no dialog, nothing granted.
+        // READ_EXERCISE_ROUTES is not a HealthPermission in 1.1.0-alpha10, so
+        // including it here left Health stuck on whatever was granted before.
         assertFalse(
-            HealthConnectRepository.EXERCISE_ROUTES_PERMISSION in
-                HealthConnectRepository.DATA_PERMISSIONS,
+            HealthConnectRepository.PERMISSIONS.any { it.contains("EXERCISE_ROUTES") },
         )
-        assertTrue(HealthConnectRepository.STEPS_PERMISSION in HealthConnectRepository.DATA_PERMISSIONS)
-        assertEquals(
-            HealthConnectRepository.PERMISSIONS.size - 1,
-            HealthConnectRepository.DATA_PERMISSIONS.size,
+        assertTrue(HealthConnectRepository.STEPS_PERMISSION in HealthConnectRepository.PERMISSIONS)
+        assertTrue(
+            HealthConnectRepository.PERMISSIONS.all {
+                it.startsWith("android.permission.health.READ_")
+            },
         )
+        // Every requested permission reads data, so "any granted" spans them all.
+        assertEquals(HealthConnectRepository.PERMISSIONS, HealthConnectRepository.DATA_PERMISSIONS)
     }
 
     @Test

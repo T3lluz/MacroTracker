@@ -1,5 +1,10 @@
 package com.macrotracker.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
@@ -90,7 +95,6 @@ import com.macrotracker.ui.components.WidgetScrollBox
 import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.ScreenHeader
-import com.macrotracker.ui.components.StatusCopy
 import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.components.WidgetEditor
 import com.macrotracker.ui.components.WidgetPlaceholder
@@ -201,6 +205,10 @@ fun HealthScreen(
     val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
     val missingPermissions by dashboardViewModel.missingPermissions.collectAsState()
 
+    // Set once the permission sheet has been asked for and still left metrics
+    // ungranted, so the prompt can switch to "Open Health Connect".
+    var permissionAskAttempted by rememberSaveable { mutableStateOf(false) }
+
     var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
     val routeLauncher = rememberLauncherForActivityResult(
         contract = ExerciseRouteRequestContract(),
@@ -210,35 +218,25 @@ fun HealthScreen(
         healthViewModel.applyExerciseRoute(id, route)
     }
 
-    // Health Connect permission launcher
+    // Health Connect permission launcher. It is only ever handed
+    // `HealthConnectRepository.PERMISSIONS`: Health Connect validates the whole
+    // requested list and cancels the request when one entry is unrecognised, so
+    // slipping READ_EXERCISE_ROUTES in here silently granted nothing at all.
     val hcPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { granted ->
         val anyGranted = granted.any { it in healthViewModel.healthConnectPermissions }
-        val pendingId = pendingRouteActivityId
-        val routesGranted = healthViewModel.exerciseRoutesPermission in granted
-        healthViewModel.loadHealthConnect(
-            permissionsGranted = anyGranted,
-            silent = pendingId != null,
-        )
+        healthViewModel.loadHealthConnect(permissionsGranted = anyGranted)
         dashboardViewModel.loadData(forceRefresh = true)
-        if (pendingId != null) {
-            if (routesGranted) {
-                routeLauncher.launch(pendingId)
-            } else {
-                // Denied or omitted READ_EXERCISE_ROUTES — stop looping “Show GPS map”.
-                healthViewModel.applyExerciseRoute(pendingId, null)
-                pendingRouteActivityId = null
-            }
-        }
     }
 
     fun revealActivityRoute(activity: HealthActivity) {
+        // GPS consent is per workout and has its own contract — the standard
+        // permission screen never grants READ_EXERCISE_ROUTES. A declined sheet
+        // comes back as a null route, which marks the row resolved so
+        // “Show GPS map” stops looping.
         pendingRouteActivityId = activity.id
-        // READ_EXERCISE_ROUTES must be granted before the per-workout GPS sheet.
-        // If it is already granted, the permission activity returns immediately
-        // and we then launch ExerciseRouteRequestContract below.
-        hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+        routeLauncher.launch(activity.id)
     }
 
     // First visit to this tab happens while the Activity is already resumed, so
@@ -334,7 +332,34 @@ fun HealthScreen(
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }
-            else -> {}
+            else -> {
+                // One granted permission already counts as "connected", so a
+                // partial grant — the state that leaves Health showing heart rate
+                // and nothing else — never reaches the cards above. Ask for the
+                // rest here, where it is visible however the widgets are ordered.
+                if (missingPermissions.isNotEmpty()) {
+                    HealthConnectCard(
+                        title = "Some metrics aren’t shared",
+                        message = "Health Connect hasn’t granted " +
+                            missingPermissions.joinToString { it.label } +
+                            ". Allow them to see every metric.",
+                        actionLabel = if (permissionAskAttempted) "Open Health Connect" else "Allow",
+                        onRequestPermission = {
+                            haptics.tick()
+                            // A second tap means the sheet did not grant anything —
+                            // Health Connect stops showing it after a few refusals,
+                            // so hand the user its own permission screen instead.
+                            if (permissionAskAttempted) {
+                                openHealthConnectSettings(context)
+                            } else {
+                                permissionAskAttempted = true
+                                hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+                            }
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
         }
         }
 
@@ -422,22 +447,10 @@ fun HealthScreen(
                                     modifier = Modifier.padding(bottom = 12.dp),
                                 )
 
+                                // The "not shared" prompt lives at the top of the
+                                // screen now, so it survives hiding or reordering
+                                // this card. Each card still says "Not shared".
                                 HealthMetricGrid(entries = metricEntries)
-
-                                if (missingPermissions.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    StatusCopy(
-                                        title = "Some metrics aren’t shared",
-                                        body = "Health Connect hasn’t granted " +
-                                            missingPermissions.joinToString { it.label } +
-                                            ". Allow them to see real numbers instead of placeholders.",
-                                        actionLabel = "Allow in Health Connect",
-                                        onAction = {
-                                            haptics.tick()
-                                            hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
-                                        },
-                                    )
-                                }
                             }
 
                             Spacer(modifier = Modifier.height(20.dp))
@@ -945,4 +958,28 @@ private fun MacroDayStatCard(label: String, value: String, modifier: Modifier = 
             Text(value, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
     }
+}
+
+/**
+ * Health Connect stops showing the permission sheet after a couple of refusals,
+ * and the request then returns instantly having granted nothing. Sending the
+ * user to Health Connect itself is the only way back from that state.
+ */
+private fun openHealthConnectSettings(context: Context) {
+    val candidates = listOf(
+        Intent("android.health.connect.action.HEALTH_HOME_SETTINGS"),
+        Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(
+            Uri.fromParts("package", context.packageName, null),
+        ),
+    )
+    for (intent in candidates) {
+        try {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Try the next entry point.
+        }
+    }
+    Toast.makeText(context, "Open Health Connect to manage permissions", Toast.LENGTH_LONG).show()
 }

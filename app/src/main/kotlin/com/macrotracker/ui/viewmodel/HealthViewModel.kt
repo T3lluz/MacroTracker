@@ -122,7 +122,6 @@ class HealthViewModel @Inject constructor(
     val macroHistoryLoading: StateFlow<Boolean> = _macroHistoryLoading
 
     val healthConnectPermissions = HealthConnectRepository.PERMISSIONS
-    val exerciseRoutesPermission = HealthConnectRepository.EXERCISE_ROUTES_PERMISSION
 
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
     val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay

@@ -71,6 +71,16 @@ class HealthConnectRepository @Inject constructor(
         /** Sparse overnight vitals (RHR / SpO2 / resp) often land just after midnight. */
         private val SPARSE_VITAL_LOOKBACK: Duration = Duration.ofHours(36)
 
+        /**
+         * The set handed to `PermissionController.createRequestPermissionResultContract()`.
+         *
+         * Every entry must be a permission the Health Connect SDK actually knows.
+         * The permission activity validates the whole list and cancels the request
+         * outright when one entry is unrecognised — no dialog, nothing granted. So
+         * READ_EXERCISE_ROUTES (absent from `HealthPermission` in 1.1.0-alpha10)
+         * must NOT be in here; GPS consent has its own per-session contract
+         * ([androidx.health.connect.client.contracts.ExerciseRouteRequestContract]).
+         */
         val PERMISSIONS = setOf(
             HealthPermission.getReadPermission(StepsRecord::class),
             HealthPermission.getReadPermission(HeartRateRecord::class),
@@ -84,8 +94,6 @@ class HealthConnectRepository @Inject constructor(
             HealthPermission.getReadPermission(FloorsClimbedRecord::class),
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
             HealthPermission.getReadPermission(ElevationGainedRecord::class),
-            // Platform GPS-route permission (not yet a HealthPermission.* constant in 1.1.0-alpha10).
-            "android.permission.health.READ_EXERCISE_ROUTES",
         )
 
         val STEPS_PERMISSION = HealthPermission.getReadPermission(StepsRecord::class)
@@ -100,10 +108,9 @@ class HealthConnectRepository @Inject constructor(
         val FLOORS_PERMISSION = HealthPermission.getReadPermission(FloorsClimbedRecord::class)
         val EXERCISE_PERMISSION = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
         val ELEVATION_PERMISSION = HealthPermission.getReadPermission(ElevationGainedRecord::class)
-        val EXERCISE_ROUTES_PERMISSION = "android.permission.health.READ_EXERCISE_ROUTES"
 
-        /** Everything in [PERMISSIONS] that actually reads data (routes is a modifier). */
-        val DATA_PERMISSIONS: Set<String> = PERMISSIONS - EXERCISE_ROUTES_PERMISSION
+        /** Everything in [PERMISSIONS] reads data, so this is the whole set. */
+        val DATA_PERMISSIONS: Set<String> = PERMISSIONS
 
         /** Granted-permission snapshots are cheap to re-read but not free. */
         private const val GRANTED_CACHE_TTL = 30_000L
