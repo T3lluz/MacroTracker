@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ElevationGainedRecord
 import androidx.health.connect.client.records.ExerciseRoute
@@ -42,6 +43,8 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToLong
+import kotlin.reflect.KClass
 
 data class HealthStats(
     val steps: Long = 0,
@@ -152,6 +155,12 @@ class HealthConnectRepository @Inject constructor(
 
         /** Granted-permission snapshots are cheap to re-read but not free. */
         private const val GRANTED_CACHE_TTL = 30_000L
+
+        /** Paging for the raw-record fallback. */
+        private const val RECORD_PAGE_SIZE = 1000
+
+        /** Hard stop so a pathological range can't read forever. */
+        private const val RECORD_READ_CAP = 20_000
 
         /** The Activities card lists a full month of workouts. */
         const val ACTIVITY_HISTORY_DAYS = 31
@@ -398,7 +407,11 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end),
                 ),
             )
-            val result = response[StepsRecord.COUNT_TOTAL]
+            // Sum the records when the aggregate answers with nothing — see the
+            // raw-record fallback note further down.
+            val result = response[StepsRecord.COUNT_TOTAL]?.takeIf { it > 0L }
+                ?: readAllPaged(hc, StepsRecord::class, start, end)
+                    .sumOf { it.count }.takeIf { it > 0L }
             putCache(cacheKey, result)
             result
         } catch (e: Exception) {
@@ -419,7 +432,10 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end),
                 ),
             )
-            val result = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+            val result = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]
+                ?.inKilocalories?.takeIf { it > 0.0 }
+                ?: readAllPaged(hc, ActiveCaloriesBurnedRecord::class, start, end)
+                    .sumOf { it.energy.inKilocalories }.takeIf { it > 0.0 }
             putCache(cacheKey, result)
             result
         } catch (e: Exception) {
@@ -440,7 +456,9 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end),
                 ),
             )
-            val result = response[DistanceRecord.DISTANCE_TOTAL]?.inKilometers
+            val result = response[DistanceRecord.DISTANCE_TOTAL]?.inKilometers?.takeIf { it > 0.0 }
+                ?: readAllPaged(hc, DistanceRecord::class, start, end)
+                    .sumOf { it.distance.inKilometers }.takeIf { it > 0.0 }
             putCache(cacheKey, result)
             result
         } catch (e: Exception) {
@@ -461,7 +479,9 @@ class HealthConnectRepository @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(start, end),
                 ),
             )
-            val result = response[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]
+            val result = response[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]?.takeIf { it > 0.0 }
+                ?: readAllPaged(hc, FloorsClimbedRecord::class, start, end)
+                    .sumOf { it.floors }.takeIf { it > 0.0 }
             putCache(cacheKey, result)
             result
         } catch (e: Exception) {
@@ -513,6 +533,88 @@ class HealthConnectRepository @Inject constructor(
     // like "no data today". Ask for everything and let Health Connect refuse what
     // it will; a refusal costs one retry, a wrong snapshot cost the whole screen.
 
+    // ── Raw-record fallback ───────────────────────────────────────────────
+    //
+    // `aggregate()` has been observed returning nothing on a device where the
+    // data is plainly present in Health Connect and every permission is granted
+    // — which is what left this screen showing heart rate and nothing else, heart
+    // rate being the one metric read through `readRecords` rather than an
+    // aggregate. Rather than depend on why, sum the records ourselves whenever an
+    // aggregate comes back empty. Slower, so it only runs to fill an actual gap.
+
+    /** Totals summed straight from raw records. */
+    private class RecordTotals(
+        val steps: Long?,
+        val activeCalories: Double?,
+        val totalCalories: Double?,
+        val distanceKm: Double?,
+        val floors: Double?,
+        val avgHeartRate: Long?,
+    )
+
+    private suspend fun <T : Record> readAllPaged(
+        hc: HealthConnectClient,
+        type: KClass<T>,
+        start: Instant,
+        end: Instant,
+    ): List<T> {
+        val out = mutableListOf<T>()
+        var token: String? = null
+        try {
+            do {
+                val response = hc.readRecords(
+                    ReadRecordsRequest(
+                        recordType = type,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageSize = RECORD_PAGE_SIZE,
+                        pageToken = token,
+                    ),
+                )
+                out += response.records
+                token = response.pageToken
+            } while (token != null && out.size < RECORD_READ_CAP)
+        } catch (e: Exception) {
+            Log.w(TAG, "Record fallback failed for ${type.simpleName}: ${e.message}")
+        }
+        return out
+    }
+
+    private suspend fun readRecordTotals(
+        hc: HealthConnectClient,
+        start: Instant,
+        end: Instant,
+    ): RecordTotals = coroutineScope {
+        val steps = async { readAllPaged(hc, StepsRecord::class, start, end).sumOf { it.count } }
+        val active = async {
+            readAllPaged(hc, ActiveCaloriesBurnedRecord::class, start, end)
+                .sumOf { it.energy.inKilocalories }
+        }
+        val total = async {
+            readAllPaged(hc, TotalCaloriesBurnedRecord::class, start, end)
+                .sumOf { it.energy.inKilocalories }
+        }
+        val distance = async {
+            readAllPaged(hc, DistanceRecord::class, start, end).sumOf { it.distance.inKilometers }
+        }
+        val floors = async {
+            readAllPaged(hc, FloorsClimbedRecord::class, start, end).sumOf { it.floors }
+        }
+        val heart = async {
+            readAllPaged(hc, HeartRateRecord::class, start, end)
+                .flatMap { it.samples }
+                .map { it.beatsPerMinute }
+        }
+        val bpm = heart.await()
+        RecordTotals(
+            steps = steps.await().takeIf { it > 0L },
+            activeCalories = active.await().takeIf { it > 0.0 },
+            totalCalories = total.await().takeIf { it > 0.0 },
+            distanceKm = distance.await().takeIf { it > 0.0 },
+            floors = floors.await().takeIf { it > 0.0 },
+            avgHeartRate = bpm.takeIf { it.isNotEmpty() }?.average()?.roundToLong(),
+        )
+    }
+
     /** Mutable running totals so batch and per-metric results merge the same way. */
     private class StatsAccumulator {
         var steps: Long? = null
@@ -534,6 +636,32 @@ class HealthConnectRepository @Inject constructor(
             }
             result[DistanceRecord.DISTANCE_TOTAL]?.let { distance = it.inKilometers }
             result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]?.let { floors = it }
+        }
+
+        /** True when anything at all was read, from either source. */
+        fun hasAnyValue(): Boolean = (steps ?: 0L) > 0L ||
+            (activeCalories ?: 0.0) > 0.0 ||
+            (totalCalories ?: 0.0) > 0.0 ||
+            (distance ?: 0.0) > 0.0 ||
+            (floors ?: 0.0) > 0.0 ||
+            (avgHeartRate ?: 0L) > 0L
+
+        /** True when the aggregate left any bulk total unanswered. */
+        fun hasGaps(): Boolean = (steps ?: 0L) <= 0L ||
+            (activeCalories ?: 0.0) <= 0.0 ||
+            (totalCalories ?: 0.0) <= 0.0 ||
+            (distance ?: 0.0) <= 0.0 ||
+            (floors ?: 0.0) <= 0.0 ||
+            (avgHeartRate ?: 0L) <= 0L
+
+        /** Fills only the gaps, so a working aggregate always wins. */
+        fun fillFrom(totals: RecordTotals) {
+            if ((steps ?: 0L) <= 0L) totals.steps?.let { steps = it }
+            if ((activeCalories ?: 0.0) <= 0.0) totals.activeCalories?.let { activeCalories = it }
+            if ((totalCalories ?: 0.0) <= 0.0) totals.totalCalories?.let { totalCalories = it }
+            if ((distance ?: 0.0) <= 0.0) totals.distanceKm?.let { distance = it }
+            if ((floors ?: 0.0) <= 0.0) totals.floors?.let { floors = it }
+            if ((avgHeartRate ?: 0L) <= 0L) totals.avgHeartRate?.let { avgHeartRate = it }
         }
 
         fun toStats(sleepMinutes: Long = 0L): HealthStats = HealthStats(
@@ -601,7 +729,13 @@ class HealthConnectRepository @Inject constructor(
             range = todayRange,
             into = accumulator,
         )
-        if (!outcome.anySucceeded) {
+        // Whatever the aggregate could not answer, sum from the records instead.
+        // On the device this was reported from, that is every bulk metric.
+        if (accumulator.hasGaps()) {
+            accumulator.fillFrom(readRecordTotals(hc, startOfDay, now))
+        }
+
+        if (!outcome.anySucceeded && !accumulator.hasAnyValue()) {
             throw outcome.lastError ?: IllegalStateException("Health Connect returned no data")
         }
 
@@ -685,6 +819,18 @@ class HealthConnectRepository @Inject constructor(
                                 Log.w(TAG, "History aggregate failed for one metric: ${metricError.message}")
                             }
                         }
+                    }
+                }
+
+                // Same fallback as today's read, per day, when the grouped
+                // aggregate came back with nothing to show for the week.
+                if (perDay.values.none { it.hasAnyValue() }) {
+                    for (i in 0..ChronoUnit.DAYS.between(startDate, endDate)) {
+                        val date = startDate.plusDays(i)
+                        val (dayStart, dayEnd) = getTimeRangeForDate(date)
+                        if (!dayStart.isBefore(dayEnd)) continue
+                        perDay.getOrPut(date) { StatsAccumulator() }
+                            .fillFrom(readRecordTotals(hc, dayStart, dayEnd))
                     }
                 }
 
@@ -857,7 +1003,10 @@ class HealthConnectRepository @Inject constructor(
         val hc = client ?: return@withContext emptyList()
         val zone = ZoneId.systemDefault()
         val start = date.minusDays(1).atTime(18, 0).atZone(zone).toInstant()
-        val end = date.atTime(18, 0).atZone(zone).toInstant()
+        // Clamped to now: before 18:00 the raw window ends in the future, and a
+        // future end is not something every provider will answer.
+        val end = date.atTime(18, 0).atZone(zone).toInstant().coerceAtMost(Instant.now())
+        if (!start.isBefore(end)) return@withContext emptyList()
 
         try {
             val response = hc.readRecords(
@@ -1043,6 +1192,42 @@ class HealthConnectRepository @Inject constructor(
                 agg[StepsRecord.COUNT_TOTAL]?.takeIf { it > 0 }?.let { steps = it }
                 agg[ElevationGainedRecord.ELEVATION_GAINED_TOTAL]?.inMeters
                     ?.takeIf { it >= 1.0 }?.let { elevationM = it }
+            }
+
+            // Same raw-record fallback as the daily read: where aggregate() answers
+            // with nothing, every workout row would otherwise lose its distance,
+            // calories and heart rate even though the records are right there.
+            if (distanceKm == null || calories == null || steps == null || avgHr == null ||
+                elevationM == null
+            ) {
+                val from = session.startTime
+                val to = session.endTime
+                if (distanceKm == null) {
+                    distanceKm = readAllPaged(hc, DistanceRecord::class, from, to)
+                        .sumOf { it.distance.inKilometers }.takeIf { it > 0.0 }
+                }
+                if (calories == null) {
+                    calories = readAllPaged(hc, ActiveCaloriesBurnedRecord::class, from, to)
+                        .sumOf { it.energy.inKilocalories }.takeIf { it > 0.0 }
+                }
+                if (steps == null) {
+                    steps = readAllPaged(hc, StepsRecord::class, from, to)
+                        .sumOf { it.count }.takeIf { it > 0L }
+                }
+                if (elevationM == null) {
+                    elevationM = readAllPaged(hc, ElevationGainedRecord::class, from, to)
+                        .sumOf { it.elevation.inMeters }.takeIf { it >= 1.0 }
+                }
+                if (avgHr == null) {
+                    val bpm = readAllPaged(hc, HeartRateRecord::class, from, to)
+                        .flatMap { it.samples }
+                        .map { it.beatsPerMinute }
+                    if (bpm.isNotEmpty()) {
+                        avgHr = bpm.average().roundToLong()
+                        maxHr = maxHr ?: bpm.max()
+                        minHr = minHr ?: bpm.min()
+                    }
+                }
             }
         }
 
