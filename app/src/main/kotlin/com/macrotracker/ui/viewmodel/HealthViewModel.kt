@@ -1,7 +1,6 @@
 package com.macrotracker.ui.viewmodel
 
 import android.util.Log
-import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.lifecycle.ViewModel
@@ -130,7 +129,6 @@ class HealthViewModel @Inject constructor(
      */
     val readRefusedDespiteGrant: StateFlow<Boolean> =
         healthConnectRepository.readRefusedDespiteGrant
-    val exerciseRoutesPermission = HealthConnectRepository.EXERCISE_ROUTES_PERMISSION
 
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
     val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay
@@ -145,10 +143,6 @@ class HealthViewModel @Inject constructor(
     private var macroHistoryJob: Job? = null
     private var healthJob: Job? = null
     private var detailJob: Job? = null
-    private var pendingRouteApply: Pair<String, ExerciseRoute?>? = null
-    private val routeLoadsInFlight = java.util.Collections.newSetFromMap(
-        java.util.concurrent.ConcurrentHashMap<String, Boolean>(),
-    )
 
     /** Which detail panel (if any) should load heavy intraday datasets. */
     private var detailMetric: DetailMetric = DetailMetric.NONE
@@ -423,13 +417,7 @@ class HealthViewModel @Inject constructor(
         }
         try {
             val activities = healthConnectRepository.readRecentActivities()
-            val merged = pendingRouteApply?.let { (id, route) ->
-                pendingRouteApply = null
-                activities.map { activity ->
-                    if (activity.id == id) healthConnectRepository.activityWithRoute(activity, route)
-                    else activity
-                }
-            } ?: activities
+            val merged = activities
             _activitiesState.value = ActivitiesUiState.Success(merged)
             pickFeaturedActivity(merged)?.let { loadActivityHeartRate(it) }
         } catch (e: CancellationException) {
@@ -460,46 +448,9 @@ class HealthViewModel @Inject constructor(
         }
     }
 
-    /**
-     * A month of workouts is listed without GPS beyond the newest few; pull the
-     * track for one on demand (opening a row, or scrolling it into view).
-     */
-    fun loadActivityRoute(activity: HealthActivity) {
-        if (activity.routeResolved) return
-        if (!routeLoadsInFlight.add(activity.id)) return
-        viewModelScope.launch {
-            try {
-                val resolved = healthConnectRepository.resolveRoute(activity)
-                val current = _activitiesState.value as? ActivitiesUiState.Success ?: return@launch
-                _activitiesState.value = current.copy(
-                    activities = current.activities.map { if (it.id == activity.id) resolved else it },
-                )
-            } finally {
-                routeLoadsInFlight.remove(activity.id)
-            }
-        }
-    }
-
     /** Everything the Activities card needs when a row is opened. */
     fun onActivityExpanded(activity: HealthActivity) {
-        loadActivityRoute(activity)
         loadActivityHeartRate(activity)
-    }
-
-    fun applyExerciseRoute(activityId: String, route: ExerciseRoute?) {
-        val current = _activitiesState.value as? ActivitiesUiState.Success
-        if (current == null) {
-            pendingRouteApply = activityId to route
-            return
-        }
-        val existing = current.activities.find { it.id == activityId } ?: return
-        val updated = healthConnectRepository.activityWithRoute(existing, route)
-        _activitiesState.value = current.copy(
-            activities = current.activities.map { if (it.id == activityId) updated else it },
-        )
-        if (updated.hasRoute) {
-            loadActivityHeartRate(updated)
-        }
     }
 
     fun retryHealthConnect() {

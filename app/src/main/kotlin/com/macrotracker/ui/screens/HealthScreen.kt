@@ -68,7 +68,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.PermissionController
-import androidx.health.connect.client.contracts.ExerciseRouteRequestContract
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -82,7 +81,6 @@ import com.macrotracker.ui.screens.health.HealthMetricGrid
 import com.macrotracker.ui.screens.health.HealthStatCard
 import com.macrotracker.ui.screens.health.HealthTrendsSection
 import com.macrotracker.ui.screens.health.iconRes
-import com.macrotracker.data.health.HealthActivity
 import com.macrotracker.data.local.DailySummary
 import com.macrotracker.data.local.MacroLogEntity
 import com.macrotracker.ui.components.ButtonVariant
@@ -207,15 +205,6 @@ fun HealthScreen(
     val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
     val missingPermissions by dashboardViewModel.missingPermissions.collectAsState()
 
-    var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
-    val routeLauncher = rememberLauncherForActivityResult(
-        contract = ExerciseRouteRequestContract(),
-    ) { route ->
-        val id = pendingRouteActivityId ?: return@rememberLauncherForActivityResult
-        pendingRouteActivityId = null
-        healthViewModel.applyExerciseRoute(id, route)
-    }
-
     // Health Connect permission launcher
     val hcPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
@@ -223,15 +212,6 @@ fun HealthScreen(
         val anyGranted = granted.any { it in healthViewModel.healthConnectPermissions }
         healthViewModel.loadHealthConnect(permissionsGranted = anyGranted)
         dashboardViewModel.loadData(forceRefresh = true)
-    }
-
-    fun revealActivityRoute(activity: HealthActivity) {
-        // Straight to the per-workout consent sheet. READ_EXERCISE_ROUTES cannot
-        // be obtained through the normal permission request — Android ignores it
-        // there, so the old flow always saw it ungranted and threw the map away
-        // before ExerciseRouteRequestContract was ever reached.
-        pendingRouteActivityId = activity.id
-        routeLauncher.launch(activity.id)
     }
 
     // First visit to this tab happens while the Activity is already resumed, so
@@ -394,10 +374,6 @@ fun HealthScreen(
                                 hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
                             },
                             onRetry = { healthViewModel.retryHealthConnect() },
-                            onRevealRoute = { activity ->
-                                haptics.tick()
-                                revealActivityRoute(activity)
-                            },
                             onExpandActivity = { healthViewModel.onActivityExpanded(it) },
                         )
                         Spacer(modifier = Modifier.height(12.dp))
