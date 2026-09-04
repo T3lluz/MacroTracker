@@ -77,6 +77,9 @@ class DashboardViewModel @Inject constructor(
     private var lastLoadMs = 0L
     private var loadJob: Job? = null
 
+    /** Last seen grant set, so a change made outside the app beats the throttle. */
+    private var lastGrantedSnapshot: Set<String>? = null
+
     private val specs: List<MetricSpec> by lazy {
         val repo = healthConnectRepository
         val settings = settingsRepository
@@ -157,9 +160,19 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun loadDataThrottled() {
-        val now = System.currentTimeMillis()
-        if (lastLoadMs > 0 && now - lastLoadMs < 30_000L) return
-        loadData()
+        viewModelScope.launch {
+            // Re-read the grant snapshot instead of trusting its 30s cache: this
+            // runs on resume, which is exactly when the user may have just granted
+            // something in Health Connect. A change beats the throttle and forces a
+            // refresh, so the newly-shared metrics appear immediately.
+            healthConnectRepository.clearPermissionCache()
+            val granted = healthConnectRepository.getGrantedPermissions()
+            val grantChanged = lastGrantedSnapshot != null && granted != lastGrantedSnapshot
+
+            val now = System.currentTimeMillis()
+            if (!grantChanged && lastLoadMs > 0 && now - lastLoadMs < 30_000L) return@launch
+            loadData(forceRefresh = grantChanged)
+        }
     }
 
     fun loadData(forceRefresh: Boolean = false) {
@@ -177,6 +190,7 @@ class DashboardViewModel @Inject constructor(
             } else {
                 emptySet()
             }
+            lastGrantedSnapshot = granted
 
             val blocked = ConcurrentHashMap.newKeySet<Metric>()
             val reads = specs.map { spec ->

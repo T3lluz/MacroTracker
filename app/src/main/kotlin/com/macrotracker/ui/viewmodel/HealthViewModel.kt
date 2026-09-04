@@ -7,6 +7,7 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotracker.data.health.DailyHealthStats
+import com.macrotracker.data.health.HealthAccess
 import com.macrotracker.data.health.HealthActivity
 import com.macrotracker.data.health.HealthConnectRepository
 import com.macrotracker.data.health.HealthStats
@@ -123,6 +124,21 @@ class HealthViewModel @Inject constructor(
 
     val healthConnectPermissions = HealthConnectRepository.PERMISSIONS
 
+    /**
+     * What Health Connect has actually granted, per data type. Empty until the
+     * first load. The screen shows this whenever something is refused, because a
+     * partial grant is invisible otherwise — the refused metrics just read as
+     * zero, which looks identical to a quiet day.
+     */
+    private val _accessReport = MutableStateFlow<List<HealthAccess>>(emptyList())
+    val accessReport: StateFlow<List<HealthAccess>> = _accessReport
+
+    fun refreshAccessReport() {
+        viewModelScope.launch {
+            _accessReport.value = healthConnectRepository.readAccessReport()
+        }
+    }
+
     private val _weekStartDay = MutableStateFlow(DayOfWeek.MONDAY)
     val weekStartDay: StateFlow<DayOfWeek> = _weekStartDay
 
@@ -132,6 +148,9 @@ class HealthViewModel @Inject constructor(
     val healthWidgetOrder: StateFlow<String> = settingsRepository.healthWidgetOrder
 
     private var lastResumeLoadMs = 0L
+
+    /** Last seen grant set, so a change made outside the app beats the throttle. */
+    private var lastGrantedSnapshot: Set<String>? = null
     private var macrosJob: Job? = null
     private var macroHistoryJob: Job? = null
     private var healthJob: Job? = null
@@ -156,11 +175,24 @@ class HealthViewModel @Inject constructor(
      * Call from ON_RESUME. Skips if called within 30 s of the previous load unless [force] is true.
      */
     fun loadDataOnResume(force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (!force && lastResumeLoadMs > 0 && now - lastResumeLoadMs < 30_000L) return
-        lastResumeLoadMs = now
-        loadData()
-        loadHealthConnect(silent = true)
+        viewModelScope.launch {
+            // The user may have just come back from granting in Health Connect, so
+            // re-read the permission snapshot rather than trusting the 30s cache.
+            // A changed grant beats the throttle — otherwise the fix they just made
+            // in another app appears to do nothing for half a minute.
+            healthConnectRepository.clearPermissionCache()
+            val granted = healthConnectRepository.getGrantedPermissions()
+            val grantChanged = lastGrantedSnapshot != null && granted != lastGrantedSnapshot
+            lastGrantedSnapshot = granted
+
+            val now = System.currentTimeMillis()
+            if (!force && !grantChanged && lastResumeLoadMs > 0 && now - lastResumeLoadMs < 30_000L) {
+                return@launch
+            }
+            lastResumeLoadMs = now
+            loadData()
+            loadHealthConnect(silent = !grantChanged && !force)
+        }
     }
 
     fun updateHealthWidgetOrder(order: String) {
@@ -321,6 +353,8 @@ class HealthViewModel @Inject constructor(
                 _activitiesState.value = ActivitiesUiState.PermissionRequired
                 return@launch
             }
+
+            refreshAccessReport()
 
             // Deliberately no "are any permissions granted?" gate here. That
             // snapshot is a cached IPC result, and when it came back short the

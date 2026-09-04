@@ -61,6 +61,12 @@ data class DailyHealthStats(
     val stats: HealthStats,
 )
 
+/** One Health Connect data type and whether this app may read it. */
+data class HealthAccess(
+    val label: String,
+    val isGranted: Boolean,
+)
+
 @Singleton
 class HealthConnectRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -111,6 +117,24 @@ class HealthConnectRepository @Inject constructor(
 
         /** Everything in [PERMISSIONS] reads data, so this is the whole set. */
         val DATA_PERMISSIONS: Set<String> = PERMISSIONS
+
+        /** Display order for the access card — the names Health Connect itself uses. */
+        val READABLE_TYPES: List<Pair<String, String>> by lazy {
+            listOf(
+                "Steps" to STEPS_PERMISSION,
+                "Sleep" to SLEEP_PERMISSION,
+                "Active calories" to ACTIVE_CALORIES_PERMISSION,
+                "Total calories" to TOTAL_CALORIES_PERMISSION,
+                "Distance" to DISTANCE_PERMISSION,
+                "Floors climbed" to FLOORS_PERMISSION,
+                "Heart rate" to HEART_RATE_PERMISSION,
+                "Resting heart rate" to RESTING_HEART_RATE_PERMISSION,
+                "Oxygen saturation" to OXYGEN_SATURATION_PERMISSION,
+                "Respiratory rate" to RESPIRATORY_RATE_PERMISSION,
+                "Exercise" to EXERCISE_PERMISSION,
+                "Elevation gained" to ELEVATION_PERMISSION,
+            )
+        }
 
         /**
          * Every aggregate the daily and weekly reads ask for — a fixed set, never
@@ -185,6 +209,15 @@ class HealthConnectRepository @Inject constructor(
         grantedCache = null
     }
 
+    /**
+     * Drops just the granted-permission snapshot. Call when returning to the app:
+     * permissions may have been changed in Health Connect while we were away, and
+     * answering from the 30s cache makes a fresh grant look like it did nothing.
+     */
+    fun clearPermissionCache() {
+        grantedCache = null
+    }
+
     // A single load asks "is X granted?" a dozen times; without this each one is
     // its own Health Connect IPC round trip.
     @Volatile
@@ -210,6 +243,20 @@ class HealthConnectRepository @Inject constructor(
     suspend fun hasAllPermissions(): Boolean {
         val granted = getGrantedPermissions()
         return PERMISSIONS.all { it in granted }
+    }
+
+    /**
+     * Per-data-type view of what Health Connect has actually granted.
+     *
+     * The screen needs this spelled out, not summarised: a partial grant reads on
+     * screen as "the app is broken", and until you can see *which* types are
+     * refused there is no way to tell that apart from a genuinely empty day.
+     */
+    suspend fun readAccessReport(): List<HealthAccess> {
+        val granted = getGrantedPermissions()
+        return READABLE_TYPES.map { (label, permission) ->
+            HealthAccess(label = label, isGranted = permission in granted)
+        }
     }
 
     /**

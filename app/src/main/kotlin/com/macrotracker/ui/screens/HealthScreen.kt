@@ -76,6 +76,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotracker.ui.screens.health.ActivitiesSection
 import com.macrotracker.ui.screens.health.AnimatedMacroBarChart
 import com.macrotracker.ui.screens.health.DailyHealthSection
+import com.macrotracker.ui.screens.health.HealthAccessCard
 import com.macrotracker.ui.screens.health.HealthMetric
 import com.macrotracker.ui.screens.health.HealthMetricEntry
 import com.macrotracker.ui.screens.health.HealthMetricGrid
@@ -203,11 +204,31 @@ fun HealthScreen(
     val distanceState by dashboardViewModel.distanceState.collectAsState()
     val floorsClimbedState by dashboardViewModel.floorsClimbedState.collectAsState()
     val activeCaloriesState by dashboardViewModel.activeCaloriesState.collectAsState()
-    val missingPermissions by dashboardViewModel.missingPermissions.collectAsState()
+    val accessReport by healthViewModel.accessReport.collectAsState()
 
-    // Set once the permission sheet has been asked for and still left metrics
-    // ungranted, so the prompt can switch to "Open Health Connect".
-    var permissionAskAttempted by rememberSaveable { mutableStateOf(false) }
+    // Metrics the user switched off in DailyDash. Every state starts disabled, so
+    // an all-off list means "not loaded yet", not "all hidden" — say nothing then.
+    val metricsDisabledInApp = remember(
+        heartRateState, restingHeartRateState, oxygenSaturationState, respiratoryRateState,
+        stepsState, distanceState, floorsClimbedState, activeCaloriesState,
+    ) {
+        val labelled = listOf(
+            "Steps" to stepsState,
+            "Active calories" to activeCaloriesState,
+            "Distance" to distanceState,
+            "Floors" to floorsClimbedState,
+            "Heart rate" to heartRateState,
+            "Resting HR" to restingHeartRateState,
+            "SpO₂" to oxygenSaturationState,
+            "Respiratory rate" to respiratoryRateState,
+        )
+        if (labelled.none { it.second.isEnabled }) {
+            emptyList()
+        } else {
+            labelled.filter { !it.second.isEnabled }.map { it.first }
+        }
+    }
+
 
     var pendingRouteActivityId by rememberSaveable { mutableStateOf<String?>(null) }
     val routeLauncher = rememberLauncherForActivityResult(
@@ -335,28 +356,22 @@ fun HealthScreen(
             else -> {
                 // One granted permission already counts as "connected", so a
                 // partial grant — the state that leaves Health showing heart rate
-                // and nothing else — never reaches the cards above. Ask for the
-                // rest here, where it is visible however the widgets are ordered.
-                if (missingPermissions.isNotEmpty()) {
-                    HealthConnectCard(
-                        title = "Some metrics aren’t shared",
-                        message = "Health Connect hasn’t granted " +
-                            missingPermissions.joinToString { it.label } +
-                            ". Allow them to see every metric.",
-                        actionLabel = if (permissionAskAttempted) "Open Health Connect" else "Allow",
-                        onRequestPermission = {
-                            haptics.tick()
-                            // A second tap means the sheet did not grant anything —
-                            // Health Connect stops showing it after a few refusals,
-                            // so hand the user its own permission screen instead.
-                            if (permissionAskAttempted) {
-                                openHealthConnectSettings(context)
-                            } else {
-                                permissionAskAttempted = true
-                                hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
-                            }
-                        },
-                    )
+                // and nothing else — never reaches the cards above. This names
+                // exactly which types are refused, and leads with Health Connect
+                // itself because the in-app sheet stops appearing once dismissed.
+                HealthAccessCard(
+                    access = accessReport,
+                    disabledInApp = metricsDisabledInApp,
+                    onOpenHealthConnect = {
+                        haptics.tick()
+                        openHealthConnectSettings(context)
+                    },
+                    onRequestInApp = {
+                        haptics.tick()
+                        hcPermissionLauncher.launch(healthViewModel.healthConnectPermissions)
+                    },
+                )
+                if (accessReport.any { !it.isGranted } || metricsDisabledInApp.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(20.dp))
                 }
             }
