@@ -47,10 +47,14 @@ com.macrotracker/
                               RespiratoryRate, Distance, FloorsClimbed, ActiveCaloriesBurned,
                               SleepSession, TotalCaloriesBurned; has throttle cache to avoid
                               hammering Health Connect IPC on rapid ViewModel refreshes.
-                              **Aggregates must be permission-scoped** — Health Connect fails the
-                              whole `aggregate()` call when any requested metric is not granted,
-                              so build the set from `grantedAggregateMetrics()` and let
-                              `aggregateResilient()` retry metric-by-metric on failure.
+                              **Never gate a read on `getGrantedPermissions()`.** That snapshot is
+                              a cached IPC result that comes back empty or short on any hiccup;
+                              skipping the read on its word turns a blip into a permanent silent
+                              zero (this is what left Health showing heart rate and nothing else).
+                              Ask for `ALL_AGGREGATE_METRICS` and let `aggregateResilient()` retry
+                              metric-by-metric when Health Connect refuses one — a refusal costs a
+                              retry, a wrong snapshot costs the screen. Use the snapshot only to
+                              *label* an already-empty result ("Not shared").
                               **`PERMISSIONS` must contain only permissions the SDK knows** —
                               Health Connect validates the whole requested list and cancels the
                               request when one entry is unrecognised (no sheet, nothing granted).

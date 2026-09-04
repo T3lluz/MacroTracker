@@ -112,6 +112,20 @@ class HealthConnectRepository @Inject constructor(
         /** Everything in [PERMISSIONS] reads data, so this is the whole set. */
         val DATA_PERMISSIONS: Set<String> = PERMISSIONS
 
+        /**
+         * Every aggregate the daily and weekly reads ask for — a fixed set, never
+         * derived from the granted-permission snapshot. See the note above
+         * [aggregateResilient] for why deriving it broke Health.
+         */
+        val ALL_AGGREGATE_METRICS: Set<AggregateMetric<*>> = setOf(
+            StepsRecord.COUNT_TOTAL,
+            HeartRateRecord.BPM_AVG,
+            TotalCaloriesBurnedRecord.ENERGY_TOTAL,
+            ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+            DistanceRecord.DISTANCE_TOTAL,
+            FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL,
+        )
+
         /** Granted-permission snapshots are cheap to re-read but not free. */
         private const val GRANTED_CACHE_TTL = 30_000L
 
@@ -441,21 +455,16 @@ class HealthConnectRepository @Inject constructor(
     // ── Aggregate plumbing ────────────────────────────────────────────────
     //
     // Health Connect fails a whole `aggregate()` call when *any* metric in the set
-    // is not granted (or not supported by the provider). Requesting a fixed set
-    // therefore zeroed every metric the moment one permission was missing, which
-    // is what made Health look empty. Ask only for what is granted, and if the
-    // batch still fails, retry metric-by-metric so one bad metric can't take the
-    // rest down with it.
-
-    /** Aggregate metrics whose backing permission is granted. */
-    private fun grantedAggregateMetrics(granted: Set<String>): Set<AggregateMetric<*>> = buildSet {
-        if (STEPS_PERMISSION in granted) add(StepsRecord.COUNT_TOTAL)
-        if (HEART_RATE_PERMISSION in granted) add(HeartRateRecord.BPM_AVG)
-        if (TOTAL_CALORIES_PERMISSION in granted) add(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
-        if (ACTIVE_CALORIES_PERMISSION in granted) add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
-        if (DISTANCE_PERMISSION in granted) add(DistanceRecord.DISTANCE_TOTAL)
-        if (FLOORS_PERMISSION in granted) add(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL)
-    }
+    // is not granted (or not supported by the provider), so [aggregateResilient]
+    // retries metric-by-metric and one bad metric can't take the rest down.
+    //
+    // Deciding what to ask for from `getGrantedPermissions()` instead is what
+    // broke Health: that snapshot is one IPC call away from the truth (it is
+    // cached for 30s, comes back empty on any provider hiccup, and only reports
+    // permissions the SDK itself recognises). When it under-reported, the metric
+    // was never even attempted — a silent, permanent zero that looked exactly
+    // like "no data today". Ask for everything and let Health Connect refuse what
+    // it will; a refusal costs one retry, a wrong snapshot cost the whole screen.
 
     /** Mutable running totals so batch and per-metric results merge the same way. */
     private class StatsAccumulator {
@@ -527,12 +536,11 @@ class HealthConnectRepository @Inject constructor(
     /**
      * Reads today's stats using the Aggregate API + latest sparse vitals.
      *
-     * Throws only when every granted metric failed to read — a partial read
-     * returns what it got, so one flaky metric doesn't blank the screen.
+     * Throws only when every metric failed to read — a partial read returns what
+     * it got, so one refused or flaky metric doesn't blank the screen.
      */
     suspend fun readTodayStats(): HealthStats = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext HealthStats()
-        val granted = getGrantedPermissions()
 
         val zone = ZoneId.systemDefault()
         val now = Instant.now()
@@ -542,7 +550,7 @@ class HealthConnectRepository @Inject constructor(
         val accumulator = StatsAccumulator()
         val outcome = aggregateResilient(
             hc = hc,
-            metrics = grantedAggregateMetrics(granted),
+            metrics = ALL_AGGREGATE_METRICS,
             range = todayRange,
             into = accumulator,
         )
@@ -552,17 +560,14 @@ class HealthConnectRepository @Inject constructor(
 
         // Summed from the same sessions the week chart uses, over the same
         // 18:00→18:00 sleep day. The aggregate this replaced counted a different
-        // window, so today's hero and today's bar disagreed.
-        val sleepMinutes = if (SLEEP_PERMISSION in granted) {
-            try {
-                readSleepSessions(LocalDate.now(zone)).sumOf { session ->
-                    ChronoUnit.MINUTES.between(session.startTime, session.endTime).coerceAtLeast(0)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to read sleep sessions: ${e.message}")
-                0L
+        // window, so today's hero and today's bar disagreed. Read it outright —
+        // readSleepSessions already returns empty when the permission is refused.
+        val sleepMinutes = try {
+            readSleepSessions(LocalDate.now(zone)).sumOf { session ->
+                ChronoUnit.MINUTES.between(session.startTime, session.endTime).coerceAtLeast(0)
             }
-        } else {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read sleep sessions: ${e.message}")
             0L
         }
 
@@ -594,11 +599,7 @@ class HealthConnectRepository @Inject constructor(
 
             if (!startDateTime.isAfter(now)) {
                 val range = TimeRangeFilter.between(startDateTime, endDateTime)
-                val granted = getGrantedPermissions()
-                val metrics = buildSet {
-                    addAll(grantedAggregateMetrics(granted))
-                    if (RESTING_HEART_RATE_PERMISSION in granted) add(RestingHeartRateRecord.BPM_AVG)
-                }
+                val metrics = ALL_AGGREGATE_METRICS + RestingHeartRateRecord.BPM_AVG
                 // Same per-metric fallback as today's read: one rejected metric used
                 // to wipe the whole week's chart.
                 val perDay = mutableMapOf<LocalDate, StatsAccumulator>()
@@ -838,16 +839,9 @@ class HealthConnectRepository @Inject constructor(
         eagerRoutes: Int = EAGER_ROUTE_COUNT,
     ): List<HealthActivity> = withContext(Dispatchers.IO) {
         val hc = client ?: return@withContext emptyList()
-        if (!hasPermission(EXERCISE_PERMISSION)) return@withContext emptyList()
 
         val end = Instant.now()
         val start = activityWindowStart(days, end, ZoneId.systemDefault())
-        val granted = getGrantedPermissions()
-        val canDistance = DISTANCE_PERMISSION in granted
-        val canCalories = ACTIVE_CALORIES_PERMISSION in granted
-        val canHr = HEART_RATE_PERMISSION in granted
-        val canSteps = STEPS_PERMISSION in granted
-        val canElevation = ELEVATION_PERMISSION in granted
 
         val sessions = try {
             hc.readRecords(
@@ -874,11 +868,6 @@ class HealthConnectRepository @Inject constructor(
                         enrichSession(
                             hc = hc,
                             session = session,
-                            canDistance = canDistance,
-                            canCalories = canCalories,
-                            canHr = canHr,
-                            canSteps = canSteps,
-                            canElevation = canElevation,
                             resolveRoute = index < eagerRoutes,
                         )
                     }
@@ -945,11 +934,6 @@ class HealthConnectRepository @Inject constructor(
     private suspend fun enrichSession(
         hc: HealthConnectClient,
         session: ExerciseSessionRecord,
-        canDistance: Boolean,
-        canCalories: Boolean,
-        canHr: Boolean,
-        canSteps: Boolean,
-        canElevation: Boolean,
         resolveRoute: Boolean,
     ): HealthActivity {
         val origin = session.metadata.dataOrigin
@@ -974,44 +958,44 @@ class HealthConnectRepository @Inject constructor(
         var minHr: Long? = null
         var elevationM: Double? = null
 
-        val metrics = buildSet {
-            if (canDistance) add(DistanceRecord.DISTANCE_TOTAL)
-            if (canCalories) add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
-            if (canHr) {
-                add(HeartRateRecord.BPM_AVG)
-                add(HeartRateRecord.BPM_MAX)
-                add(HeartRateRecord.BPM_MIN)
-            }
-            if (canSteps) add(StepsRecord.COUNT_TOTAL)
-            if (canElevation) add(ElevationGainedRecord.ELEVATION_GAINED_TOTAL)
-        }
-        if (metrics.isNotEmpty() && session.startTime.isBefore(session.endTime)) {
+        val metrics = setOf(
+            DistanceRecord.DISTANCE_TOTAL,
+            ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+            HeartRateRecord.BPM_AVG,
+            HeartRateRecord.BPM_MAX,
+            HeartRateRecord.BPM_MIN,
+            StepsRecord.COUNT_TOTAL,
+            ElevationGainedRecord.ELEVATION_GAINED_TOTAL,
+        )
+        if (session.startTime.isBefore(session.endTime)) {
+            val range = TimeRangeFilter.between(session.startTime, session.endTime)
+            // Same per-metric fallback as the daily read: one metric this provider
+            // won't aggregate used to throw away every number on the workout.
+            val results = mutableListOf<AggregationResult>()
             try {
-                val agg = hc.aggregate(
-                    AggregateRequest(
-                        metrics = metrics,
-                        timeRangeFilter = TimeRangeFilter.between(session.startTime, session.endTime),
-                    ),
-                )
-                if (canDistance) {
-                    distanceKm = agg[DistanceRecord.DISTANCE_TOTAL]?.inKilometers?.takeIf { it > 0 }
+                results += hc.aggregate(AggregateRequest(metrics = metrics, timeRangeFilter = range))
+            } catch (batchError: Exception) {
+                Log.w(TAG, "Session aggregate failed, retrying per metric: ${batchError.message}")
+                for (metric in metrics) {
+                    try {
+                        results += hc.aggregate(
+                            AggregateRequest(metrics = setOf(metric), timeRangeFilter = range),
+                        )
+                    } catch (_: Exception) {
+                        // Unavailable for this session; the rest still count.
+                    }
                 }
-                if (canCalories) {
-                    calories = agg[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.takeIf { it > 0 }
-                }
-                if (canHr) {
-                    avgHr = agg[HeartRateRecord.BPM_AVG]?.takeIf { it > 0 }
-                    maxHr = agg[HeartRateRecord.BPM_MAX]?.takeIf { it > 0 }
-                    minHr = agg[HeartRateRecord.BPM_MIN]?.takeIf { it > 0 }
-                }
-                if (canSteps) {
-                    steps = agg[StepsRecord.COUNT_TOTAL]?.takeIf { it > 0 }
-                }
-                if (canElevation) {
-                    elevationM = agg[ElevationGainedRecord.ELEVATION_GAINED_TOTAL]?.inMeters?.takeIf { it >= 1.0 }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to aggregate session ${session.metadata.id}: ${e.message}")
+            }
+            for (agg in results) {
+                agg[DistanceRecord.DISTANCE_TOTAL]?.inKilometers?.takeIf { it > 0 }?.let { distanceKm = it }
+                agg[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                    ?.takeIf { it > 0 }?.let { calories = it }
+                agg[HeartRateRecord.BPM_AVG]?.takeIf { it > 0 }?.let { avgHr = it }
+                agg[HeartRateRecord.BPM_MAX]?.takeIf { it > 0 }?.let { maxHr = it }
+                agg[HeartRateRecord.BPM_MIN]?.takeIf { it > 0 }?.let { minHr = it }
+                agg[StepsRecord.COUNT_TOTAL]?.takeIf { it > 0 }?.let { steps = it }
+                agg[ElevationGainedRecord.ELEVATION_GAINED_TOTAL]?.inMeters
+                    ?.takeIf { it >= 1.0 }?.let { elevationM = it }
             }
         }
 

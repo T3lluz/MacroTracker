@@ -290,18 +290,13 @@ class HealthViewModel @Inject constructor(
         if (metric == DetailMetric.NONE) return
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
-            if (!healthConnectRepository.hasAnyPermissions()) return@launch
+            // Both reads return empty when Health Connect refuses them, so ask
+            // rather than pre-checking a snapshot that may under-report.
             when (metric) {
-                DetailMetric.HEART_RATE -> {
-                    if (healthConnectRepository.hasPermission(HealthConnectRepository.HEART_RATE_PERMISSION)) {
-                        _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
-                    }
-                }
-                DetailMetric.SLEEP -> {
-                    if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
-                        _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
-                    }
-                }
+                DetailMetric.HEART_RATE ->
+                    _intradayHeartRate.value = healthConnectRepository.readHeartRateIntraday(date)
+                DetailMetric.SLEEP ->
+                    _detailedSleep.value = healthConnectRepository.readSleepSessions(date)
                 DetailMetric.NONE -> Unit
             }
         }
@@ -327,12 +322,10 @@ class HealthViewModel @Inject constructor(
                 return@launch
             }
 
-            val hasPerms = permissionsGranted || healthConnectRepository.hasAnyPermissions()
-            if (!hasPerms) {
-                _healthConnectState.value = HealthConnectUiState.PermissionRequired
-                _activitiesState.value = ActivitiesUiState.PermissionRequired
-                return@launch
-            }
+            // Deliberately no "are any permissions granted?" gate here. That
+            // snapshot is a cached IPC result, and when it came back short the
+            // screen stopped reading altogether. Read first; if everything really
+            // is refused the read fails and the Connect card goes up below.
 
             val current = _healthConnectState.value
             if (!silent) {
@@ -350,12 +343,11 @@ class HealthViewModel @Inject constructor(
                     // cancelling the workouts / week history running beside it.
                     val statsDeferred = async { runCatching { healthConnectRepository.readTodayStats() } }
                     val historyDeferred = async { runCatching { loadWeekHistory() } }
+                    // No permission pre-check: readSleepSessions already returns
+                    // empty on refusal, and gating on the granted snapshot is what
+                    // blanked sleep whenever that snapshot came back short.
                     val todaySleepDeferred = async {
-                        if (healthConnectRepository.hasPermission(HealthConnectRepository.SLEEP_PERMISSION)) {
-                            healthConnectRepository.readSleepSessions(LocalDate.now())
-                        } else {
-                            emptyList()
-                        }
+                        healthConnectRepository.readSleepSessions(LocalDate.now())
                     }
                     val activitiesDeferred = async { loadActivitiesInternal(silent) }
                     val statsResult = statsDeferred.await()
@@ -368,11 +360,15 @@ class HealthViewModel @Inject constructor(
                         stats == null -> {
                             val error = statsResult.exceptionOrNull()
                             Log.e(TAG, "Failed to read today's health stats", error)
-                            _healthConnectState.value = if (current is HealthConnectUiState.Success) {
+                            _healthConnectState.value = when {
+                                // Every metric was refused and nothing is granted:
+                                // this really is a disconnected account.
+                                !healthConnectRepository.hasAnyPermissions() ->
+                                    HealthConnectUiState.PermissionRequired
                                 // Keep the numbers already on screen rather than zeroing them.
-                                current.copy(isRefreshing = false)
-                            } else {
-                                HealthConnectUiState.Error(
+                                current is HealthConnectUiState.Success ->
+                                    current.copy(isRefreshing = false)
+                                else -> HealthConnectUiState.Error(
                                     error?.message ?: "Failed to read health data",
                                 )
                             }
@@ -401,10 +397,6 @@ class HealthViewModel @Inject constructor(
     }
 
     private suspend fun loadActivitiesInternal(silent: Boolean) {
-        if (!healthConnectRepository.hasPermission(HealthConnectRepository.EXERCISE_PERMISSION)) {
-            _activitiesState.value = ActivitiesUiState.PermissionRequired
-            return
-        }
         val current = _activitiesState.value
         if (!silent || current !is ActivitiesUiState.Success) {
             _activitiesState.value = ActivitiesUiState.Loading
@@ -420,7 +412,15 @@ class HealthViewModel @Inject constructor(
                     else activity
                 }
             } ?: activities
-            _activitiesState.value = ActivitiesUiState.Success(merged)
+            // Only claim "permission required" once the read has actually come
+            // back with nothing and Health Connect confirms the refusal.
+            _activitiesState.value = if (merged.isEmpty() &&
+                !healthConnectRepository.hasPermission(HealthConnectRepository.EXERCISE_PERMISSION)
+            ) {
+                ActivitiesUiState.PermissionRequired
+            } else {
+                ActivitiesUiState.Success(merged)
+            }
             pickFeaturedActivity(merged)?.let { loadActivityHeartRate(it) }
         } catch (e: CancellationException) {
             throw e

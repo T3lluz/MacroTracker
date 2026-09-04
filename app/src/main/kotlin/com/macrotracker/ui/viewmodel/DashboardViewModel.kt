@@ -10,8 +10,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /**
@@ -176,40 +178,58 @@ class DashboardViewModel @Inject constructor(
                 emptySet()
             }
 
-            val missing = mutableListOf<Metric>()
-            for (spec in specs) {
+            val blocked = ConcurrentHashMap.newKeySet<Metric>()
+            val reads = specs.map { spec ->
                 val toggleOn = masterEnabled && spec.toggle()
                 val permissionOk = spec.permission in granted
-                if (toggleOn && available && !permissionOk) missing += spec.metric
-                launch { loadMetric(spec, toggleOn = toggleOn, permissionOk = permissionOk) }
+                launch {
+                    if (loadMetric(spec, toggleOn = toggleOn, permissionOk = permissionOk) && available) {
+                        blocked += spec.metric
+                    }
+                }
             }
+            reads.joinAll()
             // Ordered by the spec table so the summary reads the same every load.
-            _missingPermissions.value = missing
+            _missingPermissions.value = specs.map { it.metric }.filter { it in blocked }
         }
     }
 
-    private suspend fun loadMetric(spec: MetricSpec, toggleOn: Boolean, permissionOk: Boolean) {
+    /**
+     * Loads one metric. Returns true when it came back empty *and* Health Connect
+     * says the permission is missing — the only case worth reporting to the user.
+     *
+     * The read is attempted even when [permissionOk] is false. That snapshot is a
+     * cached IPC result that comes back empty or short on any hiccup, and skipping
+     * the read on its word turned a momentary blip into a permanent, silent zero.
+     * An actually-refused read just throws, and lands in the same empty state.
+     */
+    private suspend fun loadMetric(
+        spec: MetricSpec,
+        toggleOn: Boolean,
+        permissionOk: Boolean,
+    ): Boolean {
         val flow = states.getValue(spec.metric)
         if (!toggleOn) {
             flow.value = HealthMetricUiState(isEnabled = false)
-            return
+            return false
         }
-        if (!permissionOk) {
+        val today = runCatching { spec.readToday() }.getOrNull()
+        val yesterday = runCatching { spec.readYesterday() }.getOrNull()
+        if (today == null && !permissionOk) {
             flow.value = HealthMetricUiState(
                 value = spec.emptyValue,
                 isEnabled = true,
                 permissionMissing = true,
             )
-            return
+            return true
         }
-        val today = spec.readToday()
-        val yesterday = spec.readYesterday()
         flow.value = HealthMetricUiState(
             value = today?.let(spec.format) ?: spec.emptyValue,
             today = today,
             yesterday = yesterday,
             isEnabled = true,
         )
+        return false
     }
 
     companion object {
