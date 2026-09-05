@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.macrotracker.ui.screens.AIScreen
 import com.macrotracker.ui.screens.CameraScanScreen
 import com.macrotracker.ui.screens.HealthScreen
@@ -57,8 +58,9 @@ fun DailyDashNavHost(
     )
 
     fun getTabDirection(initial: String?, target: String?): Boolean {
-        val initialIdx = tabOrder.indexOf(initial).takeIf { it != -1 } ?: 0
-        val targetIdx = tabOrder.indexOf(target).takeIf { it != -1 } ?: 0
+        // The AI destination is declared with query args — compare the base route.
+        val initialIdx = tabOrder.indexOf(initial?.substringBefore('?')).takeIf { it != -1 } ?: 0
+        val targetIdx = tabOrder.indexOf(target?.substringBefore('?')).takeIf { it != -1 } ?: 0
         return targetIdx > initialIdx
     }
 
@@ -155,7 +157,13 @@ fun DailyDashNavHost(
             HealthScreen(onNavigateToCameraScan = onNavigateToCameraScan)
         }
 
-        composable(Screen.AI.route) {
+        composable(
+            route = Screen.AI.PATTERN,
+            arguments = listOf(
+                navArgument(Screen.AI.ARG_TAB) { nullable = true; defaultValue = null },
+                navArgument(Screen.AI.ARG_SEED) { nullable = true; defaultValue = null },
+            ),
+        ) { backStackEntry ->
             val onNavigateToCameraScan = remember(navController) {
                 { navController.navigate("camera_scan") }
             }
@@ -165,6 +173,8 @@ fun DailyDashNavHost(
             AIScreen(
                 onNavigateToCameraScan = onNavigateToCameraScan,
                 onNavigateToAiSettings = onNavigateToAiSettings,
+                initialTab = backStackEntry.arguments?.getString(Screen.AI.ARG_TAB),
+                serverHandoffId = backStackEntry.arguments?.getString(Screen.AI.ARG_SEED),
             )
         }
 
@@ -249,9 +259,13 @@ fun DailyDashNavHost(
             val onNavigateToServerSettings = remember(navController) {
                 { navController.navigate(SettingsRoutes.SERVERS) }
             }
+            val onAskAi: (String) -> Unit = remember(navController) {
+                { seedId -> navController.navigate(Screen.AI.withSeed(seedId)) }
+            }
             ServerScreen(
                 onNavigateBack = onNavigateBack,
                 onNavigateToSettings = onNavigateToServerSettings,
+                onAskAi = onAskAi,
             )
         }
 

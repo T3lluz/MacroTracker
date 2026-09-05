@@ -727,17 +727,20 @@ object DashboardWidgetDataProvider {
             AiProvider.GEMINI -> settingsPrefs.getString(SettingsRepository.KEY_GEMINI_API_KEY, null)
             AiProvider.OPENAI -> settingsPrefs.getString(SettingsRepository.KEY_OPENAI_API_KEY, null)
             AiProvider.OPENROUTER -> settingsPrefs.getString(SettingsRepository.KEY_OPENROUTER_API_KEY, null)
+            AiProvider.ANTHROPIC -> settingsPrefs.getString(SettingsRepository.KEY_ANTHROPIC_API_KEY, null)
         }?.trim().orEmpty()
         val apiKey = storedKey.ifBlank {
             when (provider) {
                 AiProvider.GEMINI -> BuildConfig.GEMINI_API_KEY.trim()
                 AiProvider.OPENAI -> BuildConfig.OPENAI_API_KEY.trim()
                 AiProvider.OPENROUTER -> BuildConfig.OPENROUTER_API_KEY.trim()
+                AiProvider.ANTHROPIC -> BuildConfig.ANTHROPIC_API_KEY.trim()
             }
         }
         if (apiKey.isBlank()) return cached  // no key → keep stale or null
 
         val openRouterModelId = settingsPrefs.getString(SettingsRepository.KEY_OPENROUTER_MODEL, null)
+        val anthropicModelId = settingsPrefs.getString(SettingsRepository.KEY_ANTHROPIC_MODEL, null)
 
         return withContext(Dispatchers.IO) {
             try {
@@ -756,6 +759,7 @@ object DashboardWidgetDataProvider {
                         maxOutputTokens = 120,
                         jsonMode = false,
                         openRouterModelId = openRouterModelId,
+                        anthropicModelId = anthropicModelId,
                     ),
                 ).trim()
 

@@ -3,6 +3,7 @@ package com.macrotracker.data.local
 import android.content.Context
 import androidx.core.content.edit
 import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.AnthropicModels
 import com.macrotracker.data.remote.OpenRouterModels
 import com.macrotracker.data.remote.TempUnit
 import com.macrotracker.data.remote.WindUnit
@@ -37,6 +38,14 @@ class SettingsRepository @Inject constructor(
         OpenRouterModels.resolveId(prefs.getString(KEY_OPENROUTER_MODEL, null)),
     )
     val openRouterModelId: StateFlow<String> = _openRouterModelId
+
+    private val _anthropicApiKey = MutableStateFlow(prefs.getString(KEY_ANTHROPIC_API_KEY, "") ?: "")
+    val anthropicApiKey: StateFlow<String> = _anthropicApiKey
+
+    private val _anthropicModelId = MutableStateFlow(
+        AnthropicModels.resolveId(prefs.getString(KEY_ANTHROPIC_MODEL, null)),
+    )
+    val anthropicModelId: StateFlow<String> = _anthropicModelId
 
     private val _onboardingCompleted = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false))
     val onboardingCompleted: StateFlow<Boolean> = _onboardingCompleted
@@ -139,12 +148,26 @@ class SettingsRepository @Inject constructor(
 
     fun getOpenRouterModelId(): String = _openRouterModelId.value
 
+    fun saveAnthropicApiKey(key: String) {
+        prefs.edit { putString(KEY_ANTHROPIC_API_KEY, key.trim()) }
+        _anthropicApiKey.value = key.trim()
+    }
+
+    fun setAnthropicModelId(modelId: String) {
+        val resolved = AnthropicModels.resolveId(modelId)
+        prefs.edit { putString(KEY_ANTHROPIC_MODEL, resolved) }
+        _anthropicModelId.value = resolved
+    }
+
+    fun getAnthropicModelId(): String = _anthropicModelId.value
+
     /** Saves the API key for the currently selected provider. */
     fun saveApiKeyForProvider(provider: AiProvider, key: String) {
         when (provider) {
             AiProvider.GEMINI -> saveGeminiApiKey(key)
             AiProvider.OPENAI -> saveOpenAiApiKey(key)
             AiProvider.OPENROUTER -> saveOpenRouterApiKey(key)
+            AiProvider.ANTHROPIC -> saveAnthropicApiKey(key)
         }
     }
 
@@ -154,11 +177,14 @@ class SettingsRepository @Inject constructor(
 
     fun getOpenRouterApiKey(): String = _openRouterApiKey.value
 
+    fun getAnthropicApiKey(): String = _anthropicApiKey.value
+
     fun getApiKeyForProvider(provider: AiProvider = getAiProvider()): String =
         when (provider) {
             AiProvider.GEMINI -> getGeminiApiKey()
             AiProvider.OPENAI -> getOpenAiApiKey()
             AiProvider.OPENROUTER -> getOpenRouterApiKey()
+            AiProvider.ANTHROPIC -> getAnthropicApiKey()
         }
 
     fun setOnboardingCompleted(completed: Boolean = true) {
@@ -270,6 +296,8 @@ class SettingsRepository @Inject constructor(
         const val KEY_OPENAI_API_KEY = "openai_api_key"
         const val KEY_OPENROUTER_API_KEY = "openrouter_api_key"
         const val KEY_OPENROUTER_MODEL = "openrouter_model"
+        const val KEY_ANTHROPIC_API_KEY = "anthropic_api_key"
+        const val KEY_ANTHROPIC_MODEL = "anthropic_model"
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         const val KEY_TEMP_UNIT = "temp_unit"
         const val KEY_WIND_UNIT = "wind_unit"

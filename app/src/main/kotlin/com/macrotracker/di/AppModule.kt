@@ -2,6 +2,8 @@ package com.macrotracker.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.macrotracker.data.f1.F1ApiService
 import com.macrotracker.data.f1.F1ApiServiceImpl
 import com.macrotracker.data.f1.F1Repository
@@ -9,6 +11,7 @@ import com.macrotracker.data.f1.F1RepositoryImpl
 import com.macrotracker.data.github.GitHubRepository
 import com.macrotracker.data.github.GitHubRepositoryImpl
 import com.macrotracker.data.local.MacroDao
+import com.macrotracker.data.local.ChatDao
 import com.macrotracker.data.local.MacroDatabase
 import com.macrotracker.data.server.ServerMonitorRepository
 import com.macrotracker.data.server.ServerMonitorRepositoryImpl
@@ -41,7 +44,13 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): MacroDatabase =
-        Room.databaseBuilder(context, MacroDatabase::class.java, "macro_tracker.db").build()
+        Room.databaseBuilder(context, MacroDatabase::class.java, "macro_tracker.db")
+            .addMigrations(MIGRATION_1_2)
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideChatDao(db: MacroDatabase): ChatDao = db.chatDao()
 
     @Provides
     @Singleton
@@ -111,4 +120,39 @@ abstract class ServerDataModule {
     @Binds @Singleton abstract fun bindServerMonitorRepository(
         impl: ServerMonitorRepositoryImpl,
     ): ServerMonitorRepository
+}
+
+/**
+ * v1 → v2: the two chat tables. Additive only — existing macro logs and goals are
+ * untouched, so this must never be a destructive fallback.
+ */
+private val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS chat_threads (
+                id TEXT NOT NULL PRIMARY KEY,
+                botId TEXT NOT NULL,
+                title TEXT NOT NULL,
+                createdAtMs INTEGER NOT NULL,
+                updatedAtMs INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT NOT NULL PRIMARY KEY,
+                threadId TEXT NOT NULL,
+                role TEXT NOT NULL,
+                text TEXT NOT NULL,
+                createdAtMs INTEGER NOT NULL,
+                isError INTEGER NOT NULL DEFAULT 0,
+                retryText TEXT,
+                hiddenContext TEXT
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_chat_messages_threadId ON chat_messages (threadId)")
+    }
 }

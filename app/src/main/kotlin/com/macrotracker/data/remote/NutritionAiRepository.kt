@@ -66,6 +66,13 @@ class NutritionAiRepository @Inject constructor(
                     return buildKey
                 }
             }
+            if (selected == AiProvider.ANTHROPIC) {
+                val buildKey = BuildConfig.ANTHROPIC_API_KEY.trim()
+                if (buildKey.isNotBlank()) {
+                    Log.d(TAG, "Using Claude key from BuildConfig (${buildKey.take(8)}…)")
+                    return buildKey
+                }
+            }
             Log.w(TAG, "No ${selected.displayName} API key configured")
             return ""
         }
@@ -109,6 +116,7 @@ class NutritionAiRepository @Inject constructor(
                 maxOutputTokens = 1024,
                 jsonMode = true,
                 openRouterModelId = settings.getOpenRouterModelId(),
+                anthropicModelId = settings.getAnthropicModelId(),
             ),
         )
         return parseNutritionEstimate(responseText, foodQuery)
@@ -149,6 +157,7 @@ class NutritionAiRepository @Inject constructor(
                 maxOutputTokens = 1024,
                 jsonMode = true,
                 openRouterModelId = settings.getOpenRouterModelId(),
+                anthropicModelId = settings.getAnthropicModelId(),
             ),
         )
         return parseNutritionEstimate(responseText, "Meal photo")
@@ -186,6 +195,7 @@ class NutritionAiRepository @Inject constructor(
                 maxOutputTokens = 1024,
                 jsonMode = true,
                 openRouterModelId = settings.getOpenRouterModelId(),
+                anthropicModelId = settings.getAnthropicModelId(),
             ),
         )
         return parseScanResult(responseText)
@@ -201,6 +211,8 @@ class NutritionAiRepository @Inject constructor(
                     "No OpenAI API key set. Go to Settings, choose OpenAI, and paste your key from platform.openai.com."
                 AiProvider.OPENROUTER ->
                     "No OpenRouter API key set. Go to Settings, choose OpenRouter, and paste your key from openrouter.ai/keys."
+                AiProvider.ANTHROPIC ->
+                    "No Claude API key set. Go to Settings, choose Claude, and paste your key from console.anthropic.com."
             }
             throw Exception(hint)
         }

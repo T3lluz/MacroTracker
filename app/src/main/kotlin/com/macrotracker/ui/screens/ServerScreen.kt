@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Memory
@@ -51,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.server.AdvisoryCategory
+import com.macrotracker.data.server.ServerAiSection
 import com.macrotracker.data.server.AdvisorySeverity
 import com.macrotracker.data.server.ServerAdvisory
 import com.macrotracker.data.server.ServerConnectionState
@@ -103,6 +105,7 @@ import kotlin.math.roundToInt
 fun ServerScreen(
     onNavigateBack: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onAskAi: (String) -> Unit = {},
     initialServerId: String? = null,
     viewModel: ServerViewModel = hiltViewModel(),
 ) {
@@ -198,35 +201,56 @@ fun ServerScreen(
             return@Column
         }
 
+        // Every card gets the same affordance: bundle this section's live readings
+        // and open a Sysop thread on them.
+        val ask: (ServerAiSection) -> () -> Unit = { section ->
+            {
+                haptics.click()
+                viewModel.askAiAbout(runtime.profile.id, section)?.let(onAskAi)
+            }
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
         ) {
-            item(key = "identity") { ServerIdentityCard(runtime) }
+            item(key = "identity") { ServerIdentityCard(runtime, ask(ServerAiSection.OVERVIEW)) }
             if (runtime.advisories.isNotEmpty()) {
                 item(key = "advisories") {
-                    ServerAdvisoriesCard(runtime, onTrustHostKey = { viewModel.trustNewHostKey(runtime.profile.id) })
+                    ServerAdvisoriesCard(
+                        runtime = runtime,
+                        onTrustHostKey = { viewModel.trustNewHostKey(runtime.profile.id) },
+                        onAskAi = ask(ServerAiSection.ADVISORIES),
+                        onAskAiAbout = { advisory ->
+                            haptics.click()
+                            viewModel.askAiAboutAdvisory(runtime.profile.id, advisory)?.let(onAskAi)
+                        },
+                    )
                 }
             }
-            item(key = "compute") { ServerComputeCard(runtime) }
-            item(key = "memory") { ServerMemoryCard(runtime) }
-            item(key = "network") { ServerNetworkCard(runtime) }
-            item(key = "storage") { ServerStorageCard(runtime) }
+            item(key = "compute") { ServerComputeCard(runtime, ask(ServerAiSection.COMPUTE)) }
+            item(key = "memory") { ServerMemoryCard(runtime, ask(ServerAiSection.MEMORY)) }
+            item(key = "network") { ServerNetworkCard(runtime, ask(ServerAiSection.NETWORK)) }
+            item(key = "storage") { ServerStorageCard(runtime, ask(ServerAiSection.STORAGE)) }
             if (runtime.snapshot?.temperatures?.isNotEmpty() == true) {
-                item(key = "thermal") { ServerThermalCard(runtime) }
+                item(key = "thermal") { ServerThermalCard(runtime, ask(ServerAiSection.THERMAL)) }
             }
-            item(key = "processes") { ServerProcessCard(runtime) }
+            item(key = "processes") { ServerProcessCard(runtime, ask(ServerAiSection.PROCESSES)) }
             if (runtime.snapshot?.containers?.isNotEmpty() == true) {
-                item(key = "docker") { ServerDockerCard(runtime) }
+                item(key = "docker") { ServerDockerCard(runtime, ask(ServerAiSection.DOCKER)) }
             }
-            item(key = "services") { ServerServicesCard(runtime) }
+            item(key = "services") { ServerServicesCard(runtime, ask(ServerAiSection.SERVICES)) }
             item(key = "updates") {
-                ServerUpdatesCard(runtime, onRefresh = { viewModel.refreshNews(runtime.profile.id) })
+                ServerUpdatesCard(
+                    runtime = runtime,
+                    onRefresh = { viewModel.refreshNews(runtime.profile.id) },
+                    onAskAi = ask(ServerAiSection.UPDATES),
+                )
             }
             if (runtime.snapshot?.sessions?.isNotEmpty() == true) {
-                item(key = "sessions") { ServerSessionsCard(runtime) }
+                item(key = "sessions") { ServerSessionsCard(runtime, ask(ServerAiSection.SESSIONS)) }
             }
         }
     }
@@ -297,6 +321,7 @@ private fun SectionHeader(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     accent: Color,
     trailing: String? = null,
+    onAskAi: (() -> Unit)? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(17.dp))
@@ -312,16 +337,24 @@ private fun SectionHeader(
         if (trailing != null) {
             StatValue(trailing, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
+        if (onAskAi != null) {
+            Spacer(modifier = Modifier.width(6.dp))
+            AskAiButton(accent = accent, onClick = onAskAi)
+        }
     }
     Spacer(modifier = Modifier.height(12.dp))
 }
 
 @Composable
-private fun ServerIdentityCard(runtime: ServerRuntime) {
+private fun ServerIdentityCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     MacroCard(delayMs = 40) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             StatusDot(runtime)
             Spacer(modifier = Modifier.width(9.dp))
+            if (onAskAi != null) {
+                AskAiButton(accent = Primary, onClick = onAskAi)
+                Spacer(modifier = Modifier.width(9.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = runtime.profile.label,
@@ -412,7 +445,12 @@ private fun ServerIdentityCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerAdvisoriesCard(runtime: ServerRuntime, onTrustHostKey: () -> Unit) {
+private fun ServerAdvisoriesCard(
+    runtime: ServerRuntime,
+    onTrustHostKey: () -> Unit,
+    onAskAi: (() -> Unit)? = null,
+    onAskAiAbout: ((ServerAdvisory) -> Unit)? = null,
+) {
     val critical = runtime.advisories.count { it.severity == AdvisorySeverity.CRITICAL }
     MacroCard(
         delayMs = 60,
@@ -423,9 +461,10 @@ private fun ServerAdvisoriesCard(runtime: ServerRuntime, onTrustHostKey: () -> U
             icon = Icons.Outlined.Bolt,
             accent = if (critical > 0) ServerCritical else ServerWarn,
             trailing = "${runtime.advisories.size}",
+            onAskAi = onAskAi,
         )
         runtime.advisories.forEachIndexed { index, advisory ->
-            AdvisoryRow(advisory)
+            AdvisoryRow(advisory, onAskAi = onAskAiAbout?.let { handler -> { handler(advisory) } })
             if (index < runtime.advisories.lastIndex) {
                 HorizontalDivider(
                     color = Border.copy(alpha = 0.3f),
@@ -455,7 +494,7 @@ private fun ServerAdvisoriesCard(runtime: ServerRuntime, onTrustHostKey: () -> U
 }
 
 @Composable
-private fun AdvisoryRow(advisory: ServerAdvisory) {
+private fun AdvisoryRow(advisory: ServerAdvisory, onAskAi: (() -> Unit)? = null) {
     val color = when (advisory.severity) {
         AdvisorySeverity.CRITICAL -> ServerCritical
         AdvisorySeverity.WARNING -> ServerWarn
@@ -486,11 +525,15 @@ private fun AdvisoryRow(advisory: ServerAdvisory) {
         }
         Spacer(modifier = Modifier.width(8.dp))
         ServerTag(advisory.category.name.take(4), color)
+        if (onAskAi != null) {
+            Spacer(modifier = Modifier.width(6.dp))
+            AskAiButton(accent = color, onClick = onAskAi)
+        }
     }
 }
 
 @Composable
-private fun ServerComputeCard(runtime: ServerRuntime) {
+private fun ServerComputeCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val cpu = runtime.snapshot?.cpu
     MacroCard(delayMs = 80) {
         SectionHeader(
@@ -498,6 +541,7 @@ private fun ServerComputeCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.Memory,
             accent = ServerCpu,
             trailing = runtime.hostProfile?.cpuModel?.takeIf { it.isNotBlank() },
+            onAskAi = onAskAi,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -566,7 +610,7 @@ private fun ServerComputeCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerMemoryCard(runtime: ServerRuntime) {
+private fun ServerMemoryCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val mem = runtime.snapshot?.memory ?: return
     MacroCard(delayMs = 100) {
         SectionHeader(
@@ -574,6 +618,7 @@ private fun ServerMemoryCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.Memory,
             accent = ServerMemory,
             trailing = formatKb(mem.totalKb),
+            onAskAi = onAskAi,
         )
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             StatValue("${mem.usedPercent.roundToInt()}%", color = serverLevelColor(mem.usedPercent), fontSize = 18.sp)
@@ -607,7 +652,7 @@ private fun ServerMemoryCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerNetworkCard(runtime: ServerRuntime) {
+private fun ServerNetworkCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     MacroCard(delayMs = 120) {
         val net = runtime.snapshot?.network
         SectionHeader(
@@ -615,6 +660,7 @@ private fun ServerNetworkCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.SwapVert,
             accent = ServerNetRx,
             trailing = net?.let { "${it.interfaces.size} if" },
+            onAskAi = onAskAi,
         )
         ServerSparkline(
             series = listOf(
@@ -679,7 +725,7 @@ private fun ServerNetworkCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerStorageCard(runtime: ServerRuntime) {
+private fun ServerStorageCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val disks = runtime.snapshot?.disks.orEmpty()
     if (disks.isEmpty()) return
     MacroCard(delayMs = 140) {
@@ -688,6 +734,7 @@ private fun ServerStorageCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.Storage,
             accent = ServerDisk,
             trailing = "${disks.size} mounts",
+            onAskAi = onAskAi,
         )
         disks.take(8).forEachIndexed { index, disk ->
             if (index > 0) Spacer(modifier = Modifier.height(12.dp))
@@ -724,7 +771,7 @@ private fun ServerStorageCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerThermalCard(runtime: ServerRuntime) {
+private fun ServerThermalCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val temps = runtime.snapshot?.temperatures.orEmpty()
     MacroCard(delayMs = 150) {
         SectionHeader(title = "Thermals", icon = Icons.Outlined.Bolt, accent = ServerThermal)
@@ -756,7 +803,7 @@ private fun ServerThermalCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerProcessCard(runtime: ServerRuntime) {
+private fun ServerProcessCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val processes = runtime.snapshot?.processes.orEmpty()
     MacroCard(delayMs = 160) {
         SectionHeader(title = "Top processes", icon = Icons.Outlined.Memory, accent = ServerCpu)
@@ -814,7 +861,7 @@ private fun ServerProcessCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerDockerCard(runtime: ServerRuntime) {
+private fun ServerDockerCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val containers = runtime.snapshot?.containers.orEmpty()
     val running = containers.count { it.isRunning }
     MacroCard(delayMs = 170) {
@@ -823,6 +870,7 @@ private fun ServerDockerCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.Storage,
             accent = ServerDisk,
             trailing = "$running/${containers.size} up",
+            onAskAi = onAskAi,
         )
         containers.take(12).forEach { container ->
             Row(
@@ -865,7 +913,7 @@ private fun ServerDockerCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerServicesCard(runtime: ServerRuntime) {
+private fun ServerServicesCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val units = runtime.snapshot?.failedUnits.orEmpty()
     val state = runtime.snapshot?.systemState
     if (units.isEmpty() && state == null) return
@@ -875,6 +923,7 @@ private fun ServerServicesCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.Settings,
             accent = if (units.isEmpty()) ServerGood else ServerCritical,
             trailing = state,
+            onAskAi = onAskAi,
         )
         if (units.isEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -921,7 +970,11 @@ private fun ServerServicesCard(runtime: ServerRuntime) {
 }
 
 @Composable
-private fun ServerUpdatesCard(runtime: ServerRuntime, onRefresh: () -> Unit) {
+private fun ServerUpdatesCard(
+    runtime: ServerRuntime,
+    onRefresh: () -> Unit,
+    onAskAi: (() -> Unit)? = null,
+) {
     val news = runtime.news
     val haptics = rememberHaptics()
     MacroCard(delayMs = 190) {
@@ -930,6 +983,7 @@ private fun ServerUpdatesCard(runtime: ServerRuntime, onRefresh: () -> Unit) {
             icon = Icons.Outlined.Bolt,
             accent = ServerWarn,
             trailing = runtime.hostProfile?.packageManager?.label,
+            onAskAi = onAskAi,
         )
         if (news == null) {
             Text(
@@ -1008,7 +1062,7 @@ private fun ServerUpdatesCard(runtime: ServerRuntime, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun ServerSessionsCard(runtime: ServerRuntime) {
+private fun ServerSessionsCard(runtime: ServerRuntime, onAskAi: (() -> Unit)? = null) {
     val sessions = runtime.snapshot?.sessions.orEmpty()
     MacroCard(delayMs = 200) {
         SectionHeader(
@@ -1016,6 +1070,7 @@ private fun ServerSessionsCard(runtime: ServerRuntime) {
             icon = Icons.Outlined.Dns,
             accent = ServerMemory,
             trailing = "${sessions.size}",
+            onAskAi = onAskAi,
         )
         sessions.forEach { session ->
             Row(
@@ -1059,5 +1114,31 @@ private fun relativeSeconds(epochMs: Long): String {
         seconds < 3600 -> "${seconds / 60}m"
         seconds < 86_400 -> "${seconds / 3600}h"
         else -> "${seconds / 86_400}d"
+    }
+}
+
+/**
+ * The per-card "ask the bot about this" affordance.
+ *
+ * Deliberately quiet — a sparkle at the end of the section header, not a button that
+ * competes with the numbers. Every card carries one, so it has to disappear into the
+ * chrome when you are just reading.
+ */
+@Composable
+private fun AskAiButton(accent: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(26.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(accent.copy(alpha = 0.14f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.AutoAwesome,
+            contentDescription = "Ask the AI about this",
+            tint = accent,
+            modifier = Modifier.size(14.dp),
+        )
     }
 }

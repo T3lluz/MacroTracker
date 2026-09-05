@@ -38,6 +38,8 @@ android {
         buildConfigField("String", "OPENAI_API_KEY", "\"$openAiKey\"")
         val openRouterKey = localProperties.getProperty("OPENROUTER_API_KEY", "")
         buildConfigField("String", "OPENROUTER_API_KEY", "\"$openRouterKey\"")
+        val anthropicKey = localProperties.getProperty("ANTHROPIC_API_KEY", "")
+        buildConfigField("String", "ANTHROPIC_API_KEY", "\"$anthropicKey\"")
         val youtubeKey = localProperties.getProperty("YOUTUBE_API_KEY", "")
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeKey\"")
         val twitchClientId = localProperties.getProperty("TWITCH_CLIENT_ID", "")
