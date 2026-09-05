@@ -10,6 +10,8 @@ import com.macrotracker.data.github.GitHubRepository
 import com.macrotracker.data.github.GitHubRepositoryImpl
 import com.macrotracker.data.local.MacroDao
 import com.macrotracker.data.local.MacroDatabase
+import com.macrotracker.data.server.ServerMonitorRepository
+import com.macrotracker.data.server.ServerMonitorRepositoryImpl
 import com.macrotracker.data.twitch.TwitchRepository
 import com.macrotracker.data.twitch.TwitchRepositoryImpl
 import com.macrotracker.data.youtube.YouTubeRepository
@@ -101,4 +103,12 @@ abstract class TwitchDataModule {
 @InstallIn(SingletonComponent::class)
 abstract class GitHubDataModule {
     @Binds @Singleton abstract fun bindGitHubRepository(impl: GitHubRepositoryImpl): GitHubRepository
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class ServerDataModule {
+    @Binds @Singleton abstract fun bindServerMonitorRepository(
+        impl: ServerMonitorRepositoryImpl,
+    ): ServerMonitorRepository
 }
