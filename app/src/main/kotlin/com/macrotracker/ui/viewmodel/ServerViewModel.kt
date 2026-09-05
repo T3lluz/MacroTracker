@@ -21,6 +21,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.macrotracker.data.chat.ServerAiHandoff
+import com.macrotracker.data.server.ServerAdvisory
+import com.macrotracker.data.server.ServerAiContext
+import com.macrotracker.data.server.ServerAiSection
 import javax.inject.Inject
 
 /** What the connection test is currently doing, for the add/edit form. */
@@ -39,6 +43,7 @@ sealed interface ServerTestUiState {
  */
 @HiltViewModel
 class ServerViewModel @Inject constructor(
+    private val serverAiHandoff: ServerAiHandoff,
     private val repository: ServerMonitorRepository,
     private val store: ServerStore,
     private val notifier: ServerNotifier,
@@ -142,6 +147,27 @@ class ServerViewModel @Inject constructor(
 
     fun setServerEnabled(id: String, enabled: Boolean) {
         store.profile(id)?.let { store.updateProfile(it.copy(enabled = enabled)) }
+    }
+
+    /**
+     * Packages one card's live readings for the tech-support bot and returns the
+     * hand-off id to navigate with. Reads [ServerRuntime] only, which by design
+     * carries no credentials.
+     */
+    fun askAiAbout(serverId: String, section: ServerAiSection): String? {
+        val runtime = runtimes.value[serverId] ?: return null
+        return serverAiHandoff.offer(
+            context = ServerAiContext.build(runtime, section),
+            openingQuestion = ServerAiContext.openingQuestion(runtime, section),
+        )
+    }
+
+    fun askAiAboutAdvisory(serverId: String, advisory: ServerAdvisory): String? {
+        val runtime = runtimes.value[serverId] ?: return null
+        return serverAiHandoff.offer(
+            context = ServerAiContext.buildForAdvisory(runtime, advisory),
+            openingQuestion = ServerAiContext.openingQuestionForAdvisory(runtime, advisory),
+        )
     }
 
     fun trustNewHostKey(id: String) = repository.trustNewHostKey(id)

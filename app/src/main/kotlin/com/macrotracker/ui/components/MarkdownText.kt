@@ -1,5 +1,18 @@
 package com.macrotracker.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import com.macrotracker.ui.theme.Background
+import com.macrotracker.ui.theme.Border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +24,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.LinkAnnotation
@@ -113,6 +128,7 @@ fun MarkdownText(
                         )
                     }
                 }
+                is MdBlock.Code -> CodeBlock(block.language, block.code, fontSize)
                 is MdBlock.Spacer -> Spacer(modifier = Modifier.height(6.dp))
             }
         }
@@ -152,6 +168,7 @@ private sealed class MdBlock {
     data class Paragraph(val text: String) : MdBlock()
     data class Bullet(val text: String) : MdBlock()
     data class Numbered(val number: Int, val text: String) : MdBlock()
+    data class Code(val language: String, val code: String) : MdBlock()
     data object Spacer : MdBlock()
 }
 
@@ -167,8 +184,29 @@ private fun parseMarkdownBlocks(raw: String): List<MdBlock> {
         paragraph.clear()
     }
 
+    var fenceLanguage: String? = null
+    val fenceBody = StringBuilder()
+
     for (line in lines) {
         val trimmed = line.trimEnd()
+
+        // Inside a fence nothing is markdown — indentation and '#' are code.
+        if (fenceLanguage != null) {
+            if (trimmed.trimStart().startsWith("```")) {
+                out += MdBlock.Code(fenceLanguage.orEmpty(), fenceBody.toString().trimEnd('\n'))
+                fenceBody.clear()
+                fenceLanguage = null
+            } else {
+                fenceBody.append(line).append('\n')
+            }
+            continue
+        }
+        if (trimmed.trimStart().startsWith("```")) {
+            flushParagraph()
+            fenceLanguage = trimmed.trimStart().removePrefix("```").trim()
+            continue
+        }
+
         when {
             trimmed.isBlank() -> {
                 flushParagraph()
@@ -195,6 +233,10 @@ private fun parseMarkdownBlocks(raw: String): List<MdBlock> {
                 paragraph.append(trimmed.trim())
             }
         }
+    }
+    if (fenceLanguage != null && fenceBody.isNotEmpty()) {
+        // Unterminated fence: the reply was cut off mid-block. Render what arrived.
+        out += MdBlock.Code(fenceLanguage.orEmpty(), fenceBody.toString().trimEnd('\n'))
     }
     flushParagraph()
     return out.dropLastWhile { it is MdBlock.Spacer }
@@ -274,5 +316,66 @@ private fun buildInlineMarkdown(
         withStyle(SpanStyle(color = color)) {
             append(text.substring(cursor))
         }
+    }
+}
+
+
+/**
+ * A fenced code block: monospace, its own well, and horizontally scrollable.
+ *
+ * The scroll is the point — Sysop emits shell commands constantly, and a command
+ * that soft-wraps mid-flag is a broken command when pasted.
+ */
+@Composable
+private fun CodeBlock(language: String, code: String, fontSize: TextUnit) {
+    val clipboard = LocalClipboardManager.current
+    var copied by remember(code) { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Background)
+            .border(1.dp, Border, RoundedCornerShape(10.dp)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, end = 4.dp, top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = language.ifBlank { "shell" },
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = TextSecondary,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (copied) "Copied" else "Copy",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (copied) Primary else TextSecondary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        clipboard.setText(AnnotatedString(code))
+                        copied = true
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        Text(
+            text = code,
+            fontSize = (fontSize.value - 1).sp,
+            lineHeight = (fontSize.value + 5).sp,
+            fontFamily = FontFamily.Monospace,
+            color = TextPrimary,
+            softWrap = false,
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 10.dp),
+        )
     }
 }

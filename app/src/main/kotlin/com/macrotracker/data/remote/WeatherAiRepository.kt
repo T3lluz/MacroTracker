@@ -25,6 +25,7 @@ class WeatherAiRepository @Inject constructor(
                 AiProvider.GEMINI -> BuildConfig.GEMINI_API_KEY.trim()
                 AiProvider.OPENAI -> BuildConfig.OPENAI_API_KEY.trim()
                 AiProvider.OPENROUTER -> BuildConfig.OPENROUTER_API_KEY.trim()
+                AiProvider.ANTHROPIC -> BuildConfig.ANTHROPIC_API_KEY.trim()
             }
         }
 

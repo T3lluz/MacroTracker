@@ -61,6 +61,7 @@ fun MainScreen(
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState()
     val openAiApiKey by settingsViewModel.openAiApiKey.collectAsState()
     val openRouterApiKey by settingsViewModel.openRouterApiKey.collectAsState()
+    val anthropicApiKey by settingsViewModel.anthropicApiKey.collectAsState()
     // Align with NutritionAiRepository: Settings key wins, BuildConfig is fallback.
     val hasAiApiKey = when (aiProvider) {
         AiProvider.GEMINI ->
@@ -69,6 +70,8 @@ fun MainScreen(
             openAiApiKey.isNotBlank() || BuildConfig.OPENAI_API_KEY.isNotBlank()
         AiProvider.OPENROUTER ->
             openRouterApiKey.isNotBlank() || BuildConfig.OPENROUTER_API_KEY.isNotBlank()
+        AiProvider.ANTHROPIC ->
+            anthropicApiKey.isNotBlank() || BuildConfig.ANTHROPIC_API_KEY.isNotBlank()
     }
 
     val updateState by appUpdateViewModel.state.collectAsState()
@@ -233,7 +236,8 @@ private fun MainScreenScaffold(
     val navHostModifier = remember { Modifier.statusBarsPadding() }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    // Strip query args: the AI destination is declared as "ai?tab=…&seed=…".
+    val currentRoute = navBackStackEntry?.destination?.route?.substringBefore('?')
     val isMainTabRoute = items.any { it.route == currentRoute }
     val context = LocalContext.current
 
@@ -297,7 +301,7 @@ private fun MainBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val currentRoute = navBackStackEntry?.destination?.route?.substringBefore('?')
     if (!items.any { it.route == currentRoute }) return
 
     val onItemClick = remember(navController, showSettingsUpdateBadge, onSettingsUpdateBadgeClick) {

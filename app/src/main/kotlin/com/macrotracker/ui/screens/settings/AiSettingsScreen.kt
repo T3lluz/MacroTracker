@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.macrotracker.data.remote.AiApiClient
 import com.macrotracker.data.remote.AiProvider
+import com.macrotracker.data.remote.AnthropicModels
 import com.macrotracker.data.remote.OpenRouterModels
 import com.macrotracker.ui.components.ButtonVariant
 import com.macrotracker.ui.components.MacroButton
@@ -76,12 +77,15 @@ fun AiSettingsScreen(
     val savedOpenAiKey by viewModel.openAiApiKey.collectAsState()
     val savedOpenRouterKey by viewModel.openRouterApiKey.collectAsState()
     val openRouterModelId by viewModel.openRouterModelId.collectAsState()
+    val savedAnthropicKey by viewModel.anthropicApiKey.collectAsState()
+    val anthropicModelId by viewModel.anthropicModelId.collectAsState()
     val aiProvider by viewModel.aiProvider.collectAsState()
 
     val activeSavedKey = when (aiProvider) {
         AiProvider.GEMINI -> savedKey
         AiProvider.OPENAI -> savedOpenAiKey
         AiProvider.OPENROUTER -> savedOpenRouterKey
+        AiProvider.ANTHROPIC -> savedAnthropicKey
     }
     var draftKey by remember(aiProvider, activeSavedKey) { mutableStateOf(activeSavedKey) }
     var keyVisible by remember { mutableStateOf(false) }
@@ -96,6 +100,7 @@ fun AiSettingsScreen(
             AiProvider.GEMINI -> "Doesn't look like a Gemini key (should start with AIza…)"
             AiProvider.OPENAI -> "Doesn't look like an OpenAI key (should start with sk-…)"
             AiProvider.OPENROUTER -> "Doesn't look like an OpenRouter key (should start with sk-or-…)"
+            AiProvider.ANTHROPIC -> "Doesn't look like an Anthropic key (should start with sk-ant-…)"
         }
         else -> null
     }
@@ -270,7 +275,11 @@ fun AiSettingsScreen(
 
         MacroCard(delayMs = 100) {
             Text(
-                text = if (aiProvider == AiProvider.OPENROUTER) "OpenRouter Model" else "AI Model",
+                text = when (aiProvider) {
+                    AiProvider.OPENROUTER -> "OpenRouter Model"
+                    AiProvider.ANTHROPIC -> "Claude Model"
+                    else -> "AI Model"
+                },
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -290,6 +299,23 @@ fun AiSettingsScreen(
                     onSelect = { modelId ->
                         haptics.tick()
                         viewModel.setOpenRouterModelId(modelId)
+                    },
+                )
+            } else if (aiProvider == AiProvider.ANTHROPIC) {
+                Text(
+                    text = "Chat turns carry the whole conversation plus any server context, " +
+                        "so they cost more than the one-shot macro estimates. Opus is the one " +
+                        "worth paying for when a server is actually broken.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                AnthropicModelSelector(
+                    selectedId = anthropicModelId,
+                    onSelect = { modelId ->
+                        haptics.tick()
+                        viewModel.setAnthropicModelId(modelId)
                     },
                 )
             } else {
@@ -313,6 +339,7 @@ fun AiSettingsScreen(
                                 AiProvider.GEMINI -> "Fast · Free tier · Sufficient for nutrition"
                                 AiProvider.OPENAI -> "Fast · Vision-capable · gpt-4o-mini"
                                 AiProvider.OPENROUTER -> ""
+                                AiProvider.ANTHROPIC -> ""
                             },
                             fontSize = 12.sp,
                             color = TextSecondary,
@@ -343,24 +370,31 @@ private fun AiProviderToggle(
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        AiProvider.entries.forEach { provider ->
-            val isSelected = provider == selected
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (isSelected) Primary else Color.Transparent)
-                    .clickable { onSelect(provider) }
-                    .padding(vertical = 10.dp, horizontal = 2.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = provider.displayName,
-                    fontSize = 12.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSelected) Color.White else TextSecondary,
-                    maxLines = 1,
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Four providers no longer fit one row without truncating "OpenRouter".
+            AiProvider.entries.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEach { provider ->
+                        val isSelected = provider == selected
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(if (isSelected) Primary else Color.Transparent)
+                                .clickable { onSelect(provider) }
+                                .padding(vertical = 10.dp, horizontal = 2.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = provider.displayName,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color.White else TextSecondary,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -444,6 +478,113 @@ private fun OpenRouterModelSelector(
                             }
                             Text(
                                 text = "${model.priceLabel} · ${model.approxRequestCostLabel}",
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                            )
+                            Text(
+                                text = model.blurb,
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                lineHeight = 14.sp,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelect(model.id)
+                        expanded = false
+                    },
+                    trailingIcon = if (model.id == selectedId) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = Primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AnthropicModelSelector(
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = remember(selectedId) { AnthropicModels.find(selectedId) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = selected.displayName,
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+            label = { Text("Model") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            supportingText = {
+                Text(
+                    buildString {
+                        append(selected.priceLabel)
+                        append(" · ")
+                        append(selected.approxTurnCostLabel)
+                        if (selected.recommended) append(" · Recommended")
+                    },
+                )
+            },
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Background,
+                unfocusedContainerColor = Background,
+                focusedBorderColor = Primary,
+                unfocusedBorderColor = Border,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedLabelColor = Primary,
+                unfocusedLabelColor = TextSecondary,
+                focusedSupportingTextColor = TextSecondary,
+                unfocusedSupportingTextColor = TextSecondary,
+                cursorColor = Primary,
+            ),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            AnthropicModels.options.forEach { model ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = model.displayName,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                )
+                                if (model.recommended) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Recommended",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Primary,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${model.priceLabel} · ${model.approxTurnCostLabel}",
                                 fontSize = 11.sp,
                                 color = TextSecondary,
                             )

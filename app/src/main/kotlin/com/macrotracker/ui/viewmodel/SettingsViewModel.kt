@@ -31,6 +31,8 @@ class SettingsViewModel @Inject constructor(
     val openAiApiKey: StateFlow<String> = settings.openAiApiKey
     val openRouterApiKey: StateFlow<String> = settings.openRouterApiKey
     val openRouterModelId: StateFlow<String> = settings.openRouterModelId
+    val anthropicApiKey: StateFlow<String> = settings.anthropicApiKey
+    val anthropicModelId: StateFlow<String> = settings.anthropicModelId
     val tempUnit: StateFlow<TempUnit> = settings.tempUnit
     val windUnit: StateFlow<WindUnit> = settings.windUnit
 
@@ -98,6 +100,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setAiProvider(provider: AiProvider) {
         settings.setAiProvider(provider)
+    }
+
+    fun setAnthropicModelId(modelId: String) {
+        settings.setAnthropicModelId(modelId)
     }
 
     fun setOpenRouterModelId(modelId: String) {

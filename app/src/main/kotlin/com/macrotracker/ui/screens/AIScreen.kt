@@ -58,6 +58,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -105,7 +107,21 @@ import com.macrotracker.ui.components.ScreenHeader
 import com.macrotracker.ui.components.ScreenHeaderSpacer
 import com.macrotracker.ui.components.TypingDots
 import com.macrotracker.ui.components.dottedGlass
+import com.macrotracker.data.chat.ChatBot
+import com.macrotracker.ui.components.SegmentedTab
+import com.macrotracker.ui.components.SegmentedTabs
+import com.macrotracker.ui.screens.ai.BotAvatar
+import com.macrotracker.ui.screens.ai.BotBubble
+import com.macrotracker.ui.screens.ai.BotIdentity
+import com.macrotracker.ui.screens.ai.ChatComposer
+import com.macrotracker.ui.screens.ai.ChatHeaderAction
+import com.macrotracker.ui.screens.ai.ChatStatusDot
 import com.macrotracker.ui.screens.ai.DishSuggestion
+import com.macrotracker.ui.screens.ai.SmallActionChip
+import com.macrotracker.ui.screens.ai.SysopChatPane
+import com.macrotracker.ui.screens.ai.TypingBubble
+import com.macrotracker.ui.screens.ai.UserBubble
+import com.macrotracker.ui.viewmodel.ChatViewModel
 import com.macrotracker.ui.screens.ai.refineDraft
 import com.macrotracker.ui.screens.ai.suggestionStripTitle
 import com.macrotracker.ui.screens.ai.suggestionsForDraft
@@ -116,6 +132,7 @@ import com.macrotracker.ui.theme.Error
 import com.macrotracker.ui.theme.MacroMotion
 import com.macrotracker.ui.theme.Primary
 import com.macrotracker.ui.theme.Secondary
+import com.macrotracker.ui.theme.ServerBrand
 import com.macrotracker.ui.theme.Surface
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
@@ -152,11 +169,97 @@ private suspend fun LazyListState.followChatBottom() {
     }
 }
 
+/** Clanker's identity; Sysop's lives next to its pane. Both feed the same ChatKit. */
+private val ClankerIdentity = BotIdentity(
+    name = "Clanker",
+    accent = Primary,
+    avatarRes = R.drawable.ic_clanker,
+    composerHint = "Describe a meal…",
+)
+
+/**
+ * The AI tab: two bots behind one switcher.
+ *
+ * Both panes render through `ChatKit`, so the bubbles, composer and typing indicator
+ * are literally the same composables — the tabs differ in identity, accent and what
+ * they know, not in how they look.
+ */
 @Composable
 fun AIScreen(
     onNavigateToCameraScan: () -> Unit,
     onNavigateToAiSettings: () -> Unit,
+    initialTab: String? = null,
+    serverHandoffId: String? = null,
     viewModel: AiViewModel = hiltViewModel(),
+    chatViewModel: ChatViewModel = hiltViewModel(),
+) {
+    val haptics = rememberHaptics()
+    var selectedTab by rememberSaveable(initialTab) {
+        mutableStateOf(initialTab ?: ChatBot.MACROS.id)
+    }
+
+    // A hand-off from a server card opens its thread and switches to Sysop.
+    LaunchedEffect(serverHandoffId) {
+        if (serverHandoffId != null) {
+            chatViewModel.openServerHandoff(serverHandoffId)
+            selectedTab = ChatBot.SYSOP.id
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Background),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            ScreenHeaderSpacer()
+            ScreenHeader(
+                title = "AI",
+                trailing = {
+                    BotAvatar(
+                        identity = if (selectedTab == ChatBot.SYSOP.id) SysopIdentityRef else ClankerIdentity,
+                        size = 44.dp,
+                        live = false,
+                    )
+                },
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            SegmentedTabs(
+                tabs = listOf(
+                    SegmentedTab(ChatBot.MACROS.id, "Macros", Icons.Outlined.Restaurant, Primary),
+                    SegmentedTab(ChatBot.SYSOP.id, "Tech support", Icons.Outlined.Terminal, ServerBrand),
+                ),
+                selectedKey = selectedTab,
+                onSelect = {
+                    haptics.tick()
+                    selectedTab = it
+                },
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+
+        Box(modifier = Modifier.weight(1f)) {
+            if (selectedTab == ChatBot.SYSOP.id) {
+                SysopChatPane(
+                    viewModel = chatViewModel,
+                    onNavigateToAiSettings = onNavigateToAiSettings,
+                )
+            } else {
+                MacrosChatPane(
+                    onNavigateToCameraScan = onNavigateToCameraScan,
+                    onNavigateToAiSettings = onNavigateToAiSettings,
+                    viewModel = viewModel,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MacrosChatPane(
+    onNavigateToCameraScan: () -> Unit,
+    onNavigateToAiSettings: () -> Unit,
+    viewModel: AiViewModel,
 ) {
     val context = LocalContext.current
     val messages by viewModel.messages.collectAsState()
@@ -357,25 +460,60 @@ fun AIScreen(
             ) {
                 items(messages, key = { it.id }) { message ->
                     when (message) {
-                        is NutritionChatMessage.Doctor -> DoctorBubble(
-                            message = message,
-                            onLog = { estimate ->
-                                haptics.confirm()
-                                forceFollow = true
-                                viewModel.logEstimate(message.id, estimate)
+                        is NutritionChatMessage.Doctor -> BotBubble(
+                            identity = ClankerIdentity,
+                            text = message.text,
+                            isError = message.isError,
+                            actions = {
+                                if (message.isError) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    ) {
+                                        message.retryQuery?.let { query ->
+                                            SmallActionChip(
+                                                icon = Icons.Outlined.Refresh,
+                                                label = "Retry",
+                                                onClick = {
+                                                    haptics.click()
+                                                    forceFollow = true
+                                                    viewModel.retryQuery(query)
+                                                },
+                                            )
+                                        }
+                                        if (message.showSettingsCta) {
+                                            SmallActionChip(
+                                                icon = Icons.Outlined.Settings,
+                                                label = "AI settings",
+                                                onClick = {
+                                                    haptics.click()
+                                                    onNavigateToAiSettings()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             },
-                            onRetry = { query ->
-                                haptics.click()
-                                forceFollow = true
-                                viewModel.retryQuery(query)
-                            },
-                            onOpenSettings = {
-                                haptics.click()
-                                onNavigateToAiSettings()
+                            // The per-message slot: Clanker's estimate card hangs here,
+                            // and it is the same hook any future bot card would use.
+                            attachment = message.estimate?.let { estimate ->
+                                {
+                                    EstimateCard(
+                                        estimate = estimate,
+                                        logged = message.estimateLogged,
+                                        onLog = {
+                                            haptics.confirm()
+                                            forceFollow = true
+                                            viewModel.logEstimate(message.id, it)
+                                        },
+                                    )
+                                }
                             },
                         )
                         is NutritionChatMessage.User -> UserBubble(text = message.text)
                         is NutritionChatMessage.Typing -> TypingBubble(
+                            identity = ClankerIdentity,
+                            label = "Estimating…",
                             onCancel = {
                                 haptics.tick()
                                 forceFollow = true
@@ -424,10 +562,17 @@ fun AIScreen(
                 value = draft,
                 onValueChange = { draft = it },
                 onSend = { send() },
-                onTakePhoto = ::onTakeMealPhoto,
-                onAddPhoto = ::onAddMealPhoto,
                 enabled = !loading,
+                hint = ClankerIdentity.composerHint,
+                accent = Primary,
                 hazeState = chatHaze,
+                leading = {
+                    MealPhotoButton(
+                        enabled = !loading,
+                        onTakePhoto = ::onTakeMealPhoto,
+                        onAddPhoto = ::onAddMealPhoto,
+                    )
+                },
             )
         }
     }
@@ -492,15 +637,8 @@ private fun AiChatHeader(
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 10.dp),
     ) {
-        ScreenHeaderSpacer()
-        ScreenHeader(
-            title = "AI",
-            trailing = { ClankerAvatar(size = 44.dp, live = loading) },
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusDot(active = loading)
+            ChatStatusDot(active = loading, accent = Primary)
             Spacer(modifier = Modifier.width(7.dp))
             // 16.sp keeps this in step with the Home/Health header subtitles.
             Text(status, fontSize = 16.sp, color = TextSecondary)
@@ -511,16 +649,16 @@ private fun AiChatHeader(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 14.dp),
         ) {
-            HeaderAction(
+            ChatHeaderAction(
                 icon = Icons.Outlined.CameraAlt,
                 label = "Scan label",
                 emphasized = true,
                 onClick = onCameraScan,
             )
             if (loading) {
-                HeaderAction(icon = Icons.Outlined.Close, label = "Stop", onClick = onCancel)
+                ChatHeaderAction(icon = Icons.Outlined.Close, label = "Stop", onClick = onCancel)
             } else if (canClear) {
-                HeaderAction(icon = Icons.Outlined.DeleteSweep, label = "New chat", onClick = onClear)
+                ChatHeaderAction(icon = Icons.Outlined.DeleteSweep, label = "New chat", onClick = onClear)
             }
         }
     }
@@ -553,56 +691,7 @@ private fun ClankerAvatar(size: Dp, live: Boolean, modifier: Modifier = Modifier
     }
 }
 
-@Composable
-private fun StatusDot(active: Boolean) {
-    val alpha by animateFloatAsState(
-        targetValue = if (active) 1f else 0.6f,
-        animationSpec = MacroMotion.fadeTween(),
-        label = "status_dot",
-    )
-    Box(
-        modifier = Modifier
-            .size(7.dp)
-            .clip(CircleShape)
-            .background((if (active) Primary else Secondary).copy(alpha = alpha)),
-    )
-}
 
-@Composable
-private fun HeaderAction(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    emphasized: Boolean = false,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(PillShape)
-            .background(if (emphasized) Primary.copy(alpha = 0.16f) else Surface)
-            .border(
-                1.dp,
-                if (emphasized) Primary.copy(alpha = 0.38f) else Border,
-                PillShape,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 8.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (emphasized) Primary else TextSecondary,
-            modifier = Modifier.size(15.dp),
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (emphasized) Primary else TextPrimary,
-        )
-    }
-}
 
 @Composable
 private fun SuggestionStrip(
@@ -668,155 +757,9 @@ private val UserBubbleShape =
 private val CardShape = RoundedCornerShape(16.dp)
 private val PillShape = RoundedCornerShape(999.dp)
 
-@Composable
-private fun DoctorBubble(
-    message: NutritionChatMessage.Doctor,
-    onLog: (NutritionEstimate) -> Unit,
-    onRetry: (String) -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.Top,
-    ) {
-        ClankerAvatar(size = 30.dp, live = false, modifier = Modifier.padding(top = 2.dp))
-        Spacer(modifier = Modifier.width(9.dp))
-        Column(
-            modifier = Modifier.widthIn(max = 330.dp),
-            horizontalAlignment = Alignment.Start,
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(DoctorBubbleShape)
-                    .background(if (message.isError) Error.copy(alpha = 0.10f) else Surface)
-                    .border(
-                        1.dp,
-                        if (message.isError) Error.copy(alpha = 0.35f) else Border,
-                        DoctorBubbleShape,
-                    )
-                    .padding(horizontal = 14.dp, vertical = 11.dp),
-            ) {
-                Text(
-                    text = message.text,
-                    color = if (message.isError) Error else TextPrimary,
-                    fontSize = 14.sp,
-                    lineHeight = 21.sp,
-                )
-            }
 
-            if (message.isError) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    message.retryQuery?.let { query ->
-                        SmallActionChip(
-                            icon = Icons.Outlined.Refresh,
-                            label = "Retry",
-                            onClick = { onRetry(query) },
-                        )
-                    }
-                    if (message.showSettingsCta) {
-                        SmallActionChip(
-                            icon = Icons.Outlined.Settings,
-                            label = "AI settings",
-                            onClick = onOpenSettings,
-                        )
-                    }
-                }
-            }
 
-            val estimate = message.estimate
-            if (estimate != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                EstimateCard(
-                    estimate = estimate,
-                    logged = message.estimateLogged,
-                    onLog = onLog,
-                )
-            }
-        }
-    }
-}
 
-@Composable
-private fun UserBubble(text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clip(UserBubbleShape)
-                .background(Primary)
-                .padding(horizontal = 14.dp, vertical = 11.dp),
-        ) {
-            Text(
-                text = text,
-                color = Color.White,
-                fontSize = 14.sp,
-                lineHeight = 21.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TypingBubble(onCancel: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        ClankerAvatar(size = 30.dp, live = true)
-        Spacer(modifier = Modifier.width(9.dp))
-        Row(
-            modifier = Modifier
-                .clip(DoctorBubbleShape)
-                .background(Surface)
-                .border(1.dp, Border, DoctorBubbleShape)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TypingDots(color = TextSecondary)
-            Text("Estimating…", fontSize = 12.sp, color = TextSecondary)
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            "Stop",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextSecondary,
-            modifier = Modifier
-                .clip(PillShape)
-                .clickable(onClick = onCancel)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        )
-    }
-}
-
-@Composable
-private fun SmallActionChip(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(PillShape)
-            .border(1.dp, Border, PillShape)
-            .background(Surface)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-    }
-}
 
 // ── Estimate card ────────────────────────────────────────────────────────────
 
@@ -1085,129 +1028,55 @@ private fun ConfidenceChip(confidence: String) {
 private val ComposerShape = RoundedCornerShape(22.dp)
 private val ComposerSendShape = RoundedCornerShape(999.dp)
 
+/** Alias so the host header can show Sysop's badge without importing the pane's value twice. */
+private val SysopIdentityRef: BotIdentity
+    get() = com.macrotracker.ui.screens.ai.SysopIdentity
+
+/** Clanker's composer slot: the photo attach menu. Sysop leaves this slot empty. */
 @Composable
-private fun ChatComposer(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSend: () -> Unit,
+private fun MealPhotoButton(
+    enabled: Boolean,
     onTakePhoto: () -> Unit,
     onAddPhoto: () -> Unit,
-    enabled: Boolean,
-    hazeState: HazeState?,
 ) {
-    val density = LocalDensity.current
-    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val imeOpen = WindowInsets.ime.getBottom(density) > 0
-    val bottomPad = if (imeOpen) 10.dp else navBottom + PillNavClearance
-    val canSend = enabled && value.isNotBlank()
-    var attachMenuOpen by remember { mutableStateOf(false) }
-    val sendBackground by animateColorAsState(
-        targetValue = if (canSend) Primary else Border,
-        animationSpec = MacroMotion.colorTween(),
-        label = "composer_send",
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .padding(top = 6.dp, bottom = bottomPad)
-            .clip(ComposerShape)
-            .dottedGlass(hazeState = hazeState, shape = ComposerShape)
-            .border(1.dp, GlassHairline, ComposerShape)
-            .padding(start = 4.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        Box {
-            IconButton(
-                onClick = { attachMenuOpen = true },
-                enabled = enabled,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = "Add meal photo",
-                    tint = if (enabled) TextPrimary else TextSecondary,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            DropdownMenu(
-                expanded = attachMenuOpen,
-                onDismissRequest = { attachMenuOpen = false },
-                modifier = Modifier.background(Surface),
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Take photo of meal", color = TextPrimary, fontSize = 15.sp) },
-                    onClick = {
-                        attachMenuOpen = false
-                        onTakePhoto()
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.CameraAlt,
-                            contentDescription = null,
-                            tint = Primary,
-                        )
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("Add photo of meal", color = TextPrimary, fontSize = 15.sp) },
-                    onClick = {
-                        attachMenuOpen = false
-                        onAddPhoto()
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.PhotoLibrary,
-                            contentDescription = null,
-                            tint = Primary,
-                        )
-                    },
-                )
-            }
-        }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(
+            onClick = { open = true },
             enabled = enabled,
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = 40.dp)
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            textStyle = TextStyle(
-                color = TextPrimary,
-                fontSize = 15.sp,
-                lineHeight = 20.sp,
-            ),
-            cursorBrush = SolidColor(Primary),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
-            maxLines = 4,
-            decorationBox = { inner ->
-                if (value.isEmpty()) {
-                    Text(
-                        "Describe a meal…",
-                        color = TextSecondary,
-                        fontSize = 15.sp,
-                    )
-                }
-                inner()
-            },
-        )
-        Box(
-            modifier = Modifier
-                .padding(bottom = 2.dp)
-                .size(38.dp)
-                .clip(ComposerSendShape)
-                .background(sendBackground, ComposerSendShape)
-                .clickable(enabled = canSend, onClick = onSend),
-            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(40.dp),
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.Send,
-                contentDescription = "Send",
-                tint = if (canSend) Color.White else TextSecondary,
-                modifier = Modifier.size(17.dp),
+                imageVector = Icons.Outlined.Add,
+                contentDescription = "Add meal photo",
+                tint = if (enabled) TextPrimary else TextSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            modifier = Modifier.background(Surface),
+        ) {
+            DropdownMenuItem(
+                text = { Text("Take photo of meal", color = TextPrimary, fontSize = 15.sp) },
+                onClick = {
+                    open = false
+                    onTakePhoto()
+                },
+                leadingIcon = {
+                    Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = Primary)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Add photo of meal", color = TextPrimary, fontSize = 15.sp) },
+                onClick = {
+                    open = false
+                    onAddPhoto()
+                },
+                leadingIcon = {
+                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, tint = Primary)
+                },
             )
         }
     }
