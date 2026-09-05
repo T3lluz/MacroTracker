@@ -102,12 +102,7 @@ class SettingsRepository @Inject constructor(
     val githubFocusRepo: StateFlow<String> = _githubFocusRepo
 
     // Layout preferences for Home Screen
-    private val _homeWidgetOrder = MutableStateFlow(
-        prefs.getString(
-            "home_widget_order",
-            "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,GITHUB:true,YOUTUBE:true,TWITCH:true",
-        ) ?: "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,GITHUB:true,YOUTUBE:true,TWITCH:true",
-    )
+    private val _homeWidgetOrder = MutableStateFlow(loadHomeWidgetOrder())
     val homeWidgetOrder: StateFlow<String> = _homeWidgetOrder
 
     // Layout preferences for Health Screen
@@ -249,6 +244,15 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    private fun loadHomeWidgetOrder(): String {
+        val raw = prefs.getString("home_widget_order", DEFAULT_HOME_WIDGET_ORDER) ?: DEFAULT_HOME_WIDGET_ORDER
+        val migrated = migrateHomeWidgetOrder(raw)
+        if (migrated != raw) {
+            prefs.edit { putString("home_widget_order", migrated) }
+        }
+        return migrated
+    }
+
     private fun loadHealthWidgetOrder(): String {
         val default =
             "DAILY_HEALTH:true,ACTIVITIES:true,BODY_STATS:true,HISTORY:true,SUMMARY:true,ADD_ENTRY:true,WEEK_AT_A_GLANCE:true,RECENT_LOGS:true"
@@ -275,6 +279,12 @@ class SettingsRepository @Inject constructor(
         const val KEY_GITHUB_FOCUS_REPO = "github_focus_repo"
         const val DEFAULT_GITHUB_OWNER = "T3lluz"
         const val DEFAULT_GITHUB_REPO = "MacroTracker"
+
+        const val DEFAULT_HOME_WIDGET_ORDER = "WEATHER:true,CALENDAR:true,BODY_STATS:true,PROGRESS:true,QUICK_ADD:true,F1:true,GITHUB:true,SERVERS:true,YOUTUBE:true,TWITCH:true"
+
+        /** Existing installs get the Servers card appended, off by nobody's surprise. */
+        fun migrateHomeWidgetOrder(order: String): String =
+            if (order.contains("SERVERS")) order else "$order,SERVERS:true"
 
         /** Keep Daily Health first; insert Activities after it for older installs. */
         fun migrateHealthWidgetOrder(order: String): String {

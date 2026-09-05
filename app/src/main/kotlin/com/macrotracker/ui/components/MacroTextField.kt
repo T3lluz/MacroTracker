@@ -12,6 +12,7 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.macrotracker.ui.theme.Background
@@ -31,6 +32,7 @@ fun MacroTextField(
     trailingIcon: @Composable (() -> Unit)? = null, // Added trailingIcon parameter
     textAlignment: TextAlign? = null,
     colors: TextFieldColors? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     val defaultColors = OutlinedTextFieldDefaults.colors(
         focusedContainerColor = Background,
@@ -54,6 +56,7 @@ fun MacroTextField(
         shape = RoundedCornerShape(10.dp),
         textStyle = LocalTextStyle.current.copy(textAlign = textAlignment ?: TextAlign.Start),
         colors = colors ?: defaultColors,
+        visualTransformation = visualTransformation,
         trailingIcon = trailingIcon // Added trailingIcon to OutlinedTextField
     )
 }

@@ -56,3 +56,24 @@ val NutritionProtein = Secondary
 val CalendarBrand = Color(0xFF4285F4)
 val WeatherBrand = Color(0xFF42A5F5)
 val HealthConnectBrand = Color(0xFFE53935)
+
+/**
+ * Server monitor accents — one palette for ring gauges, sparklines, per-core
+ * bars and severity chips, shared with the live notification's Canvas renderer
+ * in `data/server/ServerLiveGraphics.kt`. Keep the two in step.
+ */
+val ServerBrand = Color(0xFF7DD3FC)
+val ServerCpu = Color(0xFF4F7CFF)
+val ServerMemory = Color(0xFFA78BFA)
+val ServerDisk = Color(0xFF22D3EE)
+val ServerNetRx = Color(0xFF34D399)
+val ServerNetTx = Color(0xFF60A5FA)
+val ServerThermal = Color(0xFFFB923C)
+
+/** Severity ramp used by meters and the advisories feed. */
+val ServerGood = Color(0xFF22C55E)
+val ServerWarn = Color(0xFFF59E0B)
+val ServerCritical = Color(0xFFEF4444)
+
+/** Inset wells behind gauges, sparklines and terminal-style readouts. */
+val ServerWell = Color(0xFF0B1424)

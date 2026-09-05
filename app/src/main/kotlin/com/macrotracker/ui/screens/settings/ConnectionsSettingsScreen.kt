@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,13 +40,18 @@ import com.macrotracker.ui.theme.Border
 import com.macrotracker.ui.theme.TextPrimary
 import com.macrotracker.ui.theme.TextSecondary
 import com.macrotracker.ui.util.rememberHaptics
+import com.macrotracker.ui.viewmodel.ServerViewModel
 import com.macrotracker.ui.viewmodel.SettingsViewModel
 
 @Composable
 fun ConnectionsSettingsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToServers: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
+    serverViewModel: ServerViewModel = hiltViewModel(),
 ) {
+    val serverProfiles by serverViewModel.profiles.collectAsState()
+    val serverRuntimes by serverViewModel.runtimes.collectAsState()
     val healthConnectAvailable by viewModel.healthConnectConnected.collectAsState()
     val weatherConnected by viewModel.weatherConnected.collectAsState()
     val calendarConnected by viewModel.calendarConnected.collectAsState()
@@ -274,6 +280,28 @@ fun ConnectionsSettingsScreen(
                     } else {
                         viewModel.setMasterCalendarEnabled(false)
                     }
+                },
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        MacroCard(delayMs = 140) {
+            SettingsCategoryRow(
+                icon = Icons.Outlined.Dns,
+                title = "Servers",
+                summary = when {
+                    serverProfiles.isEmpty() ->
+                        "Monitor your own machines over SSH — live stats, alerts, updates"
+                    else -> {
+                        val online = serverRuntimes.values.count { it.isOnline }
+                        "${serverProfiles.size} configured · $online online"
+                    }
+                },
+                iconTint = Color(0xFF7DD3FC),
+                onClick = {
+                    haptics.click()
+                    onNavigateToServers()
                 },
             )
         }

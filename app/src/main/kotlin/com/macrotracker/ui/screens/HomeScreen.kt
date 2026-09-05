@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MonitorHeart
@@ -77,6 +78,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HomeScreen(
     onNavigateToHealth: () -> Unit,
+    onNavigateToServers: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
     youtubeViewModel: YouTubeViewModel = hiltViewModel(),
     twitchViewModel: TwitchViewModel = hiltViewModel(),
@@ -97,6 +99,7 @@ fun HomeScreen(
         listOf(
             Triple("F1", "Formula 1", Icons.Default.Flag),
             Triple("GITHUB", "GitHub", Icons.Default.Code),
+            Triple("SERVERS", "Servers", Icons.Default.Dns),
             Triple("YOUTUBE", "YouTube Feed", Icons.Default.PlayArrow),
             Triple("TWITCH", "Twitch Live", Icons.Default.Videocam),
             Triple("WEATHER", "Weather", Icons.Default.Cloud),
@@ -319,6 +322,7 @@ fun HomeScreen(
                         isVisible = config.id in visibleWidgetIds,
                         viewModel = viewModel,
                         onNavigateToHealth = onNavigateToHealth,
+                        onNavigateToServers = onNavigateToServers,
                         onRequestLocationPermission = onRequestLocationPermission,
                         onRequestCalendarPermission = onRequestCalendarPermission,
                         hasLocationPermission = hasLocationPermissionFn,

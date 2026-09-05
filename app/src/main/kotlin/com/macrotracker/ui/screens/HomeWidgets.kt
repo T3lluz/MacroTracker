@@ -52,6 +52,7 @@ import com.macrotracker.ui.components.MacroProgressBar
 import com.macrotracker.ui.components.MacroTextField
 import com.macrotracker.ui.components.MetricInfo
 import com.macrotracker.ui.components.WeatherCard
+import com.macrotracker.ui.components.ServerCard
 import com.macrotracker.ui.components.WidgetConfig
 import com.macrotracker.ui.components.WidgetPlaceholder
 import com.macrotracker.ui.components.WidgetPlaceholderCard
@@ -79,6 +80,7 @@ fun HomeWidgetItem(
     isVisible: Boolean,
     viewModel: HomeViewModel,
     onNavigateToHealth: () -> Unit,
+    onNavigateToServers: () -> Unit,
     onRequestLocationPermission: () -> Unit,
     onRequestCalendarPermission: () -> Unit,
     hasLocationPermission: () -> Boolean,
@@ -92,6 +94,7 @@ fun HomeWidgetItem(
     when (config.id) {
         "F1" -> HomeF1Widget(viewModel, isVisible = isVisible)
         "GITHUB" -> GitHubCard(isVisible = isVisible)
+        "SERVERS" -> ServerCard(isVisible = isVisible, onOpenServers = onNavigateToServers)
         "YOUTUBE" -> YoutubeCard()
         "TWITCH" -> TwitchCard()
         "WEATHER" -> HomeWeatherWidget(
