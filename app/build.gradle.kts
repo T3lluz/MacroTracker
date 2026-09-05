@@ -91,6 +91,15 @@ android {
         compose = true
         buildConfig = true
     }
+
+    packaging {
+        resources {
+            // JSch ships as a multi-release jar; Android only ever runs the Java 8 baseline.
+            excludes += "META-INF/versions/**"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/*.kotlin_module"
+        }
+    }
 }
 
 
@@ -174,6 +183,9 @@ dependencies {
 
     // WorkManager (for widget periodic updates)
     implementation(libs.work.runtime)
+
+    // SSH for the server monitor (maintained JSch fork — modern KEX/ciphers, ed25519, no BouncyCastle)
+    implementation(libs.jsch)
 
     testImplementation("junit:junit:4.13.2")
 }

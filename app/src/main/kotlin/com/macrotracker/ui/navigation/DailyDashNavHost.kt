@@ -14,6 +14,7 @@ import com.macrotracker.ui.screens.CameraScanScreen
 import com.macrotracker.ui.screens.HealthScreen
 import com.macrotracker.ui.screens.HelpScreen
 import com.macrotracker.ui.screens.HomeScreen
+import com.macrotracker.ui.screens.ServerScreen
 import com.macrotracker.ui.screens.SettingsScreen
 import com.macrotracker.ui.screens.StatsScreen
 import com.macrotracker.ui.screens.WidgetsScreen
@@ -24,6 +25,7 @@ import com.macrotracker.ui.screens.settings.AboutSettingsScreen
 import com.macrotracker.ui.screens.settings.AiSettingsScreen
 import com.macrotracker.ui.screens.settings.ConnectionsSettingsScreen
 import com.macrotracker.ui.screens.settings.NutritionSettingsScreen
+import com.macrotracker.ui.screens.settings.ServersSettingsScreen
 import com.macrotracker.ui.theme.Background
 import com.macrotracker.ui.theme.MacroMotion
 
@@ -49,6 +51,8 @@ fun DailyDashNavHost(
         SettingsRoutes.CONNECTIONS,
         SettingsRoutes.AI,
         SettingsRoutes.NUTRITION,
+        SettingsRoutes.SERVERS,
+        SettingsRoutes.SERVER_DASHBOARD,
         SettingsRoutes.ABOUT,
     )
 
@@ -135,8 +139,12 @@ fun DailyDashNavHost(
             val onNavigateToHealth = remember(navController) {
                 { navController.navigate(Screen.Health.route) }
             }
+            val onNavigateToServers = remember(navController) {
+                { navController.navigate(SettingsRoutes.SERVER_DASHBOARD) }
+            }
             HomeScreen(
                 onNavigateToHealth = onNavigateToHealth,
+                onNavigateToServers = onNavigateToServers,
             )
         }
 
@@ -204,7 +212,47 @@ fun DailyDashNavHost(
             popExitTransition = { MacroMotion.subScreenPopExit },
         ) {
             val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
-            ConnectionsSettingsScreen(onNavigateBack = onNavigateBack)
+            val onNavigateToServers = remember(navController) {
+                { navController.navigate(SettingsRoutes.SERVERS) }
+            }
+            ConnectionsSettingsScreen(
+                onNavigateBack = onNavigateBack,
+                onNavigateToServers = onNavigateToServers,
+            )
+        }
+
+        composable(
+            route = SettingsRoutes.SERVERS,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            val onOpenDashboard = remember(navController) {
+                { navController.navigate(SettingsRoutes.SERVER_DASHBOARD) }
+            }
+            ServersSettingsScreen(
+                onNavigateBack = onNavigateBack,
+                onOpenDashboard = onOpenDashboard,
+            )
+        }
+
+        composable(
+            route = SettingsRoutes.SERVER_DASHBOARD,
+            enterTransition = { MacroMotion.subScreenEnter },
+            exitTransition = { MacroMotion.subScreenExit },
+            popEnterTransition = { MacroMotion.subScreenPopEnter },
+            popExitTransition = { MacroMotion.subScreenPopExit },
+        ) {
+            val onNavigateBack = remember(navController) { { navController.popBackStack(); Unit } }
+            val onNavigateToServerSettings = remember(navController) {
+                { navController.navigate(SettingsRoutes.SERVERS) }
+            }
+            ServerScreen(
+                onNavigateBack = onNavigateBack,
+                onNavigateToSettings = onNavigateToServerSettings,
+            )
         }
 
         composable(

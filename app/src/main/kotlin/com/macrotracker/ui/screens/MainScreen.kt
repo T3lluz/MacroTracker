@@ -34,6 +34,8 @@ import com.macrotracker.ui.navigation.DailyDashNavHost
 import com.macrotracker.ui.navigation.OnboardingRoutes
 import com.macrotracker.ui.navigation.Screen
 import com.macrotracker.ui.navigation.SettingsRoutes
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import com.macrotracker.ui.screens.onboarding.SplashOverlay
 import com.macrotracker.ui.viewmodel.AppUpdateViewModel
 import com.macrotracker.ui.viewmodel.OnboardingViewModel
@@ -46,6 +48,8 @@ import kotlin.coroutines.cancellation.CancellationException
 @Composable
 fun MainScreen(
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
+    openServerDashboard: StateFlow<Boolean>? = null,
+    onServerDashboardOpened: () -> Unit = {},
 ) {
     val activity = LocalContext.current as ComponentActivity
     val appUpdateViewModel: AppUpdateViewModel = hiltViewModel(viewModelStoreOwner = activity)
@@ -104,6 +108,18 @@ fun MainScreen(
             listOf(Screen.Home, Screen.Health, Screen.AI, Screen.Settings)
         } else {
             listOf(Screen.Home, Screen.Health, Screen.Settings)
+        }
+    }
+
+    // Tapping a server alert should land on the dashboard, not just reopen the app.
+    val serverDashboardRequested by (openServerDashboard ?: remember { MutableStateFlow(false) })
+        .collectAsState()
+    LaunchedEffect(serverDashboardRequested, onboardingCompleted) {
+        if (serverDashboardRequested && onboardingCompleted) {
+            navController.navigate(SettingsRoutes.SERVER_DASHBOARD) {
+                launchSingleTop = true
+            }
+            onServerDashboardOpened()
         }
     }
 

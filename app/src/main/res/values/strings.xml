@@ -31,5 +31,17 @@
     <string name="widget_f1_standings_description">Live driver and constructor championship standings with team colours</string>
     <string name="widget_f1_schedule_name">DailyDash — F1: Schedule</string>
     <string name="widget_f1_schedule_description">Full 2026 Formula 1 race calendar with sprint weekends highlighted</string>
+    <!-- Server monitor -->
+    <string name="server_channel_group">Servers</string>
+    <string name="server_channel_critical">Server critical</string>
+    <string name="server_channel_critical_desc">Unreachable hosts, failed services, and disks about to fill</string>
+    <string name="server_channel_warning">Server warnings</string>
+    <string name="server_channel_warning_desc">Resource pressure, temperature, and container problems</string>
+    <string name="server_channel_updates">Server updates</string>
+    <string name="server_channel_updates_desc">Pending package updates, security patches, and reboot flags</string>
+    <string name="server_channel_live">Live server stats</string>
+    <string name="server_channel_live_desc">The ongoing notification that keeps live stats on your lock screen</string>
+    <string name="server_live_stop">Stop</string>
+    <string name="server_live_refresh">Refresh</string>
 </resources>
 

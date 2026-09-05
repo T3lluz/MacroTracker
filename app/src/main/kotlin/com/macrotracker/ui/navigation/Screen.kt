@@ -23,8 +23,12 @@ object OnboardingRoutes {
 
 // Settings category sub-screens
 object SettingsRoutes {
+    /** The server dashboard is a sub-screen, not a bottom-nav tab. */
+    const val SERVER_DASHBOARD = "servers"
+
     const val CONNECTIONS = "settings_connections"
     const val AI = "settings_ai"
     const val NUTRITION = "settings_nutrition"
+    const val SERVERS = "settings_servers"
     const val ABOUT = "settings_about"
 }

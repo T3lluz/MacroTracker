@@ -11,6 +11,11 @@
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
     <!-- Android 13+ post-notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Live server stats notification (foreground service) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Restores the live server notification after a reboot, when enabled -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- In-app updates from GitHub Releases (sideload / tester builds only) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Allows silent self-updates via PackageInstaller (skips Play Protect "Scan app" UI) -->
@@ -75,6 +80,32 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:finishOnTaskLaunch="true" />
+
+        <!--
+            Live server stats notification.
+
+            specialUse rather than dataSync: Android 15 caps dataSync foreground
+            services at 6 hours a day, which would silently stop an always-on
+            monitor mid-afternoon.
+        -->
+        <service
+            android:name=".data.server.ServerMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Continuously monitors user-configured SSH servers to keep the live status notification and alerts up to date" />
+        </service>
+
+        <!-- Restarts the live notification after a reboot when the user enabled it -->
+        <receiver
+            android:name=".data.server.ServerBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Fallback open-prompt if post-install relaunch is blocked -->
         <receiver
